@@ -12,6 +12,7 @@ dependencies = [
     "streamlit>=1.36,<2.0",
     "plotly>=5.18,<7.0",
     "reportlab>=4.2,<5.0",
+    "jsonschema>=4.22,<5.0",
 ]
 
 [tool.setuptools.packages.find]

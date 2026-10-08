@@ -25,10 +25,163 @@ from reportlab.platypus import (
 )
 from reportlab.graphics.shapes import Drawing, String
 from reportlab.graphics.charts.lineplots import LinePlot
+from reportlab.lib.colors import HexColor
+
+from rail_vehicle.ai.provider import input_fingerprint
+from rail_vehicle.ai.schemas import AIContractError, validate_output
 
 
 REPORT_TITLE = "轨道车辆运行与动力学分析报告"
 MAX_CHART_POINTS = 1200
+AI_SAFETY_NOTE = (
+    "AI 生成内容仅基于当前统计分析结果，用于辅助解释，不构成故障、事故、安全或法规结论。"
+)
+
+
+def _validated_ai_section(
+    ai_context: dict[str, Any] | None,
+    ai_result: dict[str, Any] | None,
+    expected_type: str,
+    expected_selection_fingerprint: str | None,
+) -> dict[str, Any] | None:
+    """Return a PDF-safe allowlist only when context, result, and selection match."""
+    if not isinstance(ai_context, dict) or not isinstance(ai_result, dict):
+        return None
+    if ai_context.get("analysis_type") != expected_type:
+        return None
+    if ai_result.get("status") != "available":
+        return None
+    if expected_selection_fingerprint is not None and ai_result.get("selection_fingerprint") != expected_selection_fingerprint:
+        return None
+    try:
+        current_fingerprint = input_fingerprint(ai_context)
+        if ai_result.get("input_fingerprint") != current_fingerprint:
+            return None
+        output = validate_output(ai_result.get("analysis"), ai_context)
+    except (AIContractError, TypeError, ValueError):
+        return None
+
+    # Allowlist display metadata. In particular, never forward arbitrary
+    # provider fields such as api_key into the report payload or PDF.
+    metadata = ai_result.get("ai_metadata")
+    metadata = metadata if isinstance(metadata, dict) else {}
+    return {
+        "analysis_type": expected_type,
+        "input_fingerprint": current_fingerprint,
+        "analysis": output,
+        "provider": str(metadata.get("provider") or "未记录"),
+        "model": str(metadata.get("model") or "未记录"),
+        "generated_at": str(metadata.get("generated_at") or "未记录"),
+        "status": "success",
+    }
+
+
+def _append_ai_section(
+    story: list[Any],
+    ai_section: dict[str, Any] | None,
+    heading_style: ParagraphStyle,
+    body_style: ParagraphStyle,
+    small_style: ParagraphStyle,
+    header_style: ParagraphStyle,
+    content_width: float,
+    section_number: str,
+) -> None:
+    story.append(_paragraph(f"{section_number}、AI 辅助解读", heading_style))
+    if ai_section is None:
+        story.append(_paragraph("AI 辅助解读未生成，本报告仍包含完整的统计分析与异常检测结果。", body_style))
+        return
+
+    story.append(_paragraph(AI_SAFETY_NOTE, small_style))
+    story.append(
+        _table(
+            [
+                ["AI Provider", "AI Model", "AI 生成时间", "AI 分析状态"],
+                [ai_section["provider"], ai_section["model"], ai_section["generated_at"], ai_section["status"]],
+            ],
+            [content_width * 0.18, content_width * 0.22, content_width * 0.40, content_width * 0.20],
+            small_style,
+            header_style,
+        )
+    )
+    analysis = ai_section["analysis"]
+
+    def append_claim(label: str, text: str, evidence_ids: list[str], qualifier: str | None = None) -> None:
+        story.append(_paragraph(label, body_style))
+        if qualifier:
+            text = f"{text}（{qualifier}）"
+        story.append(KeepTogether([
+            _paragraph(text, body_style),
+            _paragraph("证据：" + " · ".join(evidence_ids), small_style),
+        ]))
+
+    append_claim("核心结论", analysis["summary"]["text"], analysis["summary"]["evidence_ids"])
+    story.append(_paragraph("主要观察", body_style))
+    if analysis["observations"]:
+        for observation in analysis["observations"]:
+            append_claim("•", observation["text"], observation["evidence_ids"])
+    else:
+        story.append(_paragraph("暂无主要观察。", small_style))
+
+    story.append(_paragraph("可能原因", body_style))
+    if analysis["possible_causes"]:
+        for cause in analysis["possible_causes"]:
+            append_claim("•", cause["text"], cause["evidence_ids"], "待核实的假设")
+    else:
+        story.append(_paragraph("暂无可能原因假设。", small_style))
+
+    story.append(_paragraph("建议进一步检查", body_style))
+    if analysis["further_checks"]:
+        for check in analysis["further_checks"]:
+            append_claim(
+                "•",
+                f"建议：{check['action']}；依据：{check['reason']}",
+                check["evidence_ids"],
+            )
+    else:
+        story.append(_paragraph("暂无进一步检查建议。", small_style))
+
+    story.append(_paragraph("局限性", body_style))
+    if analysis["limitations"]:
+        for limitation in analysis["limitations"]:
+            append_claim("•", limitation["text"], limitation["evidence_ids"])
+    else:
+        story.append(_paragraph("暂无补充局限性说明。", small_style))
+
+
+def _comparison_chart_drawing(
+    batches: list[dict[str, Any]], field: str, y_label: str, font_name: str
+) -> Drawing:
+    palette = [HexColor("#1779A8"), HexColor("#D45B38"), HexColor("#438A5E"), HexColor("#8B64A5"), HexColor("#C48B20")]
+    drawing = Drawing(170 * mm, 72 * mm)
+    plot = LinePlot()
+    plot.x = 39
+    plot.y = 22
+    plot.width = 425
+    plot.height = 154
+    all_times = [point["relative_time_seconds"] for batch in batches for point in batch["series"]]
+    plot.data = [
+        [(point["relative_time_seconds"], float(point[field])) for point in batch["series"]]
+        for batch in batches
+    ]
+    plot.lines[0].strokeColor = palette[0]
+    for index in range(1, len(batches)):
+        plot.lines[index].strokeColor = palette[index % len(palette)]
+    plot.xValueAxis.valueMin = 0
+    plot.xValueAxis.valueMax = max(all_times) or 1
+    plot.xValueAxis.labelTextFormat = "%.1f"
+    plot.yValueAxis.labelTextFormat = "%.4g"
+    for axis in (plot.xValueAxis, plot.yValueAxis):
+        axis.labels.fontName = font_name
+        axis.labels.fontSize = 7
+        axis.strokeColor = colors.HexColor("#718096")
+        axis.gridStrokeColor = colors.HexColor("#DCE4EB")
+        axis.gridStrokeWidth = 0.4
+    drawing.add(plot)
+    drawing.add(String(251, 1, "相对运行时间（秒）", textAnchor="middle", fontName=font_name, fontSize=8))
+    drawing.add(String(5, 100, y_label, textAnchor="middle", angle=90, fontName=font_name, fontSize=8))
+    for index, batch in enumerate(batches):
+        drawing.add(String(480, 163 - index * 12, batch["batch_ref"], fontName=font_name, fontSize=7, fillColor=palette[index % len(palette)]))
+    return drawing
 
 
 def _timestamp_text(value: Any) -> str:
@@ -47,6 +200,9 @@ def build_analysis_report_data(
     selected_start: datetime,
     selected_end: datetime,
     generated_at: datetime | None = None,
+    ai_context: dict[str, Any] | None = None,
+    ai_result: dict[str, Any] | None = None,
+    ai_selection_fingerprint: str | None = None,
 ) -> dict[str, Any]:
     """Assemble a stable report payload from the current filtered analysis."""
     samples = analysis["samples"]
@@ -87,6 +243,44 @@ def build_analysis_report_data(
         "threshold": dict(analysis["threshold"]),
         "anomaly_events": [dict(event) for event in anomalies["events"]],
         "samples": [dict(sample) for sample in samples],
+        "ai_section": _validated_ai_section(
+            ai_context, ai_result, "single_batch", ai_selection_fingerprint
+        ),
+    }
+
+
+def build_batch_comparison_report_data(
+    comparisons: list[dict[str, Any]],
+    ai_context: dict[str, Any] | None = None,
+    ai_result: dict[str, Any] | None = None,
+    ai_selection_fingerprint: str | None = None,
+    generated_at: datetime | None = None,
+) -> dict[str, Any]:
+    """Assemble a separate comparison report without changing the single-run PDF."""
+    if len(comparisons) < 2:
+        raise ValueError("批次对比报告至少需要两个批次。")
+    if generated_at is None:
+        generated_at = datetime.now().astimezone()
+    metric_keys = (
+        "sample_count", "mean_speed_kmh", "maximum_speed_kmh",
+        "lateral_accel_rms", "vertical_accel_rms",
+        "lateral_accel_peak_absolute", "vertical_accel_peak_absolute",
+    )
+    batches = []
+    for index, comparison in enumerate(comparisons, start=1):
+        batches.append({
+            "batch_ref": f"B{index}",
+            "label": str(comparison.get("label") or f"批次 {index}"),
+            **{key: comparison[key] for key in metric_keys},
+            "series": [dict(point) for point in comparison["series"]],
+        })
+    return {
+        "title": "轨道车辆运行与动力学批次对比报告",
+        "generated_at": _timestamp_text(generated_at),
+        "batches": batches,
+        "ai_section": _validated_ai_section(
+            ai_context, ai_result, "batch_comparison", ai_selection_fingerprint
+        ),
     }
 
 
@@ -420,6 +614,17 @@ def generate_analysis_report_pdf(report: dict[str, Any]) -> bytes:
             )
             story.append(Spacer(1, 2 * mm))
 
+        _append_ai_section(
+            story,
+            report.get("ai_section"),
+            heading_style,
+            body_style,
+            small_style,
+            header_style,
+            content_width,
+            "六",
+        )
+
         def footer(canvas: Any, doc: Any) -> None:
             canvas.saveState()
             canvas.setStrokeColor(colors.HexColor("#B9C7D3"))
@@ -438,3 +643,112 @@ def generate_analysis_report_pdf(report: dict[str, Any]) -> bytes:
         return result
     except Exception as exc:
         raise RuntimeError(f"分析报告 PDF 生成失败：{exc}") from exc
+
+
+def generate_batch_comparison_report_pdf(report: dict[str, Any]) -> bytes:
+    """Render a separate multi-batch report with existing comparison results."""
+    try:
+        regular_font, bold_font = _font_names()
+        stream = BytesIO()
+        page_width, _ = A4
+        document = SimpleDocTemplate(
+            stream,
+            pagesize=A4,
+            leftMargin=18 * mm,
+            rightMargin=18 * mm,
+            topMargin=19 * mm,
+            bottomMargin=19 * mm,
+            title=report["title"],
+            author="RailVehicle-Lab",
+        )
+        stylesheet = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            "RailComparisonTitle", parent=stylesheet["Title"], fontName=bold_font,
+            fontSize=19, leading=25, textColor=colors.HexColor("#17324D"),
+            alignment=TA_CENTER, spaceAfter=7 * mm,
+        )
+        heading_style = ParagraphStyle(
+            "RailComparisonHeading", parent=stylesheet["Heading2"], fontName=bold_font,
+            fontSize=13, leading=18, textColor=colors.HexColor("#1F5A82"),
+            spaceBefore=4 * mm, spaceAfter=2.5 * mm, keepWithNext=True,
+        )
+        body_style = ParagraphStyle(
+            "RailComparisonBody", parent=stylesheet["BodyText"], fontName=regular_font,
+            fontSize=8.5, leading=12, textColor=colors.HexColor("#273746"),
+        )
+        small_style = ParagraphStyle(
+            "RailComparisonSmall", parent=body_style, fontSize=7.2, leading=9,
+        )
+        header_style = ParagraphStyle(
+            "RailComparisonHeader", parent=body_style, fontName=bold_font,
+            fontSize=7.4, leading=9, textColor=colors.white,
+        )
+        label_style = ParagraphStyle(
+            "RailComparisonLabel", parent=body_style, fontName=bold_font,
+        )
+        content_width = page_width - document.leftMargin - document.rightMargin
+        story: list[Any] = [
+            _paragraph(report["title"], title_style),
+            _paragraph(f"报告生成时间：{report['generated_at']}", body_style),
+            _paragraph(AI_SAFETY_NOTE, small_style),
+            Spacer(1, 3 * mm),
+        ]
+        metric_labels = (
+            ("sample_count", "数据点数量"),
+            ("mean_speed_kmh", "平均速度（km/h）"),
+            ("maximum_speed_kmh", "最大速度（km/h）"),
+            ("lateral_accel_rms", "横向加速度 RMS（m/s²）"),
+            ("vertical_accel_rms", "垂向加速度 RMS（m/s²）"),
+            ("lateral_accel_peak_absolute", "横向加速度绝对峰值（m/s²）"),
+            ("vertical_accel_peak_absolute", "垂向加速度绝对峰值（m/s²）"),
+        )
+        story.append(_paragraph("一、批次对比指标", heading_style))
+        metric_rows = [["指标", *[batch["batch_ref"] for batch in report["batches"]]]]
+        for key, label in metric_labels:
+            row: list[Any] = [label]
+            for batch in report["batches"]:
+                value = batch[key]
+                row.append(f"{value:,}" if key == "sample_count" else f"{value:.4f}")
+            metric_rows.append(row)
+        widths = [content_width * 0.34] + [content_width * 0.66 / len(report["batches"])] * len(report["batches"])
+        story.append(_table(metric_rows, widths, small_style, header_style))
+
+        story.append(_paragraph("二、批次对比曲线", heading_style))
+        for field, title, y_label in (
+            ("speed_kmh", "速度对比曲线", "速度（km/h）"),
+            ("lateral_accel", "横向加速度对比曲线", "横向加速度（m/s²）"),
+            ("vertical_accel", "垂向加速度对比曲线", "垂向加速度（m/s²）"),
+        ):
+            chart = _comparison_chart_drawing(report["batches"], field, y_label, regular_font)
+            story.append(KeepTogether([_paragraph(title, label_style), chart]))
+            story.append(Spacer(1, 2 * mm))
+
+        _append_ai_section(
+            story,
+            report.get("ai_section"),
+            heading_style,
+            body_style,
+            small_style,
+            header_style,
+            content_width,
+            "三",
+        )
+
+        def footer(canvas: Any, doc: Any) -> None:
+            canvas.saveState()
+            canvas.setStrokeColor(colors.HexColor("#B9C7D3"))
+            canvas.setLineWidth(0.5)
+            canvas.line(doc.leftMargin, 13 * mm, page_width - doc.rightMargin, 13 * mm)
+            canvas.setFont(regular_font, 8)
+            canvas.setFillColor(colors.HexColor("#607080"))
+            canvas.drawString(doc.leftMargin, 8 * mm, "RailVehicle-Lab · 批次对比报告")
+            canvas.drawRightString(page_width - doc.rightMargin, 8 * mm, f"第 {doc.page} 页")
+            canvas.restoreState()
+
+        document.build(story, onFirstPage=footer, onLaterPages=footer)
+        result = stream.getvalue()
+        if not result.startswith(b"%PDF-"):
+            raise ValueError("PDF 文件头校验失败。")
+        return result
+    except Exception as exc:
+        raise RuntimeError(f"批次对比 PDF 生成失败：{exc}") from exc

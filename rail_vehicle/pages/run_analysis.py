@@ -7,8 +7,26 @@ import streamlit as st
 
 from rail_vehicle.analysis_report import (
     build_analysis_report_data,
+    build_batch_comparison_report_data,
+    generate_batch_comparison_report_pdf,
     generate_analysis_report_pdf,
 )
+from rail_vehicle.ai.config import AIConfig
+from rail_vehicle.ai.context import (
+    build_batch_comparison_payload,
+    build_single_batch_payload,
+)
+from rail_vehicle.ai.openai_provider import create_configured_provider
+from rail_vehicle.ai.ui import (
+    ai_configuration_message,
+    clear_result,
+    invalidate_stale_result,
+    render_validated_result,
+    request_ai_analysis,
+    selection_fingerprint,
+    status_message,
+)
+from rail_vehicle.ai.provider import input_fingerprint
 from rail_vehicle.batch_comparison import compare_run_batches
 from rail_vehicle.dynamics import analyze_run_data
 from rail_vehicle.anomaly import detect_anomalies
@@ -22,6 +40,59 @@ from rail_vehicle.run_data import (
     validate_run_csv,
 )
 from rail_vehicle.vehicle_data import get_vehicle, list_vehicles
+
+
+def _render_ai_interpretation(
+    *, payload: dict, selection: dict, state_key: str, has_data: bool = True
+) -> None:
+    st.subheader("🤖 AI 辅助解读")
+    st.caption(
+        "AI 生成内容，仅基于当前统计分析结果，不构成故障、事故、安全或法规结论。"
+    )
+    st.info(
+        "AI 将仅使用当前页面已经计算出的统计指标、异常事件和批次对比结果进行解读，"
+        "不会直接读取原始 CSV。"
+    )
+    if not has_data:
+        clear_result(st.session_state, state_key)
+        st.info("当前分析没有数据，无法生成 AI 解读。")
+        return
+
+    invalidate_stale_result(st.session_state, state_key, payload, selection)
+    config = AIConfig.from_sources()
+    unavailable_reason = ai_configuration_message(config)
+    if unavailable_reason:
+        clear_result(st.session_state, state_key)
+        st.warning(unavailable_reason)
+
+    generate = st.button(
+        "🤖 生成 AI 辅助解读",
+        key=f"generate_{state_key}",
+        disabled=unavailable_reason is not None,
+    )
+    if generate:
+        clear_result(st.session_state, state_key)
+        result = request_ai_analysis(
+            payload,
+            config,
+            has_data=True,
+            provider_factory=create_configured_provider,
+        )
+        if result.get("status") == "available":
+            result["selection_fingerprint"] = selection_fingerprint(selection)
+            result["ai_metadata"] = {
+                "provider": config.provider,
+                "model": config.model,
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "status": "success",
+            }
+            st.session_state[state_key] = result
+        else:
+            st.warning(status_message(result))
+
+    saved_result = st.session_state.get(state_key)
+    if saved_result is not None:
+        render_validated_result(saved_result, payload, st)
 
 
 def _render_import() -> None:
@@ -121,6 +192,7 @@ def _render_dynamics_analysis() -> None:
     )
     vehicles = list_vehicles()
     if not vehicles:
+        clear_result(st.session_state, "ai_single_batch_result")
         st.info("请先录入车辆并导入运行数据。")
         return
 
@@ -136,6 +208,7 @@ def _render_dynamics_analysis() -> None:
     )
     batches = list_vehicle_batches(vehicle_id)
     if not batches:
+        clear_result(st.session_state, "ai_single_batch_result")
         st.info("该车辆还没有导入运行数据。")
         return
 
@@ -152,6 +225,7 @@ def _render_dynamics_analysis() -> None:
     )
     samples = list_batch_samples(vehicle_id, batch_id)
     if not samples:
+        clear_result(st.session_state, "ai_single_batch_result")
         st.info("所选批次没有可分析的运行数据。")
         return
 
@@ -166,6 +240,7 @@ def _render_dynamics_analysis() -> None:
     try:
         timestamps = [as_utc(sample["timestamp"]) for sample in samples]
     except (KeyError, TypeError, ValueError):
+        clear_result(st.session_state, "ai_single_batch_result")
         st.error("所选批次包含无效时间戳，无法进行时间筛选。")
         return
     # The time controls have one-second precision. Floor the defaults to a
@@ -208,6 +283,7 @@ def _render_dynamics_analysis() -> None:
         + timedelta(seconds=1, microseconds=-1)
     )
     if selected_start > selected_end:
+        clear_result(st.session_state, "ai_single_batch_result")
         st.warning("开始时间不能晚于结束时间，请调整筛选范围。")
         return
     try:
@@ -215,9 +291,11 @@ def _render_dynamics_analysis() -> None:
             samples, selected_start, selected_end
         )
     except ValueError as exc:
+        clear_result(st.session_state, "ai_single_batch_result")
         st.error(str(exc))
         return
     if not filtered_samples:
+        clear_result(st.session_state, "ai_single_batch_result")
         st.info("所选时间范围内没有运行数据，请调整开始或结束时间。")
         return
 
@@ -232,6 +310,7 @@ def _render_dynamics_analysis() -> None:
     try:
         result = analyze_run_data(filtered_samples, threshold)
     except ValueError as exc:
+        clear_result(st.session_state, "ai_single_batch_result")
         st.error(str(exc))
         return
     anomaly_result = detect_anomalies(result["samples"], threshold)
@@ -387,11 +466,42 @@ def _render_dynamics_analysis() -> None:
             )
         st.plotly_chart(figure, use_container_width=True, key=f"chart_{field}")
 
+    selected_vehicle = next(
+        vehicle for vehicle in vehicles if vehicle["id"] == vehicle_id
+    )
+    ai_payload = build_single_batch_payload(
+        analysis=result,
+        anomalies=anomaly_result,
+        vehicle=selected_vehicle,
+        batch_ref="B1",
+        selected_start=selected_start.isoformat(),
+        selected_end=selected_end.isoformat(),
+    )
+    ai_selection = {
+        "vehicle_id": vehicle_id,
+        "batch_id": batch_id,
+        "selected_start": selected_start.isoformat(),
+        "selected_end": selected_end.isoformat(),
+        "threshold": threshold,
+    }
+    _render_ai_interpretation(
+        payload=ai_payload,
+        selection=ai_selection,
+        state_key="ai_single_batch_result",
+    )
+
     st.subheader("导出分析报告")
     st.caption("PDF 报告将包含当前车辆、批次、时间范围、阈值、统计结果、异常事件和筛选后曲线。")
+    current_ai_result = st.session_state.get("ai_single_batch_result")
+    current_ai_pdf_fingerprint = (
+        current_ai_result.get("input_fingerprint", "")
+        if isinstance(current_ai_result, dict)
+        and current_ai_result.get("status") == "available"
+        else "no-ai-result"
+    )
     report_key = (
         f"{vehicle_id}:{batch_id}:{selected_start.isoformat()}:{selected_end.isoformat()}:"
-        f"{threshold:.12g}"
+        f"{threshold:.12g}:{current_ai_pdf_fingerprint}"
     )
     if st.session_state.get("analysis_report_key") != report_key:
         st.session_state.pop("analysis_report_key", None)
@@ -412,6 +522,9 @@ def _render_dynamics_analysis() -> None:
                 anomalies=anomaly_result,
                 selected_start=selected_start,
                 selected_end=selected_end,
+                ai_context=ai_payload,
+                ai_result=st.session_state.get("ai_single_batch_result"),
+                ai_selection_fingerprint=selection_fingerprint(ai_selection),
             )
             pdf_bytes = generate_analysis_report_pdf(report_data)
         except Exception as exc:
@@ -449,6 +562,7 @@ def _render_batch_comparison() -> None:
     )
     vehicles = list_vehicles()
     if not vehicles:
+        clear_result(st.session_state, "ai_batch_comparison_result")
         st.info("请先录入车辆并导入运行数据。")
         return
 
@@ -464,6 +578,7 @@ def _render_batch_comparison() -> None:
     )
     batches = list_vehicle_batches(vehicle_id)
     if len(batches) < 2:
+        clear_result(st.session_state, "ai_batch_comparison_result")
         st.info("该车辆至少需要两个历史导入批次才能进行对比。")
         return
 
@@ -481,6 +596,7 @@ def _render_batch_comparison() -> None:
         key=f"comparison_batch_ids_{vehicle_id}",
     )
     if len(selected_ids) < 2:
+        clear_result(st.session_state, "ai_batch_comparison_result")
         st.info("请选择至少两个批次以显示对比结果。")
         return
 
@@ -497,6 +613,7 @@ def _render_batch_comparison() -> None:
     try:
         comparisons = compare_run_batches(comparison_inputs)
     except ValueError as exc:
+        clear_result(st.session_state, "ai_batch_comparison_result")
         st.error(f"无法完成批次对比：{exc}")
         return
 
@@ -547,6 +664,57 @@ def _render_batch_comparison() -> None:
             margin={"l": 20, "r": 20, "t": 50, "b": 20},
         )
         st.plotly_chart(figure, use_container_width=True, key=f"comparison_{field}")
+
+    ai_payload = build_batch_comparison_payload(comparisons)
+    ai_selection = {"vehicle_id": vehicle_id, "batch_ids": selected_ids}
+    _render_ai_interpretation(
+        payload=ai_payload,
+        selection=ai_selection,
+        state_key="ai_batch_comparison_result",
+    )
+
+    st.subheader("导出批次对比报告")
+    st.caption("报告包含当前批次对比指标、三张相对时间曲线，以及与当前对比输入 fingerprint 匹配的 AI 解读（如果已生成）。")
+    current_ai_result = st.session_state.get("ai_batch_comparison_result")
+    current_ai_pdf_fingerprint = (
+        current_ai_result.get("input_fingerprint", "")
+        if isinstance(current_ai_result, dict)
+        and current_ai_result.get("status") == "available"
+        else "no-ai-result"
+    )
+    comparison_report_key = (
+        f"{input_fingerprint(ai_payload)}:{selection_fingerprint(ai_selection)}:"
+        f"{current_ai_pdf_fingerprint}"
+    )
+    if st.session_state.get("comparison_report_key") != comparison_report_key:
+        st.session_state.pop("comparison_report_key", None)
+        st.session_state.pop("comparison_report_pdf", None)
+    if st.button("生成批次对比 PDF 报告", key="generate_comparison_report"):
+        try:
+            report_data = build_batch_comparison_report_data(
+                comparisons,
+                ai_context=ai_payload,
+                ai_result=st.session_state.get("ai_batch_comparison_result"),
+                ai_selection_fingerprint=selection_fingerprint(ai_selection),
+            )
+            pdf_bytes = generate_batch_comparison_report_pdf(report_data)
+        except Exception as exc:
+            st.error(f"批次对比报告生成失败：{exc}")
+        else:
+            st.session_state["comparison_report_key"] = comparison_report_key
+            st.session_state["comparison_report_pdf"] = pdf_bytes
+            st.success("批次对比报告已生成，可以下载 PDF 文件。")
+    if (
+        st.session_state.get("comparison_report_key") == comparison_report_key
+        and st.session_state.get("comparison_report_pdf")
+    ):
+        st.download_button(
+            "下载批次对比 PDF 报告",
+            data=st.session_state["comparison_report_pdf"],
+            file_name="rail_vehicle_batch_comparison_report.pdf",
+            mime="application/pdf",
+            key="download_comparison_report",
+        )
 
 
 def render() -> None:

@@ -1,11 +1,18 @@
 # Python bytecode and packaging metadata
 __pycache__/
+.pytest_cache/
 *.py[cod]
 *.egg-info/
 
 # Local environment and runtime database
 .venv/
 data/
+.streamlit/secrets.toml
+.env
+.env.*
+*.db
+*.sqlite
+*.sqlite3
 
 # Temporary PDF generation and rendering artifacts
 tmp/pdfs/

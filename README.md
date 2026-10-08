@@ -70,6 +70,22 @@ timestamp,vehicle_id,speed_kmh,lateral_accel,vertical_accel
 
 “批次对比”页可选择同一车辆的两个或多个历史批次，对比各批次的数据点数量、速度统计、加速度 RMS 和绝对峰值；三张曲线使用相对运行时间作为横轴，各批次从首条样本的 0 秒开始。
 
+## V0.3 AI Provider 配置（可选）
+
+当前版本加入了 OpenAI Responses API Provider 基础设施，但没有页面入口；AI 默认关闭，不配置密钥也可照常使用车辆管理、导入、统计、异常检测、批次对比和 PDF 功能。启用后，Provider 只接收 AI 输入组装器生成的统计上下文，不读取或发送原始 CSV、PDF、车辆编号、文件名和备注。模型结果先通过本地输出 Schema、evidence ID、有限数值和安全措辞校验。
+
+支持环境变量 `AI_PROVIDER`（当前只支持 `openai`）、`AI_MODEL`、`AI_ENABLED`（默认 `false`）和 `AI_TIMEOUT`（秒，默认 30，允许 1–300）。启用 OpenAI 时还需设置 `OPENAI_API_KEY`。例如 PowerShell：
+
+```powershell
+$env:AI_PROVIDER = "openai"
+$env:AI_MODEL = "在 OpenAI 账户中可用的模型名称"
+$env:AI_ENABLED = "true"
+$env:AI_TIMEOUT = "30"
+$env:OPENAI_API_KEY = "本机密钥"
+```
+
+也可将 `OPENAI_API_KEY` 放在本机 `.streamlit/secrets.toml` 顶层，或 `[ai]` 下的 `api_key` 字段。该文件已加入 `.gitignore`；不要把密钥写进源码、README、日志或提交到 Git。代码不会记录密钥；调用超时、网络、认证、限流及无效输出会返回通用的 AI 不可用状态，不会影响本地分析流程。Provider 设置有限次 SDK 重试和响应输出 token 上限，不保存 Responses API 服务端会话数据。
+
 ## 运行测试
 
 使用 Python 标准库的 `unittest` 运行车辆管理、数据库迁移、CSV 校验/导入、动力学指标和异常检测测试：
@@ -98,6 +114,7 @@ rail_vehicle/anomaly.py        加速度阈值异常点和区段识别
 rail_vehicle/time_filter.py    按 UTC 时间范围筛选运行样本
 rail_vehicle/batch_comparison.py 多批次指标和相对时间曲线数据计算
 rail_vehicle/analysis_report.py 分析报告数据组装和 PDF 生成
+rail_vehicle/ai/                 AI 输入输出契约、上下文组装和 Provider
 tests/test_vehicle_data.py     车辆校验和数据库测试
 tests/test_run_data.py         运行 CSV 校验和导入测试
 tests/test_dynamics.py         基础动力学统计指标测试
