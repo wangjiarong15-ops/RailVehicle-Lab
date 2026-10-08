@@ -6,3 +6,6 @@ __pycache__/
 # Local environment and runtime database
 .venv/
 data/
+
+# Temporary PDF generation and rendering artifacts
+tmp/pdfs/

@@ -1,10 +1,18 @@
 """Running-data import and basic dynamics analysis page."""
 
+from datetime import datetime, timedelta, timezone
+
 import plotly.graph_objects as go
 import streamlit as st
 
+from rail_vehicle.analysis_report import (
+    build_analysis_report_data,
+    generate_analysis_report_pdf,
+)
+from rail_vehicle.batch_comparison import compare_run_batches
 from rail_vehicle.dynamics import analyze_run_data
 from rail_vehicle.anomaly import detect_anomalies
+from rail_vehicle.time_filter import filter_samples_by_time_range
 from rail_vehicle.run_data import (
     PREVIEW_LIMIT,
     import_run_data,
@@ -13,7 +21,7 @@ from rail_vehicle.run_data import (
     list_vehicle_batches,
     validate_run_csv,
 )
-from rail_vehicle.vehicle_data import list_vehicles
+from rail_vehicle.vehicle_data import get_vehicle, list_vehicles
 
 
 def _render_import() -> None:
@@ -142,6 +150,77 @@ def _render_dynamics_analysis() -> None:
         ),
         key="dynamics_batch_id",
     )
+    samples = list_batch_samples(vehicle_id, batch_id)
+    if not samples:
+        st.info("所选批次没有可分析的运行数据。")
+        return
+
+    # Stored timestamps without an explicit offset have always been treated as UTC.
+    # Present range controls in UTC too, so the selected bounds match analysis order.
+    def as_utc(value: str) -> datetime:
+        parsed = datetime.fromisoformat(value)
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+
+    try:
+        timestamps = [as_utc(sample["timestamp"]) for sample in samples]
+    except (KeyError, TypeError, ValueError):
+        st.error("所选批次包含无效时间戳，无法进行时间筛选。")
+        return
+    # The time controls have one-second precision. Floor the defaults to a
+    # second and include that full second at the end so fractional timestamps
+    # at either batch boundary remain part of the default complete range.
+    batch_start = min(timestamps).replace(tzinfo=None, microsecond=0)
+    batch_end = max(timestamps).replace(tzinfo=None, microsecond=0)
+    st.markdown("**分析时间范围（UTC）**")
+    start_col, end_col = st.columns(2)
+    with start_col:
+        start_date = st.date_input(
+            "开始日期",
+            value=batch_start.date(),
+            key=f"analysis_start_date_{vehicle_id}_{batch_id}",
+        )
+        start_time = st.time_input(
+            "开始时间",
+            value=batch_start.time(),
+            step=timedelta(seconds=1),
+            key=f"analysis_start_time_{vehicle_id}_{batch_id}",
+        )
+    with end_col:
+        end_date = st.date_input(
+            "结束日期",
+            value=batch_end.date(),
+            key=f"analysis_end_date_{vehicle_id}_{batch_id}",
+        )
+        end_time = st.time_input(
+            "结束时间",
+            value=batch_end.time(),
+            step=timedelta(seconds=1),
+            key=f"analysis_end_time_{vehicle_id}_{batch_id}",
+        )
+
+    selected_start = datetime.combine(start_date, start_time).replace(
+        tzinfo=timezone.utc
+    )
+    selected_end = (
+        datetime.combine(end_date, end_time).replace(tzinfo=timezone.utc)
+        + timedelta(seconds=1, microseconds=-1)
+    )
+    if selected_start > selected_end:
+        st.warning("开始时间不能晚于结束时间，请调整筛选范围。")
+        return
+    try:
+        filtered_samples = filter_samples_by_time_range(
+            samples, selected_start, selected_end
+        )
+    except ValueError as exc:
+        st.error(str(exc))
+        return
+    if not filtered_samples:
+        st.info("所选时间范围内没有运行数据，请调整开始或结束时间。")
+        return
+
     threshold = st.number_input(
         "加速度绝对值阈值（m/s²）",
         min_value=0.0,
@@ -150,9 +229,8 @@ def _render_dynamics_analysis() -> None:
         help="同一阈值用于统计占比和异常识别；绝对值严格大于阈值时标为数据异常点。",
     )
 
-    samples = list_batch_samples(vehicle_id, batch_id)
     try:
-        result = analyze_run_data(samples, threshold)
+        result = analyze_run_data(filtered_samples, threshold)
     except ValueError as exc:
         st.error(str(exc))
         return
@@ -309,13 +387,176 @@ def _render_dynamics_analysis() -> None:
             )
         st.plotly_chart(figure, use_container_width=True, key=f"chart_{field}")
 
+    st.subheader("导出分析报告")
+    st.caption("PDF 报告将包含当前车辆、批次、时间范围、阈值、统计结果、异常事件和筛选后曲线。")
+    report_key = (
+        f"{vehicle_id}:{batch_id}:{selected_start.isoformat()}:{selected_end.isoformat()}:"
+        f"{threshold:.12g}"
+    )
+    if st.session_state.get("analysis_report_key") != report_key:
+        st.session_state.pop("analysis_report_key", None)
+        st.session_state.pop("analysis_report_pdf", None)
+
+    if st.button("生成 PDF 分析报告", type="primary", key="generate_analysis_report"):
+        try:
+            selected_vehicle = get_vehicle(vehicle_id)
+            if selected_vehicle is None:
+                raise ValueError("找不到所选车辆，请刷新页面后重试。")
+            selected_batch = next(
+                batch for batch in batches if batch["id"] == batch_id
+            )
+            report_data = build_analysis_report_data(
+                vehicle=selected_vehicle,
+                batch=selected_batch,
+                analysis=result,
+                anomalies=anomaly_result,
+                selected_start=selected_start,
+                selected_end=selected_end,
+            )
+            pdf_bytes = generate_analysis_report_pdf(report_data)
+        except Exception as exc:
+            st.error(f"分析报告生成失败：{exc}")
+        else:
+            st.session_state["analysis_report_key"] = report_key
+            st.session_state["analysis_report_pdf"] = pdf_bytes
+            st.success("分析报告已生成，可以下载 PDF 文件。")
+
+    if (
+        st.session_state.get("analysis_report_key") == report_key
+        and st.session_state.get("analysis_report_pdf")
+    ):
+        selected_vehicle_code = next(
+            vehicle["vehicle_code"]
+            for vehicle in vehicles
+            if vehicle["id"] == vehicle_id
+        )
+        safe_vehicle_code = "".join(
+            character for character in selected_vehicle_code
+            if character.isalnum() or character in "-_"
+        ) or "vehicle"
+        st.download_button(
+            "下载 PDF 报告",
+            data=st.session_state["analysis_report_pdf"],
+            file_name=f"rail_vehicle_report_{safe_vehicle_code}_batch_{batch_id}.pdf",
+            mime="application/pdf",
+            key="download_analysis_report",
+        )
+
+
+def _render_batch_comparison() -> None:
+    st.caption(
+        "选择同一车辆的两个或多个历史批次；对比曲线按各批次首条样本对齐，横轴为相对运行时间（秒）。"
+    )
+    vehicles = list_vehicles()
+    if not vehicles:
+        st.info("请先录入车辆并导入运行数据。")
+        return
+
+    vehicle_id = st.selectbox(
+        "选择对比车辆",
+        options=[vehicle["id"] for vehicle in vehicles],
+        format_func=lambda selected_id: next(
+            f"{vehicle['vehicle_code']} · {vehicle['vehicle_type']}"
+            for vehicle in vehicles
+            if vehicle["id"] == selected_id
+        ),
+        key="comparison_vehicle_id",
+    )
+    batches = list_vehicle_batches(vehicle_id)
+    if len(batches) < 2:
+        st.info("该车辆至少需要两个历史导入批次才能进行对比。")
+        return
+
+    batch_by_id = {batch["id"]: batch for batch in batches}
+    default_ids = [batch["id"] for batch in batches[:2]]
+    selected_ids = st.multiselect(
+        "选择两个或多个历史批次",
+        options=list(batch_by_id),
+        default=default_ids,
+        format_func=lambda selected_id: (
+            f"{batch_by_id[selected_id]['file_name']} · "
+            f"{batch_by_id[selected_id]['imported_at']} · "
+            f"{batch_by_id[selected_id]['sample_count']:,} 行"
+        ),
+        key=f"comparison_batch_ids_{vehicle_id}",
+    )
+    if len(selected_ids) < 2:
+        st.info("请选择至少两个批次以显示对比结果。")
+        return
+
+    comparison_inputs = []
+    for batch_id in selected_ids:
+        batch = batch_by_id[batch_id]
+        comparison_inputs.append(
+            {
+                "batch_id": batch_id,
+                "label": f"{batch['file_name']} · #{batch_id}",
+                "samples": list_batch_samples(vehicle_id, batch_id),
+            }
+        )
+    try:
+        comparisons = compare_run_batches(comparison_inputs)
+    except ValueError as exc:
+        st.error(f"无法完成批次对比：{exc}")
+        return
+
+    st.subheader("批次对比指标")
+    st.caption(
+        "平均速度、最大速度单位为 km/h；加速度 RMS 和绝对峰值单位为 m/s²。"
+        "RMS 与峰值均按每个批次的全部样本计算。"
+    )
+    st.dataframe(
+        [
+            {
+                "运行批次": result["label"],
+                "数据点数量": result["sample_count"],
+                "平均速度（km/h）": f"{result['mean_speed_kmh']:.3f}",
+                "最大速度（km/h）": f"{result['maximum_speed_kmh']:.3f}",
+                "横向加速度 RMS（m/s²）": f"{result['lateral_accel_rms']:.4f}",
+                "垂向加速度 RMS（m/s²）": f"{result['vertical_accel_rms']:.4f}",
+                "横向加速度绝对峰值（m/s²）": f"{result['lateral_accel_peak_absolute']:.4f}",
+                "垂向加速度绝对峰值（m/s²）": f"{result['vertical_accel_peak_absolute']:.4f}",
+            }
+            for result in comparisons
+        ],
+        hide_index=True,
+        use_container_width=True,
+    )
+
+    chart_specs = (
+        ("speed_kmh", "速度批次对比", "速度（km/h）"),
+        ("lateral_accel", "横向加速度批次对比", "横向加速度（m/s²）"),
+        ("vertical_accel", "垂向加速度批次对比", "垂向加速度（m/s²）"),
+    )
+    for field, title, y_title in chart_specs:
+        figure = go.Figure()
+        for result in comparisons:
+            figure.add_trace(
+                go.Scatter(
+                    x=[point["relative_time_seconds"] for point in result["series"]],
+                    y=[point[field] for point in result["series"]],
+                    mode="lines",
+                    name=result["label"],
+                    hovertemplate="相对运行时间：%{x:.3f} 秒<br>%{y:.4f}<extra>%{fullData.name}</extra>",
+                )
+            )
+        figure.update_layout(
+            title=title,
+            xaxis_title="相对运行时间（秒）",
+            yaxis_title=y_title,
+            margin={"l": 20, "r": 20, "t": 50, "b": 20},
+        )
+        st.plotly_chart(figure, use_container_width=True, key=f"comparison_{field}")
+
 
 def render() -> None:
     st.header("运行分析")
-    import_tab, analysis_tab = st.tabs(
-        ["CSV 数据导入", "基础动力学统计分析"]
+    import_tab, analysis_tab, comparison_tab = st.tabs(
+        ["CSV 数据导入", "基础动力学统计分析", "批次对比"]
     )
     with import_tab:
         _render_import()
     with analysis_tab:
         _render_dynamics_analysis()
+    with comparison_tab:
+        _render_batch_comparison()
