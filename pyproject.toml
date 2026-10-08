@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rail-vehicle-lab"
+version = "0.1.0"
+description = "轨道车辆运行与动力学智能分析平台 MVP"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "streamlit>=1.36,<2.0",
+    "plotly>=5.18,<7.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["rail_vehicle*"]
