@@ -6,7 +6,7 @@ import json
 from typing import Any, Callable
 
 from rail_vehicle.ai.config import AIConfig
-from rail_vehicle.ai.provider import AIProviderUnavailable
+from rail_vehicle.ai.provider import AIProviderUnavailable, Provider, safe_provider_error
 from rail_vehicle.ai.schemas import validate_input_payload
 
 
@@ -39,12 +39,12 @@ def _further_check_schema() -> dict[str, Any]:
     }
 
 
-def _openai_output_schema() -> dict[str, Any]:
-    """Return the strict-schema subset accepted by Structured Outputs.
+def _analysis_output_schema() -> dict[str, Any]:
+    """Return the shared JSON Schema sent to compatible model providers.
 
     The local validator remains authoritative for min/max items, constants,
-    finite values, and evidence IDs; these constraints give the model the
-    closest supported structural contract.
+    finite values, and evidence IDs. Every object lists all keys as required
+    and forbids additional properties for Structured Outputs compatibility.
     """
     claim = _claim_schema()
     possible_cause = {
@@ -130,14 +130,14 @@ class OpenAIResponsesProvider:
                         "type": "json_schema",
                         "name": "rail_vehicle_analysis",
                         "strict": True,
-                        "schema": _openai_output_schema(),
+                        "schema": _analysis_output_schema(),
                     }
                 },
                 max_output_tokens=MAX_OUTPUT_TOKENS,
                 store=False,
             )
         except Exception as exc:
-            raise _safe_provider_error(exc) from None
+            raise safe_provider_error(exc) from None
 
         output_text = getattr(response, "output_text", None)
         if not isinstance(output_text, str) or not output_text.strip():
@@ -145,22 +145,13 @@ class OpenAIResponsesProvider:
         return output_text
 
 
-def create_configured_provider(config: AIConfig | None = None) -> OpenAIResponsesProvider:
-    """Build the configured provider without importing the SDK or requiring a key."""
-    return OpenAIResponsesProvider(config or AIConfig.from_sources())
+def create_configured_provider(config: AIConfig | None = None) -> Provider:
+    """Select a configured adapter without connecting or loading its SDK."""
+    resolved = config or AIConfig.from_sources()
+    if resolved.provider == "openai":
+        return OpenAIResponsesProvider(resolved)
+    if resolved.provider == "deepseek":
+        from rail_vehicle.ai.deepseek_provider import DeepSeekResponsesProvider
 
-
-def _safe_provider_error(exc: Exception) -> AIProviderUnavailable:
-    """Map SDK errors to safe, fixed messages without exposing exception text."""
-    name = type(exc).__name__
-    if name in {"APITimeoutError", "TimeoutError"}:
-        return AIProviderUnavailable("timeout", "AI 请求超时，请稍后重试。")
-    if name in {"APIConnectionError", "ConnectionError", "ConnectError"}:
-        return AIProviderUnavailable("network", "无法连接 AI 服务，请检查网络后重试。")
-    if name == "AuthenticationError":
-        return AIProviderUnavailable("authentication", "AI 服务认证失败，请检查本地密钥配置。")
-    if name == "RateLimitError":
-        return AIProviderUnavailable("rate_limit", "AI 服务当前限流，请稍后重试。")
-    if name in {"BadRequestError", "NotFoundError", "UnprocessableEntityError"}:
-        return AIProviderUnavailable("request_rejected", "AI 服务拒绝了请求，请检查模型配置。")
-    return AIProviderUnavailable("service_error", "AI 服务暂时不可用，现有本地分析结果不受影响。")
+        return DeepSeekResponsesProvider(resolved)
+    raise AIProviderUnavailable("provider", "当前 AI_PROVIDER 不受支持。")

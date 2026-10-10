@@ -5,6 +5,7 @@ from rail_vehicle.ai.context import (
     build_single_batch_payload,
 )
 from rail_vehicle.ai.config import AIConfig
+from rail_vehicle.ai.deepseek_provider import DeepSeekResponsesProvider
 from rail_vehicle.ai.openai_provider import OpenAIResponsesProvider, create_configured_provider
 from rail_vehicle.ai.provider import (
     AIAnalysisService,
@@ -25,6 +26,7 @@ __all__ = [
     "AIAnalysisService",
     "AIConfig",
     "AIContractError",
+    "DeepSeekResponsesProvider",
     "AIProviderUnavailable",
     "FakeProvider",
     "OpenAIResponsesProvider",

@@ -72,19 +72,21 @@ timestamp,vehicle_id,speed_kmh,lateral_accel,vertical_accel
 
 ## V0.3 AI Provider 配置（可选）
 
-当前版本加入了 OpenAI Responses API Provider 基础设施，但没有页面入口；AI 默认关闭，不配置密钥也可照常使用车辆管理、导入、统计、异常检测、批次对比和 PDF 功能。启用后，Provider 只接收 AI 输入组装器生成的统计上下文，不读取或发送原始 CSV、PDF、车辆编号、文件名和备注。模型结果先通过本地输出 Schema、evidence ID、有限数值和安全措辞校验。
+当前分析页和批次对比页提供用户主动触发的 AI 辅助解读。支持 OpenAI Responses API 和 DeepSeek Responses API；AI 默认关闭，不配置密钥也可照常使用车辆管理、导入、统计、异常检测、批次对比和 PDF 功能。启用后，Provider 只接收 AI 输入组装器生成的统计上下文，不读取或发送原始 CSV、PDF、车辆编号、文件名和备注。模型结果先通过本地输出 Schema、evidence ID、有限数值和安全措辞校验。
 
-支持环境变量 `AI_PROVIDER`（当前只支持 `openai`）、`AI_MODEL`、`AI_ENABLED`（默认 `false`）和 `AI_TIMEOUT`（秒，默认 30，允许 1–300）。启用 OpenAI 时还需设置 `OPENAI_API_KEY`。例如 PowerShell：
+通用环境变量为 `AI_PROVIDER`、`AI_MODEL`、`AI_ENABLED`（默认 `false`）和 `AI_TIMEOUT`（秒，默认 30，允许 1–300）。OpenAI Provider 使用 `OPENAI_API_KEY`；DeepSeek Provider 使用 `DEEPSEEK_API_KEY`，API 地址默认为 `https://api.deepseek.com`，可选用 `DEEPSEEK_BASE_URL` 覆盖。选择 DeepSeek 且没有设置 `AI_MODEL` 时默认使用 `deepseek-flash`；OpenAI 仍需明确设置模型名称。例如使用 DeepSeek 的 PowerShell 配置：
 
 ```powershell
-$env:AI_PROVIDER = "openai"
-$env:AI_MODEL = "在 OpenAI 账户中可用的模型名称"
+$env:AI_PROVIDER = "deepseek"
+$env:AI_MODEL = "deepseek-flash"
 $env:AI_ENABLED = "true"
 $env:AI_TIMEOUT = "30"
-$env:OPENAI_API_KEY = "本机密钥"
+$env:DEEPSEEK_API_KEY = "本机 DeepSeek API Key"
+# 可选：默认值为 https://api.deepseek.com
+# $env:DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 ```
 
-也可将 `OPENAI_API_KEY` 放在本机 `.streamlit/secrets.toml` 顶层，或 `[ai]` 下的 `api_key` 字段。该文件已加入 `.gitignore`；不要把密钥写进源码、README、日志或提交到 Git。代码不会记录密钥；调用超时、网络、认证、限流及无效输出会返回通用的 AI 不可用状态，不会影响本地分析流程。Provider 设置有限次 SDK 重试和响应输出 token 上限，不保存 Responses API 服务端会话数据。
+也可将密钥放在本机 `.streamlit/secrets.toml`：OpenAI 使用顶层 `OPENAI_API_KEY` 或 `[ai]` 下的 `api_key`；DeepSeek 使用顶层 `DEEPSEEK_API_KEY` 或 `[deepseek]` 下的 `api_key`。DeepSeek 地址也可在 `[deepseek]` 下设置 `base_url`。该文件已加入 `.gitignore`；不要把密钥写进源码、README、日志或提交到 Git。代码不会记录密钥；调用超时、网络、认证、限流及无效输出会返回通用的 AI 不可用状态，不会影响本地分析流程。两种 Provider 都使用有限次 SDK 重试和响应输出 token 上限。DeepSeek Responses API 不接受 `store` 参数，但返回的响应始终标记为不存储；Provider 因此不发送该参数。
 
 ## 运行测试
 

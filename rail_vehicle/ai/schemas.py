@@ -13,6 +13,10 @@ class AIContractError(ValueError):
     """Raised when an AI payload or response violates the public contract."""
 
 
+class AIOutputParseError(AIContractError):
+    """Raised when provider output cannot be decoded as a JSON document."""
+
+
 INPUT_SCHEMA: dict[str, Any] = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "title": "RailVehicle AI analysis input",
@@ -218,16 +222,20 @@ def collect_evidence_ids(payload: dict[str, Any]) -> set[str]:
 def validate_output(raw: str | bytes | dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     """Parse and validate provider output, including all traceable evidence refs."""
     if isinstance(raw, bytes):
-        raw = raw.decode("utf-8")
+        try:
+            raw = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            raise AIOutputParseError("AI 输出不是有效 UTF-8 文本。") from None
     if isinstance(raw, str):
         try:
             result = json.loads(raw)
-        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-            raise AIContractError(f"AI 输出不是有效 JSON：{exc}") from exc
+        except json.JSONDecodeError:
+            # Avoid echoing provider output or snippets into UI errors/logs.
+            raise AIOutputParseError("AI 输出不是有效 JSON。") from None
     elif isinstance(raw, dict):
         result = raw
     else:
-        raise AIContractError("AI 输出必须是 JSON 字符串或对象。")
+        raise AIOutputParseError("AI 输出必须是 JSON 字符串或对象。")
     if not _contains_only_finite_numbers(result):
         raise AIContractError("AI 输出包含 NaN 或无穷大等非有限数值。")
     _validate(OUTPUT_SCHEMA, result, "AI 输出")

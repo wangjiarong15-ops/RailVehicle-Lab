@@ -48,10 +48,12 @@ def clear_result(session_state: Any, state_key: str) -> None:
 def ai_configuration_message(config: AIConfig) -> str | None:
     if not config.enabled:
         return "AI 辅助解读当前未启用，请配置 AI_ENABLED 和 API Key。"
-    if not config.api_key:
-        return "AI 服务未配置 API Key。"
-    if config.provider != "openai":
+    if config.provider not in {"openai", "deepseek"}:
         return "当前 AI_PROVIDER 不受支持。"
+    if not config.api_key:
+        if config.provider == "deepseek":
+            return "DeepSeek 服务未配置 DEEPSEEK_API_KEY。"
+        return "OpenAI 服务未配置 OPENAI_API_KEY。"
     if not config.model:
         return "AI 服务未配置 AI_MODEL。"
     return None
@@ -94,14 +96,49 @@ def status_message(result: dict[str, Any]) -> str:
         "authentication": "AI 认证失败，请检查 API Key 配置。",
         "rate_limit": "AI 服务当前限流，请稍后重试。",
         "invalid_model_output": "AI 返回内容未通过结构与证据校验，已阻止展示。",
-        "invalid_response": "AI 返回格式无效，未展示分析结果。",
+        "invalid_response": "AI 服务响应中没有可用的解读文本，未展示结果。",
+        "response_parse_error": "AI 返回文本不是有效 JSON，未展示结果。",
+        "incomplete_response": "AI 响应未完整生成，未展示结果，请稍后重试。",
+        "response_failed": "AI 服务未能生成分析结果，请稍后重试。",
         "request_rejected": "AI 服务拒绝了请求，请检查模型配置。",
         "provider": "当前 AI_PROVIDER 不受支持。",
         "missing_model": "AI 服务未配置 AI_MODEL。",
         "service_error": "AI 服务暂时不可用，请稍后重试。",
         "no_data": "当前分析没有数据，无法生成 AI 解读。",
     }
-    return messages.get(result.get("code", ""), "AI 服务暂时不可用，请稍后重试。")
+    message = messages.get(result.get("code", ""), "AI 服务暂时不可用，请稍后重试。")
+    diagnostics = result.get("diagnostics")
+    if result.get("code") in {"incomplete_response", "response_failed", "invalid_response"} and isinstance(diagnostics, dict):
+        allowed_statuses = {"completed", "incomplete", "in_progress", "failed", "unknown", "other"}
+        allowed_reasons = {"max_output_tokens", "content_filter", "other"}
+        status = diagnostics.get("status")
+        reason = diagnostics.get("incomplete_reason")
+        length = diagnostics.get("output_text_length")
+        token_limit = diagnostics.get("max_output_tokens_limit")
+        used_tokens = diagnostics.get("usage_output_tokens")
+        if not isinstance(status, str) or status not in allowed_statuses:
+            status = "other"
+        if reason is not None and (
+            not isinstance(reason, str) or reason not in allowed_reasons
+        ):
+            reason = "none" if reason is None else "other"
+        if not isinstance(length, int) or isinstance(length, bool) or length < 0:
+            length = 0
+        if not isinstance(token_limit, int) or isinstance(token_limit, bool) or token_limit < 0:
+            token_limit = 0
+        if not isinstance(used_tokens, int) or isinstance(used_tokens, bool) or used_tokens < 0:
+            used_tokens = "unknown"
+
+        message += (
+            "\n安全诊断（不含请求或响应正文）："
+            f"status={status}; incomplete_details.reason={reason}; "
+            f"message_present={'yes' if diagnostics.get('has_message') is True else 'no'}; "
+            f"output_text_present={'yes' if diagnostics.get('has_output_text') is True else 'no'}; "
+            f"output_text_length={length}; "
+            f"max_output_tokens_limit={token_limit}; usage_output_tokens={used_tokens}; "
+            f"refusal_present={'yes' if diagnostics.get('has_refusal') is True else 'no'}"
+        )
+    return message
 
 
 def render_validated_result(result: dict[str, Any], payload: dict[str, Any], st_module: Any) -> bool:

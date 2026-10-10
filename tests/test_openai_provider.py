@@ -155,7 +155,7 @@ class OpenAIProviderTests(unittest.TestCase):
             client=types.SimpleNamespace(responses=MockResponses(output_text="not json")),
         )
         result = AIAnalysisService(provider).analyze(payload())
-        self.assertEqual(result["code"], "invalid_model_output")
+        self.assertEqual(result["code"], "response_parse_error")
         self.assertNotIn("not json", result["message"])
 
     def test_illegal_evidence_reference_from_model_is_rejected(self):

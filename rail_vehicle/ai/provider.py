@@ -7,7 +7,12 @@ import json
 from copy import deepcopy
 from typing import Any, Protocol
 
-from rail_vehicle.ai.schemas import AIContractError, validate_input_payload, validate_output
+from rail_vehicle.ai.schemas import (
+    AIContractError,
+    AIOutputParseError,
+    validate_input_payload,
+    validate_output,
+)
 
 
 class Provider(Protocol):
@@ -19,10 +24,27 @@ class Provider(Protocol):
 class AIProviderUnavailable(RuntimeError):
     """Safe, user-displayable reason the optional AI provider is unavailable."""
 
-    def __init__(self, code: str, message: str):
+    def __init__(self, code: str, message: str, diagnostics: dict[str, Any] | None = None):
         super().__init__(message)
         self.code = code
         self.user_message = message
+        self.diagnostics = diagnostics
+
+
+def safe_provider_error(exc: Exception) -> AIProviderUnavailable:
+    """Map SDK/network errors to fixed user messages without exposing details."""
+    name = type(exc).__name__
+    if name in {"APITimeoutError", "TimeoutError"}:
+        return AIProviderUnavailable("timeout", "AI 请求超时，请稍后重试。")
+    if name in {"APIConnectionError", "ConnectionError", "ConnectError"}:
+        return AIProviderUnavailable("network", "无法连接 AI 服务，请检查网络后重试。")
+    if name == "AuthenticationError":
+        return AIProviderUnavailable("authentication", "AI 服务认证失败，请检查本地密钥配置。")
+    if name == "RateLimitError":
+        return AIProviderUnavailable("rate_limit", "AI 服务当前限流，请稍后重试。")
+    if name in {"BadRequestError", "NotFoundError", "UnprocessableEntityError"}:
+        return AIProviderUnavailable("request_rejected", "AI 服务拒绝了请求，请检查模型配置。")
+    return AIProviderUnavailable("service_error", "AI 服务暂时不可用，现有本地分析结果不受影响。")
 
 
 def input_fingerprint(payload: dict[str, Any]) -> str:
@@ -51,7 +73,16 @@ class AIAnalysisService:
             raw_result = self._provider.analyze(deepcopy(payload))
             validated = validate_output(raw_result, payload)
         except AIProviderUnavailable as exc:
-            return {"status": "unavailable", "code": exc.code, "message": exc.user_message}
+            result = {"status": "unavailable", "code": exc.code, "message": exc.user_message}
+            if exc.diagnostics is not None:
+                result["diagnostics"] = dict(exc.diagnostics)
+            return result
+        except AIOutputParseError:
+            return {
+                "status": "unavailable",
+                "code": "response_parse_error",
+                "message": "AI 返回文本不是有效 JSON，未展示结果。",
+            }
         except AIContractError:
             return {
                 "status": "unavailable",
