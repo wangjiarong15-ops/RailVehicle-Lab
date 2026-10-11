@@ -256,7 +256,6 @@ class DeepSeekResponsesProviderTests(unittest.TestCase):
                 },
                 "incomplete_response",
             ),
-            ({"status": "in_progress", "output": []}, "incomplete_response"),
             ({"status": "failed", "output": []}, "response_failed"),
             ({"status": "completed", "output": [{"type": "reasoning", "content": []}]}, "invalid_response"),
             (
@@ -295,8 +294,30 @@ class DeepSeekResponsesProviderTests(unittest.TestCase):
                     self.assertIn(f"output_text_length={len(partial_text)}", displayed)
                     self.assertIn(f"usage_output_tokens={MAX_OUTPUT_TOKENS}", displayed)
                     self.assertNotIn(partial_text, displayed)
-                elif response.get("status") == "in_progress":
-                    self.assertEqual(result["diagnostics"]["status"], "in_progress")
+
+    def test_in_progress_is_not_mislabeled_as_terminal_incomplete(self):
+        partial_text = '{"summary":'
+        response = {
+            "status": "in_progress",
+            "output": [{
+                "type": "message",
+                "content": [{"type": "output_text", "text": partial_text}],
+            }],
+        }
+        provider = DeepSeekResponsesProvider(
+            self.config,
+            client=types.SimpleNamespace(responses=MockResponses(response=response)),
+        )
+
+        result = AIAnalysisService(provider).analyze(self.context)
+
+        self.assertEqual(result["code"], "response_in_progress")
+        self.assertEqual(result["diagnostics"]["status"], "in_progress")
+        self.assertEqual(result["diagnostics"]["output_text_length"], len(partial_text))
+        displayed = status_message(result)
+        self.assertIn("生成中状态", displayed)
+        self.assertNotIn("未完整生成", displayed)
+        self.assertNotIn(partial_text, displayed)
 
     def test_content_filter_refusal_is_reported_without_refusal_text(self):
         refusal_text = "private refusal details must never be shown"

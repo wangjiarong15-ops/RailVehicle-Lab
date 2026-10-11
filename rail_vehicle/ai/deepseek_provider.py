@@ -180,10 +180,19 @@ class DeepSeekResponsesProvider:
         output_text = _extract_output_text(response)
         diagnostics = _response_diagnostics(response, output_text)
         response_status = diagnostics["status"]
-        if response_status in {"incomplete", "in_progress"}:
+        if response_status == "incomplete":
             raise AIProviderUnavailable(
                 "incomplete_response",
                 "AI 响应未完整生成，未展示结果，请稍后重试。",
+                diagnostics=diagnostics,
+            )
+        if response_status == "in_progress":
+            # A non-terminal Responses API state is not equivalent to a
+            # terminal `incomplete` response (for example, token truncation).
+            # Do not parse or display its partial output as a completed result.
+            raise AIProviderUnavailable(
+                "response_in_progress",
+                "AI 服务返回的仍是生成中状态，未展示结果，请稍后重试。",
                 diagnostics=diagnostics,
             )
         if response_status == "failed":

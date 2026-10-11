@@ -99,6 +99,7 @@ def status_message(result: dict[str, Any]) -> str:
         "invalid_response": "AI 服务响应中没有可用的解读文本，未展示结果。",
         "response_parse_error": "AI 返回文本不是有效 JSON，未展示结果。",
         "incomplete_response": "AI 响应未完整生成，未展示结果，请稍后重试。",
+        "response_in_progress": "AI 服务返回的仍是生成中状态，未展示结果，请稍后重试。",
         "response_failed": "AI 服务未能生成分析结果，请稍后重试。",
         "request_rejected": "AI 服务拒绝了请求，请检查模型配置。",
         "provider": "当前 AI_PROVIDER 不受支持。",
@@ -108,7 +109,7 @@ def status_message(result: dict[str, Any]) -> str:
     }
     message = messages.get(result.get("code", ""), "AI 服务暂时不可用，请稍后重试。")
     diagnostics = result.get("diagnostics")
-    if result.get("code") in {"incomplete_response", "response_failed", "invalid_response"} and isinstance(diagnostics, dict):
+    if result.get("code") in {"incomplete_response", "response_in_progress", "response_failed", "invalid_response"} and isinstance(diagnostics, dict):
         allowed_statuses = {"completed", "incomplete", "in_progress", "failed", "unknown", "other"}
         allowed_reasons = {"max_output_tokens", "content_filter", "other"}
         status = diagnostics.get("status")
