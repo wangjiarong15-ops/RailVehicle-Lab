@@ -8,12 +8,13 @@ from typing import Any, Callable
 
 from rail_vehicle.ai.config import AIConfig, DEEPSEEK_DEFAULT_BASE_URL
 from rail_vehicle.ai.openai_provider import _analysis_output_schema
+from rail_vehicle.ai.prompts import build_evidence_reference_instructions
 from rail_vehicle.ai.provider import AIProviderUnavailable, safe_provider_error
 from rail_vehicle.ai.schemas import validate_input_payload
 
 
 DEFAULT_DEEPSEEK_MODEL = "deepseek-flash"
-MAX_OUTPUT_TOKENS = 1200
+MAX_OUTPUT_TOKENS = 3000
 MAX_RETRIES = 1
 RESPONSE_STATUSES = {"completed", "incomplete", "in_progress", "failed"}
 INCOMPLETE_REASONS = {"max_output_tokens", "content_filter"}
@@ -73,6 +74,10 @@ def _response_diagnostics(response: Any, output_text: str) -> dict[str, Any]:
     usage_output_tokens = _response_value(usage, "output_tokens") if usage is not None else None
     if not isinstance(usage_output_tokens, int) or isinstance(usage_output_tokens, bool) or usage_output_tokens < 0:
         usage_output_tokens = None
+    output_token_details = _response_value(usage, "output_tokens_details") if usage is not None else None
+    reasoning_tokens = _response_value(output_token_details, "reasoning_tokens") if output_token_details is not None else None
+    if not isinstance(reasoning_tokens, int) or isinstance(reasoning_tokens, bool) or reasoning_tokens < 0:
+        reasoning_tokens = None
     has_message = False
     has_output_text = False
     has_refusal = False
@@ -103,6 +108,7 @@ def _response_diagnostics(response: Any, output_text: str) -> dict[str, Any]:
         "has_refusal": has_refusal,
         "max_output_tokens_limit": MAX_OUTPUT_TOKENS,
         "usage_output_tokens": usage_output_tokens,
+        "reasoning_tokens": reasoning_tokens,
     }
 
 
@@ -140,12 +146,16 @@ class DeepSeekResponsesProvider:
             raise AIProviderUnavailable("missing_api_key", "未配置 DeepSeek API Key，AI 分析不可用。")
 
         prompt = (
-            "请基于给定的已计算指标生成简洁的轨道车辆运行统计分析。"
-            "只描述输入支持的观测；所有结论至少引用一个 evidence_id。"
-            "可能原因只能作为假设，不得判断车辆故障、安全事故或法规合规。"
-            "不得重新计算指标；对于批次对比，不得自行计算差值或变化百分比，只解释输入已提供的批次结果。"
-            "严格输出指定 JSON 结构。\n\n"
-            "已计算分析上下文：\n"
+            "仅依据下方 Python 已计算上下文，生成简洁的轨道车辆运行统计分析。"
+            "summary 写一个简短段落；observations 最多 3 条，possible_causes 最多 1 条，"
+            "further_checks 最多 2 条，limitations 最多 1 条；每条尽量只写一个短句。"
+            "只写有依据的内容，不为填满列表而生成；无可靠内容时列表留空。"
+            "不得重复罗列已计算指标或自行重新计算。"
+            "可能原因只能作为待核实假设；不得判断车辆故障、安全事故或法规合规。"
+            "批次对比只解释已提供的结果，不计算差值或变化百分比。严格遵循 JSON Schema。\n\n"
+            + build_evidence_reference_instructions(payload)
+            + "\n"
+            + "已计算分析上下文：\n"
             + json.dumps(payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
         )
         try:
@@ -164,6 +174,7 @@ class DeepSeekResponsesProvider:
                     },
                     {"role": "user", "content": [{"type": "input_text", "text": prompt}]},
                 ],
+                reasoning={"effort": "none"},
                 text={
                     "format": {
                         "type": "json_schema",

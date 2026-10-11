@@ -8,6 +8,7 @@ from copy import deepcopy
 from typing import Any, Protocol
 
 from rail_vehicle.ai.schemas import (
+    AI_OUTPUT_ERROR_CODES,
     AIContractError,
     AIOutputParseError,
     validate_input_payload,
@@ -77,16 +78,16 @@ class AIAnalysisService:
             if exc.diagnostics is not None:
                 result["diagnostics"] = dict(exc.diagnostics)
             return result
-        except AIOutputParseError:
+        except AIOutputParseError as exc:
             return {
                 "status": "unavailable",
-                "code": "response_parse_error",
+                "code": exc.code,
                 "message": "AI 返回文本不是有效 JSON，未展示结果。",
             }
-        except AIContractError:
+        except AIContractError as exc:
             return {
                 "status": "unavailable",
-                "code": "invalid_model_output",
+                "code": exc.code if exc.code in AI_OUTPUT_ERROR_CODES else "output_contract_invalid",
                 "message": "AI 返回内容未通过结构与证据校验，已阻止展示。",
             }
         return {

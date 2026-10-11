@@ -13,7 +13,7 @@ from rail_vehicle.ai.provider import (
     Provider,
     input_fingerprint,
 )
-from rail_vehicle.ai.schemas import AIContractError, validate_output
+from rail_vehicle.ai.schemas import AI_OUTPUT_ERROR_CODES, AIContractError, validate_output
 
 
 def selection_fingerprint(selection: Any) -> str:
@@ -75,7 +75,7 @@ def request_ai_analysis(
         return {"status": "unavailable", "code": code, "message": message}
     try:
         result = AIAnalysisService(provider_factory(config)).analyze(payload)
-        if result.get("code") == "invalid_model_output":
+        if result.get("code") in AI_OUTPUT_ERROR_CODES or result.get("code") == "invalid_model_output":
             result["status"] = "validation_failed"
         return result
     except AIProviderUnavailable as exc:
@@ -86,7 +86,20 @@ def request_ai_analysis(
 
 def status_message(result: dict[str, Any]) -> str:
     if result.get("status") == "validation_failed":
-        return "AI 返回内容未通过结构与证据校验，已阻止展示。"
+        code_messages = {
+            "output_json_invalid": "AI 返回文本不是有效 JSON，未展示结果。",
+            "claim_scope_schema_invalid": "AI 输出的证据范围格式无效，未展示结果。",
+            "evidence_id_unknown": "AI 输出引用了未知证据，未展示结果。",
+            "evidence_scope_category_mismatch": "AI 输出的证据类别与引用不匹配，未展示结果。",
+            "evidence_scope_axis_mismatch": "AI 输出的证据轴向与引用不匹配，未展示结果。",
+            "evidence_scope_batch_mismatch": "AI 输出的批次范围与引用不匹配，未展示结果。",
+            "output_schema_invalid": "AI 返回内容不符合输出结构要求，未展示结果。",
+            "output_non_finite_number": "AI 返回内容包含无效数值，未展示结果。",
+            "unsafe_claim_text": "AI 返回内容包含不允许的结论措辞，未展示结果。",
+            "output_contract_invalid": "AI 返回内容未通过校验，已阻止展示。",
+            "invalid_model_output": "AI 返回内容未通过结构与证据校验，已阻止展示。",
+        }
+        return code_messages.get(result.get("code"), "AI 返回内容未通过结构与证据校验，已阻止展示。")
     messages = {
         "disabled": "AI 辅助解读当前未启用，请配置 AI_ENABLED 和 API Key。",
         "missing_api_key": "AI 服务未配置 API Key。",
@@ -98,6 +111,16 @@ def status_message(result: dict[str, Any]) -> str:
         "invalid_model_output": "AI 返回内容未通过结构与证据校验，已阻止展示。",
         "invalid_response": "AI 服务响应中没有可用的解读文本，未展示结果。",
         "response_parse_error": "AI 返回文本不是有效 JSON，未展示结果。",
+        "output_json_invalid": "AI 返回文本不是有效 JSON，未展示结果。",
+        "claim_scope_schema_invalid": "AI 输出的证据范围格式无效，未展示结果。",
+        "evidence_id_unknown": "AI 输出引用了未知证据，未展示结果。",
+        "evidence_scope_category_mismatch": "AI 输出的证据类别与引用不匹配，未展示结果。",
+        "evidence_scope_axis_mismatch": "AI 输出的证据轴向与引用不匹配，未展示结果。",
+        "evidence_scope_batch_mismatch": "AI 输出的批次范围与引用不匹配，未展示结果。",
+        "output_schema_invalid": "AI 返回内容不符合输出结构要求，未展示结果。",
+        "output_non_finite_number": "AI 返回内容包含无效数值，未展示结果。",
+        "unsafe_claim_text": "AI 返回内容包含不允许的结论措辞，未展示结果。",
+        "output_contract_invalid": "AI 返回内容未通过校验，已阻止展示。",
         "incomplete_response": "AI 响应未完整生成，未展示结果，请稍后重试。",
         "response_in_progress": "AI 服务返回的仍是生成中状态，未展示结果，请稍后重试。",
         "response_failed": "AI 服务未能生成分析结果，请稍后重试。",
@@ -117,6 +140,7 @@ def status_message(result: dict[str, Any]) -> str:
         length = diagnostics.get("output_text_length")
         token_limit = diagnostics.get("max_output_tokens_limit")
         used_tokens = diagnostics.get("usage_output_tokens")
+        reasoning_tokens = diagnostics.get("reasoning_tokens")
         if not isinstance(status, str) or status not in allowed_statuses:
             status = "other"
         if reason is not None and (
@@ -129,6 +153,8 @@ def status_message(result: dict[str, Any]) -> str:
             token_limit = 0
         if not isinstance(used_tokens, int) or isinstance(used_tokens, bool) or used_tokens < 0:
             used_tokens = "unknown"
+        if not isinstance(reasoning_tokens, int) or isinstance(reasoning_tokens, bool) or reasoning_tokens < 0:
+            reasoning_tokens = "unknown"
 
         message += (
             "\n安全诊断（不含请求或响应正文）："
@@ -137,6 +163,7 @@ def status_message(result: dict[str, Any]) -> str:
             f"output_text_present={'yes' if diagnostics.get('has_output_text') is True else 'no'}; "
             f"output_text_length={length}; "
             f"max_output_tokens_limit={token_limit}; usage_output_tokens={used_tokens}; "
+            f"reasoning_tokens={reasoning_tokens}; "
             f"refusal_present={'yes' if diagnostics.get('has_refusal') is True else 'no'}"
         )
     return message

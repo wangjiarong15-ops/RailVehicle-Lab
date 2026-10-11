@@ -122,11 +122,67 @@ class AIUIIntegrationTests(unittest.TestCase):
         self.assertNotIn("raw error", status_message(result))
 
     def test_validation_failed_is_a_distinct_safe_state(self):
-        bad = valid_response(single_payload())
+        context = single_payload()
+        bad = valid_response(context)
+        bad["summary"]["text"] = "PRIVATE_MODEL_OUTPUT"
         bad["summary"]["evidence_ids"] = ["metric.unknown"]
-        result = request_ai_analysis(single_payload(), self.config, has_data=True, provider_factory=lambda _: FakeProvider(bad))
+        result = request_ai_analysis(context, self.config, has_data=True, provider_factory=lambda _: FakeProvider(bad))
         self.assertEqual(result["status"], "validation_failed")
-        self.assertIn("未通过", status_message(result))
+        self.assertEqual(result["code"], "evidence_id_unknown")
+        rendered_status = status_message(result)
+        self.assertIn("未知证据", rendered_status)
+        self.assertNotIn("PRIVATE_MODEL_OUTPUT", rendered_status)
+        self.assertNotIn("metric.unknown", rendered_status)
+        recorder = RenderRecorder()
+        self.assertFalse(render_validated_result(result, context, recorder))
+        rendered = json.dumps(recorder.calls, ensure_ascii=False)
+        self.assertNotIn("PRIVATE_MODEL_OUTPUT", rendered)
+        self.assertNotIn("metric.unknown", rendered)
+
+    def test_validation_error_codes_map_to_safe_user_messages(self):
+        messages = {
+            "output_json_invalid": "AI 返回文本不是有效 JSON，未展示结果。",
+            "output_schema_invalid": "AI 返回内容不符合输出结构要求，未展示结果。",
+            "claim_scope_schema_invalid": "AI 输出的证据范围格式无效，未展示结果。",
+            "evidence_id_unknown": "AI 输出引用了未知证据，未展示结果。",
+            "evidence_scope_category_mismatch": "AI 输出的证据类别与引用不匹配，未展示结果。",
+            "evidence_scope_axis_mismatch": "AI 输出的证据轴向与引用不匹配，未展示结果。",
+            "evidence_scope_batch_mismatch": "AI 输出的批次范围与引用不匹配，未展示结果。",
+            "unsafe_claim_text": "AI 返回内容包含不允许的结论措辞，未展示结果。",
+            "output_contract_invalid": "AI 返回内容未通过校验，已阻止展示。",
+        }
+        for code, expected in messages.items():
+            with self.subTest(code=code):
+                message = status_message({
+                    "status": "validation_failed",
+                    "code": code,
+                    "message": "PRIVATE_RAW_VALIDATOR_DETAILS",
+                })
+                self.assertEqual(message, expected)
+                self.assertNotIn("PRIVATE_RAW_VALIDATOR_DETAILS", message)
+
+    def test_rejected_model_text_and_exception_details_never_reach_ui(self):
+        private_marker = "PRIVATE_MODEL_BODY_OR_EXCEPTION"
+
+        class RaisingProvider:
+            def analyze(self, payload):
+                from rail_vehicle.ai.schemas import AIContractError
+
+                raise AIContractError(private_marker, code="unknown-internal-code")
+
+        result = request_ai_analysis(
+            single_payload(), self.config, has_data=True,
+            provider_factory=lambda _: RaisingProvider(),
+        )
+        self.assertEqual(result["status"], "validation_failed")
+        self.assertEqual(result["code"], "output_contract_invalid")
+        status = status_message(result)
+        recorder = RenderRecorder()
+        self.assertFalse(render_validated_result(result, single_payload(), recorder))
+        visible = json.dumps({"result": result, "status": status, "rendered": recorder.calls}, ensure_ascii=False)
+        self.assertNotIn(private_marker, visible)
+        self.assertNotIn("unknown-internal-code", visible)
+        self.assertNotIn("test-only-placeholder", visible)
 
     def test_invalid_evidence_reference_is_never_rendered(self):
         context = single_payload()

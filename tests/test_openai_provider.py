@@ -8,9 +8,18 @@ from unittest.mock import patch
 
 from rail_vehicle.ai.config import AIConfig
 from rail_vehicle.ai.context import build_single_batch_payload
-from rail_vehicle.ai.openai_provider import MAX_OUTPUT_TOKENS, MAX_RETRIES, OpenAIResponsesProvider
+from rail_vehicle.ai.openai_provider import (
+    MAX_OUTPUT_TOKENS,
+    MAX_RETRIES,
+    OpenAIResponsesProvider,
+    _analysis_output_schema,
+)
 from rail_vehicle.ai.provider import AIAnalysisService, FakeProvider
-from rail_vehicle.ai.schemas import collect_evidence_ids
+from rail_vehicle.ai.prompts import (
+    build_evidence_reference_instructions,
+    build_output_contract_instructions,
+)
+from rail_vehicle.ai.schemas import collect_evidence_ids, collect_evidence_metadata
 from rail_vehicle.anomaly import detect_anomalies
 from rail_vehicle.batch_comparison import compare_run_batches
 from rail_vehicle.dynamics import analyze_run_data
@@ -59,6 +68,35 @@ class MockResponses:
 
 
 class OpenAIProviderTests(unittest.TestCase):
+    @staticmethod
+    def _walk_schema_nodes(value):
+        if isinstance(value, dict):
+            yield value
+            for child in value.values():
+                yield from OpenAIProviderTests._walk_schema_nodes(child)
+        elif isinstance(value, list):
+            for child in value:
+                yield from OpenAIProviderTests._walk_schema_nodes(child)
+
+    def test_strict_schema_objects_have_unique_complete_required_fields(self):
+        schema = _analysis_output_schema(strict_compatible=True)
+        object_nodes = [
+            node for node in self._walk_schema_nodes(schema)
+            if node.get("type") == "object"
+        ]
+
+        self.assertTrue(object_nodes)
+        for node in object_nodes:
+            with self.subTest(properties=list(node.get("properties", {}))):
+                properties = node.get("properties", {})
+                required = node.get("required", [])
+                self.assertEqual(len(required), len(dict.fromkeys(required)))
+                for field in required:
+                    self.assertIn(field, properties)
+                for field in properties:
+                    self.assertIn(field, required)
+                self.assertIs(node.get("additionalProperties"), False)
+
     def test_configuration_reads_secrets_and_environment_with_secret_precedence(self):
         config = AIConfig.from_sources(
             secrets={"AI_MODEL": "secret-model", "OPENAI_API_KEY": "secret-key"},
@@ -107,6 +145,25 @@ class OpenAIProviderTests(unittest.TestCase):
         output_format = responses.calls[0]["text"]["format"]
         self.assertEqual(output_format["type"], "json_schema")
         self.assertTrue(output_format["strict"])
+        output_schema = output_format["schema"]
+        summary_schema = output_schema["properties"]["summary"]
+        self.assertEqual(set(summary_schema["properties"]), set(summary_schema["required"]))
+        self.assertEqual(summary_schema["properties"]["claim_scope"]["type"], ["object", "null"])
+        prompt = "".join(
+            item["text"]
+            for message in responses.calls[0]["input"]
+            for item in message["content"]
+        )
+        shared_evidence_rules = build_evidence_reference_instructions(context)
+        self.assertIn(shared_evidence_rules, prompt)
+        self.assertIn(build_output_contract_instructions(), prompt)
+        self.assertIn(json.dumps(sorted(collect_evidence_ids(context)), ensure_ascii=False, separators=(",", ":")), prompt)
+        self.assertIn(
+            json.dumps(collect_evidence_metadata(context), ensure_ascii=False, separators=(",", ":")),
+            prompt,
+        )
+        self.assertIn("不得创造、猜测、改写", prompt)
+        self.assertIn("claim_scope.category", prompt)
         self.assertIn("metric.speed.mean", collect_evidence_ids(context))
         encoded_request = json.dumps(responses.calls[0], ensure_ascii=False)
         self.assertNotIn("never-log-this", encoded_request)
@@ -155,7 +212,7 @@ class OpenAIProviderTests(unittest.TestCase):
             client=types.SimpleNamespace(responses=MockResponses(output_text="not json")),
         )
         result = AIAnalysisService(provider).analyze(payload())
-        self.assertEqual(result["code"], "response_parse_error")
+        self.assertEqual(result["code"], "output_json_invalid")
         self.assertNotIn("not json", result["message"])
 
     def test_illegal_evidence_reference_from_model_is_rejected(self):
@@ -166,7 +223,7 @@ class OpenAIProviderTests(unittest.TestCase):
             client=types.SimpleNamespace(responses=MockResponses(output_text=json.dumps(output))),
         )
         result = AIAnalysisService(provider).analyze(payload())
-        self.assertEqual(result["code"], "invalid_model_output")
+        self.assertEqual(result["code"], "evidence_id_unknown")
 
     def test_structured_json_with_schema_mismatch_is_rejected(self):
         malformed = {"summary": {"text": "missing required lists"}}
@@ -176,7 +233,7 @@ class OpenAIProviderTests(unittest.TestCase):
         )
         result = AIAnalysisService(provider).analyze(payload())
         self.assertEqual(result["status"], "unavailable")
-        self.assertEqual(result["code"], "invalid_model_output")
+        self.assertEqual(result["code"], "output_schema_invalid")
 
     def test_invalid_response_shape_is_reported_as_unavailable(self):
         provider = OpenAIResponsesProvider(

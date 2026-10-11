@@ -15,7 +15,11 @@ from rail_vehicle.ai.deepseek_provider import (
 )
 from rail_vehicle.ai.openai_provider import create_configured_provider
 from rail_vehicle.ai.provider import AIAnalysisService, AIProviderUnavailable
-from rail_vehicle.ai.schemas import collect_evidence_ids
+from rail_vehicle.ai.prompts import (
+    build_evidence_reference_instructions,
+    build_output_contract_instructions,
+)
+from rail_vehicle.ai.schemas import collect_evidence_ids, collect_evidence_metadata
 from rail_vehicle.ai.ui import ai_configuration_message, status_message
 from rail_vehicle.anomaly import detect_anomalies
 from rail_vehicle.dynamics import analyze_run_data
@@ -165,18 +169,57 @@ class DeepSeekResponsesProviderTests(unittest.TestCase):
         self.assertEqual(result["status"], "available")
         request = self.responses.calls[0]
         self.assertEqual(request["model"], "deepseek-test-model")
+        self.assertEqual(MAX_OUTPUT_TOKENS, 3000)
         self.assertEqual(request["max_output_tokens"], MAX_OUTPUT_TOKENS)
+        self.assertEqual(request["reasoning"], {"effort": "none"})
         self.assertNotIn("store", request)
         output_format = request["text"]["format"]
         self.assertEqual(output_format["type"], "json_schema")
         self.assertEqual(output_format["name"], "rail_vehicle_analysis")
         self.assertIn("schema", output_format)
+        expected_fields = {
+            "summary",
+            "observations",
+            "possible_causes",
+            "further_checks",
+            "limitations",
+        }
+        self.assertEqual(set(output_format["schema"]["properties"]), expected_fields)
+        self.assertEqual(set(output_format["schema"]["required"]), expected_fields)
+        claim_schema = output_format["schema"]["properties"]["observations"]["items"]
+        self.assertIn("claim_scope", claim_schema["properties"])
+        self.assertNotIn("claim_scope", claim_schema["required"])
         self.assertNotIn("strict", output_format)
         serialized = json.dumps(request, ensure_ascii=False)
         self.assertIn("metric.speed.mean", serialized)
         self.assertNotIn("PRIVATE-LOCAL-ID", serialized)
         self.assertNotIn("PRIVATE-LOCAL-NOTE", serialized)
         self.assertNotIn("test-only-deepseek-placeholder", serialized)
+
+        prompt = "".join(item["text"] for message in request["input"] for item in message["content"])
+        shared_evidence_rules = build_evidence_reference_instructions(self.context)
+        self.assertIn(shared_evidence_rules, prompt)
+        self.assertIn(build_output_contract_instructions(), prompt)
+        self.assertIn(json.dumps(sorted(collect_evidence_ids(self.context)), ensure_ascii=False, separators=(",", ":")), prompt)
+        self.assertIn(
+            json.dumps(collect_evidence_metadata(self.context), ensure_ascii=False, separators=(",", ":")),
+            prompt,
+        )
+        for limit_text in (
+            "summary 写一个简短段落",
+            "observations 最多 3 条",
+            "possible_causes 最多 1 条",
+            "further_checks 最多 2 条",
+            "limitations 最多 1 条",
+        ):
+            self.assertIn(limit_text, prompt)
+        self.assertIn("无可靠内容时列表留空", prompt)
+        self.assertIn("不得创造、猜测、改写", prompt)
+        self.assertIn("沿用任何其他请求或历史分析中的 ID", prompt)
+        self.assertIn("引用前请逐项核对 ID", prompt)
+        self.assertIn("claim_scope.category", prompt)
+        self.assertIn("summary 必须由至少一个现有证据 ID 支持", prompt)
+        self.assertIn("不得重复罗列已计算指标", prompt)
 
     def test_build_client_sets_deepseek_endpoint_timeout_and_finite_retry(self):
         received = {}
@@ -288,12 +331,54 @@ class DeepSeekResponsesProviderTests(unittest.TestCase):
                     self.assertEqual(diagnostics["output_text_length"], len(partial_text))
                     self.assertEqual(diagnostics["max_output_tokens_limit"], MAX_OUTPUT_TOKENS)
                     self.assertEqual(diagnostics["usage_output_tokens"], MAX_OUTPUT_TOKENS)
+                    self.assertIsNone(diagnostics["reasoning_tokens"])
                     self.assertFalse(diagnostics["has_refusal"])
                     displayed = status_message(result)
                     self.assertIn("incomplete_details.reason=max_output_tokens", displayed)
                     self.assertIn(f"output_text_length={len(partial_text)}", displayed)
                     self.assertIn(f"usage_output_tokens={MAX_OUTPUT_TOKENS}", displayed)
                     self.assertNotIn(partial_text, displayed)
+                    self.assertEqual(result["status"], "unavailable")
+                    self.assertNotIn("analysis", result)
+
+    def test_reasoning_token_usage_is_exposed_as_a_safe_count(self):
+        response = {
+            "status": "incomplete",
+            "incomplete_details": {"reason": "max_output_tokens"},
+            "usage": {
+                "output_tokens": 3000,
+                "output_tokens_details": {"reasoning_tokens": 2475},
+            },
+            "output": [],
+        }
+        provider = DeepSeekResponsesProvider(
+            self.config,
+            client=types.SimpleNamespace(responses=MockResponses(response=response)),
+        )
+
+        result = AIAnalysisService(provider).analyze(self.context)
+
+        self.assertEqual(result["code"], "incomplete_response")
+        self.assertEqual(result["diagnostics"]["reasoning_tokens"], 2475)
+        self.assertIn("reasoning_tokens=2475", status_message(result))
+        self.assertNotIn("reasoning_text", result)
+
+    def test_missing_reasoning_token_usage_is_unknown_in_safe_diagnostics(self):
+        response = {
+            "status": "incomplete",
+            "incomplete_details": {"reason": "max_output_tokens"},
+            "usage": {"output_tokens": 3000},
+            "output": [],
+        }
+        provider = DeepSeekResponsesProvider(
+            self.config,
+            client=types.SimpleNamespace(responses=MockResponses(response=response)),
+        )
+
+        result = AIAnalysisService(provider).analyze(self.context)
+
+        self.assertIsNone(result["diagnostics"]["reasoning_tokens"])
+        self.assertIn("reasoning_tokens=unknown", status_message(result))
 
     def test_in_progress_is_not_mislabeled_as_terminal_incomplete(self):
         partial_text = '{"summary":'
@@ -364,18 +449,20 @@ class DeepSeekResponsesProviderTests(unittest.TestCase):
 
     def test_ui_messages_distinguish_parse_and_business_validation_failures(self):
         parse_message = status_message({"code": "response_parse_error"})
+        new_parse_message = status_message({"status": "validation_failed", "code": "output_json_invalid"})
         validation_message = status_message({"status": "validation_failed"})
         api_response_message = status_message({"code": "invalid_response"})
 
         self.assertIn("不是有效 JSON", parse_message)
+        self.assertIn("不是有效 JSON", new_parse_message)
         self.assertIn("结构与证据校验", validation_message)
         self.assertIn("没有可用的解读文本", api_response_message)
         self.assertNotEqual(parse_message, validation_message)
 
     def test_invalid_json_unknown_evidence_and_empty_response_are_rejected(self):
         cases = [
-            ("invalid-json", "response_parse_error"),
-            (json.dumps({**valid_output(self.context), "summary": {"text": "x", "evidence_ids": ["event.missing.001"]}}), "invalid_model_output"),
+            ("invalid-json", "output_json_invalid"),
+            (json.dumps({**valid_output(self.context), "summary": {"text": "x", "evidence_ids": ["event.missing.001"]}}), "evidence_id_unknown"),
             (None, "invalid_response"),
         ]
         for output_text, expected_code in cases:

@@ -3,15 +3,22 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from typing import Any, Callable
 
 from rail_vehicle.ai.config import AIConfig
 from rail_vehicle.ai.provider import AIProviderUnavailable, Provider, safe_provider_error
-from rail_vehicle.ai.schemas import validate_input_payload
+from rail_vehicle.ai.prompts import build_evidence_reference_instructions
+from rail_vehicle.ai.schemas import CLAIM_SCOPE_SCHEMA, validate_input_payload
 
 
 MAX_OUTPUT_TOKENS = 1200
 MAX_RETRIES = 1
+
+
+def _claim_scope_schema() -> dict[str, Any]:
+    """Represent the backward-compatible optional scope as nullable for strict output."""
+    return {**CLAIM_SCOPE_SCHEMA, "type": ["object", "null"]}
 
 
 def _claim_schema() -> dict[str, Any]:
@@ -20,6 +27,7 @@ def _claim_schema() -> dict[str, Any]:
         "properties": {
             "text": {"type": "string"},
             "evidence_ids": {"type": "array", "items": {"type": "string"}},
+            "claim_scope": CLAIM_SCOPE_SCHEMA,
         },
         "required": ["text", "evidence_ids"],
         "additionalProperties": False,
@@ -33,13 +41,14 @@ def _further_check_schema() -> dict[str, Any]:
             "action": {"type": "string"},
             "reason": {"type": "string"},
             "evidence_ids": {"type": "array", "items": {"type": "string"}},
+            "claim_scope": CLAIM_SCOPE_SCHEMA,
         },
         "required": ["action", "reason", "evidence_ids"],
         "additionalProperties": False,
     }
 
 
-def _analysis_output_schema() -> dict[str, Any]:
+def _analysis_output_schema(*, strict_compatible: bool = False) -> dict[str, Any]:
     """Return the shared JSON Schema sent to compatible model providers.
 
     The local validator remains authoritative for min/max items, constants,
@@ -53,11 +62,12 @@ def _analysis_output_schema() -> dict[str, Any]:
             "text": {"type": "string"},
             "evidence_ids": {"type": "array", "items": {"type": "string"}},
             "qualification": {"type": "string", "enum": ["hypothesis"]},
+            "claim_scope": CLAIM_SCOPE_SCHEMA,
         },
         "required": ["text", "evidence_ids", "qualification"],
         "additionalProperties": False,
     }
-    return {
+    schema = {
         "type": "object",
         "properties": {
             "summary": claim,
@@ -69,6 +79,25 @@ def _analysis_output_schema() -> dict[str, Any]:
         "required": ["summary", "observations", "possible_causes", "further_checks", "limitations"],
         "additionalProperties": False,
     }
+    if strict_compatible:
+        # OpenAI strict Structured Outputs requires every property to be
+        # required. Represent the locally optional claim_scope as nullable.
+        schema = deepcopy(schema)
+        claim_nodes = [
+            schema["properties"]["summary"],
+            schema["properties"]["observations"]["items"],
+            schema["properties"]["possible_causes"]["items"],
+            schema["properties"]["further_checks"]["items"],
+            schema["properties"]["limitations"]["items"],
+        ]
+        for node in claim_nodes:
+            node["properties"]["claim_scope"] = _claim_scope_schema()
+            # The claim schema is shared by summary, observations, and
+            # limitations. Deepcopy preserves that alias, so this loop may
+            # visit the same object more than once.
+            if "claim_scope" not in node["required"]:
+                node["required"].append("claim_scope")
+    return schema
 
 
 class OpenAIResponsesProvider:
@@ -111,7 +140,9 @@ class OpenAIResponsesProvider:
             "可能原因只能作为假设，不得判断车辆故障、安全事故或法规合规。"
             "不得重新计算指标；对于批次对比，不得自行计算差值或变化百分比，只解释输入已提供的批次结果。"
             "严格输出指定 JSON 结构。\n\n"
-            "已计算分析上下文：\n"
+            + build_evidence_reference_instructions(payload)
+            + "\n"
+            + "已计算分析上下文：\n"
             + json.dumps(payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
         )
         try:
@@ -130,7 +161,7 @@ class OpenAIResponsesProvider:
                         "type": "json_schema",
                         "name": "rail_vehicle_analysis",
                         "strict": True,
-                        "schema": _analysis_output_schema(),
+                        "schema": _analysis_output_schema(strict_compatible=True),
                     }
                 },
                 max_output_tokens=MAX_OUTPUT_TOKENS,
