@@ -1,6 +1,63 @@
 # 轨道车辆运行与动力学智能分析平台
 
-本仓库是“轨道车辆运行与动力学智能分析平台”的 MVP。当前已支持车辆基础参数新增、查看和编辑，运行数据 CSV 校验、预览、SQLite 导入和批次历史查询，基础动力学统计分析，以及可解释的阈值异常识别。
+RailVehicle-Lab 是一个用于查看和分析轨道车辆运行数据的本地 Web 平台。它以 Python 完成确定性计算，以 SQLite 保存车辆与运行记录，并提供可选的 AI 辅助解读。
+
+## 核心功能
+
+- **车辆参数管理：**新增、查看和编辑车辆基本参数，并保存到 SQLite。
+- **运行数据导入：**上传 CSV 后检查字段、时间戳、车辆编号和数值范围；校验通过后预览并事务性导入，支持查看历史批次。
+- **基础动力学统计：**查看速度及横向、垂向加速度统计指标、RMS、峰值和阈值统计。
+- **时间范围筛选：**按 UTC 时间范围过滤单批次数据，页面指标、异常检测和曲线均使用筛选后的样本。
+- **数据异常检测：**按可调加速度阈值识别异常点，并将相邻异常点合并为统计异常区段。
+- **多批次对比：**比较同一车辆的两个或多个历史批次，并以相对运行时间绘制速度和加速度曲线。
+- **单批次 PDF：**导出当前车辆、批次、时间范围和阈值对应的分析报告。
+- **批次对比 PDF：**导出批次对比指标、曲线及适用的 AI 辅助解读。
+- **AI 辅助解读：**在单批次或批次对比页面由用户主动触发，可选 OpenAI 或 DeepSeek Provider。
+
+动力学统计和阈值异常用于描述数据，不直接构成法规合规、车辆故障或铁路运营安全结论。
+
+## 技术架构
+
+- **Streamlit** 提供本地交互页面、表单、数据表格、曲线和报告下载入口。
+- **Python** 负责车辆和 CSV 校验、数据导入、动力学统计、时间筛选、异常识别、批次对比及 PDF 内容组装。
+- **SQLite** 保存车辆、导入批次和运行记录；数据库首次启动时自动初始化。
+- **AI 模块** 将 Python 已计算的结果组装为受限结构化上下文，通过 Provider 抽象选择 OpenAI 或 DeepSeek；模型输出再由本地 Schema 和证据校验器检查。
+
+AI 是可选增强能力。AI 调用失败或结果校验失败时，基础分析、异常检测、批次对比和 PDF 报告仍可使用。
+
+## 界面截图
+
+以下截图来自当前项目界面。截图展示功能入口或曲线时，仅说明画面中实际可见的内容。
+
+### 车辆参数管理
+
+新增车辆表单展示车辆编号、车型、长度、质量、轴数、转向架数量、最高运行速度和备注等字段。
+
+![车辆参数新增表单](<docs/screenshots/截图/屏幕截图 2026-10-12 170050.png>)
+
+### 单批次运行曲线
+
+单批次速度—时间曲线示例。
+
+![单批次速度时间曲线](<docs/screenshots/截图/屏幕截图 2026-10-12 170720.png>)
+
+### 异常检测曲线
+
+横向和垂向加速度曲线中显示阈值线与统计异常点标记。这里的异常表示数据/统计异常，不代表车辆故障判断。
+
+![横向与垂向加速度异常标记曲线](<docs/screenshots/截图/屏幕截图 2026-10-12 170702.png>)
+
+### 异常事件列表
+
+列表展示异常类型、起止时间、持续时间和加速度峰值等字段。
+
+![异常事件列表](<docs/screenshots/截图/屏幕截图 2026-10-12 170544.png>)
+
+### AI 辅助解读入口
+
+曲线下方显示 AI 辅助解读说明和手动触发按钮；这张截图展示的是功能入口，没有展示 AI 生成的分析结果。
+
+![AI 辅助解读入口](<docs/screenshots/截图/屏幕截图 2026-10-12 170622.png>)
 
 ## 环境要求
 
@@ -70,9 +127,15 @@ timestamp,vehicle_id,speed_kmh,lateral_accel,vertical_accel
 
 “批次对比”页可选择同一车辆的两个或多个历史批次，对比各批次的数据点数量、速度统计、加速度 RMS 和绝对峰值；三张曲线使用相对运行时间作为横轴，各批次从首条样本的 0 秒开始。
 
-## V0.3 AI Provider 配置（可选）
+批次对比页面也支持导出批次对比 PDF，报告包含所选批次的比较指标和三张相对运行时间曲线。
 
-当前分析页和批次对比页提供用户主动触发的 AI 辅助解读。支持 OpenAI Responses API 和 DeepSeek Responses API；AI 默认关闭，不配置密钥也可照常使用车辆管理、导入、统计、异常检测、批次对比和 PDF 功能。启用后，Provider 只接收 AI 输入组装器生成的统计上下文，不读取或发送原始 CSV、PDF、车辆编号、文件名和备注。模型结果先通过本地输出 Schema、evidence ID、有限数值和安全措辞校验。
+## AI 辅助解读（可选）
+
+单批次分析和批次对比页面均提供“生成 AI 辅助解读”按钮；页面加载时不会自动调用模型。支持 OpenAI Responses API 和 DeepSeek Responses API。AI 默认关闭，不配置 API Key 也可以使用车辆管理、CSV 导入、统计分析、异常检测、批次对比和两类 PDF 报告。
+
+Python 先完成确定性分析，再由上下文组装器挑选统计指标、阈值统计、异常事件或批次比较结果，交给所选 Provider。模型接收的是这些结构化分析结果，不会直接收到原始 CSV 全量数据、原始采样序列或 PDF。单批次上下文还包含当前分析所需的有限车辆参数和时间范围；不会包含车辆编号、源文件名或车辆备注。
+
+AI 输出需要通过本地结构 Schema、有限数值、安全措辞、evidence ID 存在性以及声明证据类别、轴向和批次范围校验。校验失败的结果不会展示，也不会加入报告；AI 不可用时，基础分析与报告功能仍可使用。AI 内容只作辅助参考，不构成真实车辆故障诊断、事故判断或铁路运营安全结论。
 
 通用环境变量为 `AI_PROVIDER`、`AI_MODEL`、`AI_ENABLED`（默认 `false`）和 `AI_TIMEOUT`（秒，默认 30，允许 1–300）。OpenAI Provider 使用 `OPENAI_API_KEY`；DeepSeek Provider 使用 `DEEPSEEK_API_KEY`，API 地址默认为 `https://api.deepseek.com`，可选用 `DEEPSEEK_BASE_URL` 覆盖。选择 DeepSeek 且没有设置 `AI_MODEL` 时默认使用 `deepseek-flash`；OpenAI 仍需明确设置模型名称。例如使用 DeepSeek 的 PowerShell 配置：
 
@@ -86,11 +149,13 @@ $env:DEEPSEEK_API_KEY = "本机 DeepSeek API Key"
 # $env:DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 ```
 
-也可将密钥放在本机 `.streamlit/secrets.toml`：OpenAI 使用顶层 `OPENAI_API_KEY` 或 `[ai]` 下的 `api_key`；DeepSeek 使用顶层 `DEEPSEEK_API_KEY` 或 `[deepseek]` 下的 `api_key`。DeepSeek 地址也可在 `[deepseek]` 下设置 `base_url`。该文件已加入 `.gitignore`；不要把密钥写进源码、README、日志或提交到 Git。代码不会记录密钥；调用超时、网络、认证、限流及无效输出会返回通用的 AI 不可用状态，不会影响本地分析流程。两种 Provider 都使用有限次 SDK 重试和响应输出 token 上限。DeepSeek Responses API 不接受 `store` 参数，但返回的响应始终标记为不存储；Provider 因此不发送该参数。
+也可将密钥放在本机 `.streamlit/secrets.toml`：OpenAI 使用顶层 `OPENAI_API_KEY` 或 `[ai]` 下的 `api_key`；DeepSeek 使用顶层 `DEEPSEEK_API_KEY` 或 `[deepseek]` 下的 `api_key`。DeepSeek 地址也可在 `[deepseek]` 下设置 `base_url`。该文件已加入 `.gitignore`；不要把密钥写进源码、README、日志或提交到 Git。代码不会记录密钥；调用超时、网络、认证、限流及无效输出会返回安全的不可用状态，不会影响本地分析流程。两种 Provider 都配置了有限次 SDK 重试和响应输出 token 上限。
+
+AI API Key 是可选配置。`pyproject.toml` 当前将 OpenAI Python SDK 列为默认项目依赖，因此即使不配置 AI，安装项目时仍会安装该 SDK；是否调用 AI 仍由 `AI_ENABLED` 和用户点击操作决定。
 
 ## 运行测试
 
-使用 Python 标准库的 `unittest` 运行车辆管理、数据库迁移、CSV 校验/导入、动力学指标和异常检测测试：
+使用 Python 标准库的 `unittest` 运行完整测试套件，覆盖车辆管理、数据库、CSV 校验与导入、动力学指标、时间筛选、异常检测、批次对比、PDF 报告，以及 AI 配置、上下文、提示词、Provider、输出校验和页面辅助逻辑：
 
 ```powershell
 python -m unittest discover -s tests -v
@@ -105,24 +170,37 @@ python -m unittest discover -s tests -v
 ## 目录结构
 
 ```text
-app.py                         Streamlit 应用入口与页面导航
-rail_vehicle/db.py             SQLite 路径、连接和表结构初始化
-rail_vehicle/pages/vehicles.py 车辆参数新增、编辑和列表页面
-rail_vehicle/vehicle_data.py    车辆数据校验和 SQLite 操作
-rail_vehicle/pages/run_analysis.py 运行 CSV 上传、预览和导入历史页面
-rail_vehicle/run_data.py       CSV 校验、SQLite 导入和批次历史操作
-rail_vehicle/dynamics.py       基础动力学指标和阈值统计计算
-rail_vehicle/anomaly.py        加速度阈值异常点和区段识别
-rail_vehicle/time_filter.py    按 UTC 时间范围筛选运行样本
-rail_vehicle/batch_comparison.py 多批次指标和相对时间曲线数据计算
-rail_vehicle/analysis_report.py 分析报告数据组装和 PDF 生成
-rail_vehicle/ai/                 AI 输入输出契约、上下文组装和 Provider
-tests/test_vehicle_data.py     车辆校验和数据库测试
-tests/test_run_data.py         运行 CSV 校验和导入测试
-tests/test_dynamics.py         基础动力学统计指标测试
-tests/test_anomaly.py          异常点和异常区段检测测试
-tests/test_time_filter.py      运行数据时间范围筛选测试
-tests/test_batch_comparison.py 多批次比较测试
-tests/test_analysis_report.py  分析报告数据和 PDF 生成测试
-pyproject.toml                 项目元数据和依赖
+app.py                              Streamlit 应用入口与页面导航
+rail_vehicle/
+  db.py                             SQLite 路径、连接和表结构初始化
+  vehicle_data.py                  车辆参数校验和 SQLite 操作
+  run_data.py                      CSV 校验、SQLite 导入和批次历史操作
+  dynamics.py                      基础动力学指标和阈值统计计算
+  anomaly.py                       加速度异常点和区段识别
+  time_filter.py                   按 UTC 时间范围筛选运行样本
+  batch_comparison.py              多批次指标和相对时间曲线计算
+  analysis_report.py               单批次/批次对比报告组装和 PDF 生成
+  pages/                           Streamlit 页面
+  ai/
+    config.py                       AI 配置读取
+    context.py                      已计算分析结果的结构化上下文组装
+    prompts.py                      Provider 共用的输出与证据引用提示
+    schemas.py                      输入/输出 Schema 和证据范围校验
+    provider.py                     Provider 抽象、统一校验服务和 Fake Provider
+    openai_provider.py              OpenAI Responses API 实现
+    deepseek_provider.py            DeepSeek Responses API 实现
+    ui.py                           AI 页面状态、校验和安全提示辅助逻辑
+tests/
+  test_vehicle_data.py              车辆校验和数据库测试
+  test_run_data.py                  CSV 校验和导入测试
+  test_dynamics.py                  基础动力学统计指标测试
+  test_anomaly.py                   异常点和异常区段检测测试
+  test_time_filter.py               运行数据时间范围筛选测试
+  test_batch_comparison.py          多批次比较测试
+  test_analysis_report.py           分析报告和 PDF 测试
+  test_analysis_report_ai.py        AI 与 PDF 集成测试
+  test_ai_*.py                      AI 配置、上下文、提示词、页面和契约测试
+  test_openai_provider.py           OpenAI Provider 测试
+  test_deepseek_provider.py         DeepSeek Provider 测试
+pyproject.toml                      项目元数据和依赖
 ```
