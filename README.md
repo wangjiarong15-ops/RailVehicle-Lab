@@ -179,6 +179,8 @@ python -m unittest discover -s tests -v
 .venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
+测试还会用临时 SQLite 数据库运行 Streamlit 的车辆页和运行分析页基础启动检查，不会修改项目本机数据库。
+
 ## 目录结构
 
 ```text
