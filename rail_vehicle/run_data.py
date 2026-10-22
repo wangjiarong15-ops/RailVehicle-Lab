@@ -116,7 +116,13 @@ def _normalize_csv_row(
                 if timestamp_text.endswith(("Z", "z"))
                 else timestamp_text
             )
+            if parsed.tzinfo is not None:
+                # Reject syntactically valid edge timestamps that cannot be
+                # represented as UTC within datetime's supported year range.
+                parsed.astimezone(timezone.utc)
             parsed_timestamp = parsed.isoformat(sep=" ")
+        except OverflowError:
+            row_errors.append("timestamp 超出可支持的 UTC 时间范围")
         except ValueError:
             row_errors.append(
                 "timestamp 格式无效，请使用 ISO 8601 日期时间（例如 2026-10-08T09:30:00）"

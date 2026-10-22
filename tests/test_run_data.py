@@ -374,6 +374,17 @@ class RunDataTests(unittest.TestCase):
         self.assertFalse(validation.is_valid)
         self.assertIn("timestamp 格式无效", validation.errors[0])
 
+    def test_timestamp_offset_outside_supported_utc_range_is_rejected(self):
+        validation = self.validate(
+            f"{HEADER}\n0001-01-01T00:00:00+14:00,RV-001,80,0.1,-0.1"
+        )
+
+        self.assertFalse(validation.is_valid)
+        self.assertTrue(
+            any("timestamp 超出可支持的 UTC 时间范围" in error for error in validation.errors)
+        )
+        self.assertEqual(self.counts(), (0, 0))
+
 
 if __name__ == "__main__":
     unittest.main()
