@@ -81,6 +81,23 @@ class BatchComparisonTests(unittest.TestCase):
         self.assertEqual(result[0]["series"][0]["relative_time_seconds"], 0)
         self.assertEqual(result[0]["series"][1]["relative_time_seconds"], 1.5)
 
+    def test_samples_with_different_offsets_use_absolute_utc_order(self):
+        batches = [
+            {
+                **self.batches[0],
+                "samples": [
+                    sample("2026-10-08T10:00:00+02:00", 10, 0, 0),
+                    sample("2026-10-08T08:00:02+00:00", 20, 0, 0),
+                ],
+            },
+            self.batches[1],
+        ]
+
+        result = compare_run_batches(batches)[0]["series"]
+
+        self.assertEqual([point["speed_kmh"] for point in result], [10, 20])
+        self.assertEqual([point["relative_time_seconds"] for point in result], [0, 2])
+
     def test_requires_at_least_two_batches(self):
         with self.assertRaisesRegex(ValueError, "至少需要选择两个"):
             compare_run_batches(self.batches[:1])

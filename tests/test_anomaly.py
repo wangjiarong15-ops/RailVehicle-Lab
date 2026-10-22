@@ -64,6 +64,28 @@ class AnomalyDetectionTests(unittest.TestCase):
         )
         self.assertEqual(len(result["events"]), 3)
 
+    def test_consecutive_anomalies_across_offsets_merge_in_absolute_time_order(self):
+        samples = [
+            {
+                "timestamp": "2026-10-08T10:00:01+02:00",
+                "lateral_accel": 2.5,
+                "vertical_accel": 0,
+            },
+            {
+                "timestamp": "2026-10-08T08:00:00+00:00",
+                "lateral_accel": 2.0,
+                "vertical_accel": 0,
+            },
+        ]
+
+        events = detect_anomalies(samples, acceleration_threshold=1.5)["events"]
+
+        lateral_event = next(event for event in events if event["field"] == "lateral_accel")
+        self.assertEqual(lateral_event["start_timestamp"], "2026-10-08T08:00:00+00:00")
+        self.assertEqual(lateral_event["end_timestamp"], "2026-10-08T10:00:01+02:00")
+        self.assertEqual(lateral_event["duration_seconds"], 1)
+        self.assertEqual(lateral_event["sample_count"], 2)
+
     def test_no_exceedance_returns_empty_point_and_event_lists(self):
         result = detect_anomalies([sample(1, 1, -1)], acceleration_threshold=1)
         self.assertEqual(result["points"], [])
