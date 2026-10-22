@@ -102,6 +102,16 @@ python -m streamlit run app.py
 
 首次启动时会自动创建 `data/rail_vehicle.db` 并初始化 SQLite 表。数据库文件是本机运行数据，不需要手动创建。
 
+### 生成虚构演示数据
+
+克隆项目后可使用标准库脚本生成两个连续采样的演示批次；它们是虚构数据，不代表真实车辆记录。默认输出到已被 Git 忽略的 `data/demo/`，文件已经存在时脚本会拒绝覆盖：
+
+```powershell
+.venv\Scripts\python.exe scripts\generate_demo_data.py
+```
+
+脚本生成 `demo_run_1.csv` 和 `demo_run_2.csv`，每个文件 120 条记录，车辆编号均为 `DEMO-001`，并包含少量用于演示阈值异常识别的合成加速度变化。先在“车辆参数”页登记编号 `DEMO-001`，再分别导入两个文件，即可演示单批次分析和批次对比。也可用 `--output-dir` 指定其他输出目录。
+
 车辆记录包含车辆编号、车型、车辆长度（米）、车辆质量（千克）、轴数、转向架数量、最高运行速度（千米/小时）和备注。车辆编号必须唯一；车辆类型和编号不能为空；长度、质量、轴数、转向架数量和最高速度必须为正值。既有骨架版本的 SQLite 数据库会在启动时自动补充新字段，原有车辆记录会保留。
 
 ## 运行数据 CSV
@@ -181,6 +191,7 @@ rail_vehicle/
   anomaly.py                       加速度异常点和区段识别
   time_filter.py                   按 UTC 时间范围筛选运行样本
   batch_comparison.py              多批次指标和相对时间曲线计算
+  demo_data.py                     生成不覆盖现有文件的虚构演示 CSV
   analysis_report.py               单批次/批次对比报告组装和 PDF 生成
   pages/                           Streamlit 页面
   ai/
@@ -193,6 +204,7 @@ rail_vehicle/
     deepseek_provider.py            DeepSeek Responses API 实现
     ui.py                           AI 页面状态、校验和安全提示辅助逻辑
 tests/
+  test_demo_data.py                 虚构演示数据生成器测试
   test_vehicle_data.py              车辆校验和数据库测试
   test_run_data.py                  CSV 校验和导入测试
   test_dynamics.py                  基础动力学统计指标测试
