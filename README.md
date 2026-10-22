@@ -135,7 +135,9 @@ timestamp,vehicle_id,speed_kmh,lateral_accel,vertical_accel
 
 Python 先完成确定性分析，再由上下文组装器挑选统计指标、阈值统计、异常事件或批次比较结果，交给所选 Provider。模型接收的是这些结构化分析结果，不会直接收到原始 CSV 全量数据、原始采样序列或 PDF。单批次上下文还包含当前分析所需的有限车辆参数和时间范围；不会包含车辆编号、源文件名或车辆备注。
 
-AI 输出需要通过本地结构 Schema、有限数值、安全措辞、evidence ID 存在性以及声明证据类别、轴向和批次范围校验。校验失败的结果不会展示，也不会加入报告；AI 不可用时，基础分析与报告功能仍可使用。AI 内容只作辅助参考，不构成真实车辆故障诊断、事故判断或铁路运营安全结论。
+AI 新生成的每条结论都必须提供非空 `claim_scope`，并通过本地结构 Schema、有限数值、安全措辞、evidence ID 存在性以及证据类别、轴向和批次范围校验。缺少范围声明或范围不匹配的结果会被拒绝，不会作为已验证结果展示或加入报告。
+
+为兼容应用升级前仍保留在当前会话中的旧格式 AI 结果，页面和 PDF 可以继续显示缺少 `claim_scope` 的旧结果，但会明确标记“证据范围未验证”；这类结果仍须通过结构、安全措辞和 evidence ID 存在性检查，类别、轴向和批次范围则不作已验证声明。AI 不可用或新结果校验失败时，基础分析与报告功能仍可使用。AI 内容只作辅助参考，不构成真实车辆故障诊断、事故判断或铁路运营安全结论。
 
 通用环境变量为 `AI_PROVIDER`、`AI_MODEL`、`AI_ENABLED`（默认 `false`）和 `AI_TIMEOUT`（秒，默认 30，允许 1–300）。OpenAI Provider 使用 `OPENAI_API_KEY`；DeepSeek Provider 使用 `DEEPSEEK_API_KEY`，API 地址默认为 `https://api.deepseek.com`，可选用 `DEEPSEEK_BASE_URL` 覆盖。选择 DeepSeek 且没有设置 `AI_MODEL` 时默认使用 `deepseek-flash`；OpenAI 仍需明确设置模型名称。例如使用 DeepSeek 的 PowerShell 配置：
 
