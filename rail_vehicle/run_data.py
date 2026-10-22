@@ -23,6 +23,8 @@ MAX_SPEED_KMH = 600.0
 MAX_ABS_ACCELERATION = 100.0
 PREVIEW_LIMIT = 20
 ERROR_LIMIT = 50
+MAX_CSV_SIZE_MB = 50
+MAX_CSV_SIZE_BYTES = MAX_CSV_SIZE_MB * 1024 * 1024
 
 
 @dataclass
@@ -43,6 +45,19 @@ def validate_run_csv(
     content: bytes | str, vehicles: list[dict[str, Any]]
 ) -> CsvValidationResult:
     """Parse and validate a CSV file without writing any database data."""
+    if isinstance(content, bytes):
+        content_size = len(content)
+    else:
+        try:
+            content_size = len(content.encode("utf-8"))
+        except UnicodeEncodeError:
+            return CsvValidationResult(
+                [], [], ["CSV 文件必须使用 UTF-8 编码（可包含 BOM）。"], 0
+            )
+    if content_size > MAX_CSV_SIZE_BYTES:
+        return CsvValidationResult(
+            [], [], [f"CSV 文件超过 {MAX_CSV_SIZE_MB} MB 大小上限。"], 0
+        )
     errors: list[str] = []
     try:
         text = content.decode("utf-8-sig") if isinstance(content, bytes) else content

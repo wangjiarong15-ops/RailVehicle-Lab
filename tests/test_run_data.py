@@ -2,6 +2,7 @@
 
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from rail_vehicle.db import get_connection, init_db
@@ -174,6 +175,22 @@ class RunDataTests(unittest.TestCase):
         validation = self.validate(f"{HEADER}\n")
         self.assertFalse(validation.is_valid)
         self.assertIn("没有可导入的数据行", validation.errors[0])
+
+    def test_csv_over_configured_size_limit_is_rejected_before_parsing(self):
+        with patch("rail_vehicle.run_data.MAX_CSV_SIZE_BYTES", 8):
+            validation = self.validate(b"not parsed")
+
+        self.assertFalse(validation.is_valid)
+        self.assertEqual(validation.rows, [])
+        self.assertEqual(validation.source_row_count, 0)
+        self.assertIn("大小上限", validation.errors[0])
+
+    def test_csv_text_with_unencodable_surrogate_returns_validation_error(self):
+        validation = self.validate("\ud800")
+
+        self.assertFalse(validation.is_valid)
+        self.assertEqual(validation.rows, [])
+        self.assertIn("UTF-8", validation.errors[0])
 
     def test_date_without_time_is_not_a_valid_timestamp(self):
         validation = self.validate(

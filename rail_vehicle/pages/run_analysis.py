@@ -32,6 +32,7 @@ from rail_vehicle.dynamics import analyze_run_data
 from rail_vehicle.anomaly import detect_anomalies
 from rail_vehicle.time_filter import filter_samples_by_time_range
 from rail_vehicle.run_data import (
+    MAX_CSV_SIZE_MB,
     PREVIEW_LIMIT,
     import_run_data,
     list_batch_samples,
@@ -106,6 +107,7 @@ def _render_ai_interpretation(
 
 def _render_import() -> None:
     st.caption("上传 CSV 后先检查数据；只有整份文件通过校验后才能写入数据库。")
+    st.caption(f"单个 CSV 文件大小上限：{MAX_CSV_SIZE_MB} MB。")
 
     with st.expander("CSV 格式要求", expanded=False):
         st.markdown(
@@ -124,7 +126,11 @@ def _render_import() -> None:
     if not vehicles:
         st.warning("请先在“车辆参数”页面新增车辆，再导入对应的运行数据。")
 
-    uploaded_file = st.file_uploader("选择运行数据 CSV 文件", type=["csv"])
+    uploaded_file = st.file_uploader(
+        "选择运行数据 CSV 文件",
+        type=["csv"],
+        max_upload_size=MAX_CSV_SIZE_MB,
+    )
     if uploaded_file is not None:
         validation = validate_run_csv(uploaded_file.getvalue(), vehicles)
         if validation.preview:

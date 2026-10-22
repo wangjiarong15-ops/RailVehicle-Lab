@@ -106,7 +106,7 @@ python -m streamlit run app.py
 
 ## 运行数据 CSV
 
-在“运行分析”页面上传 UTF-8 CSV（支持 BOM）。表头必须包含以下字段，字段顺序不限；允许附带额外列：
+在“运行分析”页面上传不超过 50 MB 的 UTF-8 CSV（支持 BOM）。表头必须包含以下字段，字段顺序不限；允许附带额外列：
 
 ```csv
 timestamp,vehicle_id,speed_kmh,lateral_accel,vertical_accel
