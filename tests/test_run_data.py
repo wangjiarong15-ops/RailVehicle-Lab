@@ -95,6 +95,19 @@ class RunDataTests(unittest.TestCase):
         self.assertEqual(len(validation.preview), 2)
         self.assertNotIn("rows", validation.__dict__)
 
+    def test_validation_time_range_compares_mixed_offsets_chronologically(self):
+        text = (
+            f"{HEADER}\n"
+            "2026-10-08T10:00:00+02:00,RV-001,80,0.12,-0.04\n"
+            "2026-10-08T09:00:00+00:00,RV-001,81,0.15,-0.02\n"
+        )
+
+        validation = self.validate(text)
+
+        self.assertTrue(validation.is_valid, validation.errors)
+        self.assertEqual(validation.minimum_timestamp, "2026-10-08 10:00:00+02:00")
+        self.assertEqual(validation.maximum_timestamp, "2026-10-08 09:00:00+00:00")
+
     def test_import_passes_sample_rows_to_sqlite_as_a_lazy_iterator(self):
         validation = self.validate(
             f"{HEADER}\n{GOOD_ROW}\n{GOOD_ROW.replace('80', '81')}\n"

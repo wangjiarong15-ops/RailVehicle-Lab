@@ -207,6 +207,8 @@ def validate_run_csv(
     distinct_vehicle_ids: set[int] = set()
     minimum_timestamp: str | None = None
     maximum_timestamp: str | None = None
+    minimum_timestamp_order: datetime | None = None
+    maximum_timestamp_order: datetime | None = None
     try:
         reader = _make_csv_reader(content)
         headers, header_errors = _read_headers(reader)
@@ -226,12 +228,22 @@ def validate_run_csv(
             elif normalized_row is not None:
                 distinct_vehicle_ids.add(normalized_row["vehicle_id"])
                 timestamp = normalized_row["timestamp"]
-                minimum_timestamp = (
-                    timestamp if minimum_timestamp is None else min(minimum_timestamp, timestamp)
-                )
-                maximum_timestamp = (
-                    timestamp if maximum_timestamp is None else max(maximum_timestamp, timestamp)
-                )
+                timestamp_order = datetime.fromisoformat(timestamp)
+                if timestamp_order.tzinfo is None:
+                    timestamp_order = timestamp_order.replace(tzinfo=timezone.utc)
+                timestamp_order = timestamp_order.astimezone(timezone.utc)
+                if (
+                    minimum_timestamp_order is None
+                    or timestamp_order < minimum_timestamp_order
+                ):
+                    minimum_timestamp_order = timestamp_order
+                    minimum_timestamp = timestamp
+                if (
+                    maximum_timestamp_order is None
+                    or timestamp_order > maximum_timestamp_order
+                ):
+                    maximum_timestamp_order = timestamp_order
+                    maximum_timestamp = timestamp
             if len(errors) >= ERROR_LIMIT:
                 errors.append("错误数量较多，已停止显示后续错误。")
                 break
