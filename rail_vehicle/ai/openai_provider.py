@@ -16,11 +16,6 @@ MAX_OUTPUT_TOKENS = 1200
 MAX_RETRIES = 1
 
 
-def _claim_scope_schema() -> dict[str, Any]:
-    """Represent the backward-compatible optional scope as nullable for strict output."""
-    return {**CLAIM_SCOPE_SCHEMA, "type": ["object", "null"]}
-
-
 def _claim_schema() -> dict[str, Any]:
     return {
         "type": "object",
@@ -29,7 +24,7 @@ def _claim_schema() -> dict[str, Any]:
             "evidence_ids": {"type": "array", "items": {"type": "string"}},
             "claim_scope": CLAIM_SCOPE_SCHEMA,
         },
-        "required": ["text", "evidence_ids"],
+        "required": ["text", "evidence_ids", "claim_scope"],
         "additionalProperties": False,
     }
 
@@ -43,7 +38,7 @@ def _further_check_schema() -> dict[str, Any]:
             "evidence_ids": {"type": "array", "items": {"type": "string"}},
             "claim_scope": CLAIM_SCOPE_SCHEMA,
         },
-        "required": ["action", "reason", "evidence_ids"],
+        "required": ["action", "reason", "evidence_ids", "claim_scope"],
         "additionalProperties": False,
     }
 
@@ -64,7 +59,7 @@ def _analysis_output_schema(*, strict_compatible: bool = False) -> dict[str, Any
             "qualification": {"type": "string", "enum": ["hypothesis"]},
             "claim_scope": CLAIM_SCOPE_SCHEMA,
         },
-        "required": ["text", "evidence_ids", "qualification"],
+        "required": ["text", "evidence_ids", "qualification", "claim_scope"],
         "additionalProperties": False,
     }
     schema = {
@@ -81,7 +76,7 @@ def _analysis_output_schema(*, strict_compatible: bool = False) -> dict[str, Any
     }
     if strict_compatible:
         # OpenAI strict Structured Outputs requires every property to be
-        # required. Represent the locally optional claim_scope as nullable.
+        # required. claim_scope is now required and non-null for new output.
         schema = deepcopy(schema)
         claim_nodes = [
             schema["properties"]["summary"],
@@ -91,7 +86,7 @@ def _analysis_output_schema(*, strict_compatible: bool = False) -> dict[str, Any
             schema["properties"]["limitations"]["items"],
         ]
         for node in claim_nodes:
-            node["properties"]["claim_scope"] = _claim_scope_schema()
+            node["properties"]["claim_scope"] = CLAIM_SCOPE_SCHEMA
             # The claim schema is shared by summary, observations, and
             # limitations. Deepcopy preserves that alias, so this loop may
             # visit the same object more than once.

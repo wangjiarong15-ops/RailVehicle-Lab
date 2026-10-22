@@ -94,6 +94,7 @@ class AIAnalysisService:
             "status": "available",
             "analysis": validated,
             "input_fingerprint": input_fingerprint(payload),
+            "scope_validation": "verified",
         }
 
 

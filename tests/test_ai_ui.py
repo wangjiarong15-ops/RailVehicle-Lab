@@ -15,7 +15,7 @@ from rail_vehicle.ai.ui import (
     selection_fingerprint,
     status_message,
 )
-from rail_vehicle.ai.schemas import validate_output
+from rail_vehicle.ai.schemas import collect_evidence_metadata, validate_output
 from rail_vehicle.anomaly import detect_anomalies
 from rail_vehicle.batch_comparison import compare_run_batches
 from rail_vehicle.dynamics import analyze_run_data
@@ -49,12 +49,18 @@ def comparison_payload():
 
 def valid_response(payload):
     evidence = "metric.speed.mean" if payload["analysis_type"] == "single_batch" else "batch.B1.speed.mean"
+    metadata = {item["evidence_id"]: item for item in collect_evidence_metadata(payload)}[evidence]
+    scope = {
+        "category": metadata["category"],
+        "axis": metadata["axis"],
+        "batch_refs": metadata["batch_refs"],
+    }
     return {
-        "summary": {"text": "速度统计结果已计算。", "evidence_ids": [evidence]},
-        "observations": [{"text": "当前样本包含速度测量。", "evidence_ids": [evidence]}],
-        "possible_causes": [{"text": "可能与运行工况变化有关。", "evidence_ids": [evidence], "qualification": "hypothesis"}],
-        "further_checks": [{"action": "核对同时间段的运行记录。", "reason": "确认该统计表现是否持续出现。", "evidence_ids": [evidence]}],
-        "limitations": [{"text": "结论仅基于提供的统计指标。", "evidence_ids": [evidence]}],
+        "summary": {"text": "速度统计结果已计算。", "evidence_ids": [evidence], "claim_scope": scope},
+        "observations": [{"text": "当前样本包含速度测量。", "evidence_ids": [evidence], "claim_scope": scope}],
+        "possible_causes": [{"text": "可能与运行工况变化有关。", "evidence_ids": [evidence], "qualification": "hypothesis", "claim_scope": scope}],
+        "further_checks": [{"action": "核对同时间段的运行记录。", "reason": "确认该统计表现是否持续出现。", "evidence_ids": [evidence], "claim_scope": scope}],
+        "limitations": [{"text": "结论仅基于提供的统计指标。", "evidence_ids": [evidence], "claim_scope": scope}],
     }
 
 
@@ -69,6 +75,7 @@ class RenderRecorder:
     def text(self, value): self._record("text", value)
     def caption(self, value): self._record("caption", value)
     def error(self, value): self._record("error", value)
+    def warning(self, value): self._record("warning", value)
 
 
 class AIUIIntegrationTests(unittest.TestCase):
@@ -194,6 +201,35 @@ class AIUIIntegrationTests(unittest.TestCase):
         rendered = "\n".join(str(value) for _, value in recorder.calls)
         self.assertIn("校验失败", rendered)
         self.assertNotIn("不应出现的旧结论", rendered)
+
+    def test_legacy_missing_or_null_scope_is_rendered_with_unverified_warning(self):
+        context = single_payload()
+        for scope_state in ("missing", "null"):
+            with self.subTest(scope_state=scope_state):
+                output = valid_response(context)
+                if scope_state == "missing":
+                    output["summary"].pop("claim_scope")
+                else:
+                    output["summary"]["claim_scope"] = None
+                recorder = RenderRecorder()
+                legacy_result = {"analysis": output, "input_fingerprint": input_fingerprint(context)}
+                self.assertTrue(render_validated_result(legacy_result, context, recorder))
+                rendered = "\n".join(str(value) for _, value in recorder.calls)
+                self.assertIn("证据范围未验证", rendered)
+                self.assertIn("类别、轴向和批次范围未核对", rendered)
+
+    def test_new_result_marked_verified_cannot_use_legacy_missing_scope(self):
+        context = single_payload()
+        output = valid_response(context)
+        output["summary"].pop("claim_scope")
+        recorder = RenderRecorder()
+        new_result = {
+            "analysis": output,
+            "input_fingerprint": input_fingerprint(context),
+            "scope_validation": "verified",
+        }
+        self.assertFalse(render_validated_result(new_result, context, recorder))
+        self.assertNotIn("速度统计结果已计算。", "\n".join(str(value) for _, value in recorder.calls))
 
     def test_stale_result_is_invalidated_when_context_or_selection_changes(self):
         context = single_payload()

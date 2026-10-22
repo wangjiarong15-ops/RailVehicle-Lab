@@ -13,7 +13,12 @@ from rail_vehicle.ai.provider import (
     Provider,
     input_fingerprint,
 )
-from rail_vehicle.ai.schemas import AI_OUTPUT_ERROR_CODES, AIContractError, validate_output
+from rail_vehicle.ai.schemas import (
+    AI_OUTPUT_ERROR_CODES,
+    AIContractError,
+    has_unverified_claim_scopes,
+    validate_output,
+)
 
 
 def selection_fingerprint(selection: Any) -> str:
@@ -174,10 +179,17 @@ def render_validated_result(result: dict[str, Any], payload: dict[str, Any], st_
     try:
         if result.get("input_fingerprint") != input_fingerprint(payload):
             raise AIContractError("AI 结果不属于当前分析输入。")
-        analysis = validate_output(result["analysis"], payload)
+        scope_validation = result.get("scope_validation")
+        if scope_validation not in (None, "verified", "legacy_unverified"):
+            raise AIContractError("AI 结果范围验证状态无效。")
+        allow_legacy = scope_validation in (None, "legacy_unverified")
+        analysis = validate_output(result["analysis"], payload, allow_legacy_scope=allow_legacy)
     except (AttributeError, KeyError, TypeError, AIContractError):
         st_module.error("AI 结果校验失败，已阻止显示。")
         return False
+
+    if has_unverified_claim_scopes(analysis):
+        st_module.warning("旧格式兼容：证据范围未验证（类别、轴向和批次范围未核对）。")
 
     st_module.markdown("**核心结论**")
     st_module.text(analysis["summary"]["text"])

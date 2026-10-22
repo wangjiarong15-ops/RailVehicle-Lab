@@ -22,8 +22,9 @@ def build_output_contract_instructions() -> str:
         "以及固定字段 qualification，其值必须逐字为 \"hypothesis\"。\n"
         "further_checks 中的每一项必须同时包含非空 action、非空 reason 和至少一个合法 evidence_id。"
         "各项只能使用对应契约字段，不添加额外字段。\n"
-        "claim_scope 可以省略；若输出为 null，必须与本次请求的 JSON Schema 允许形式一致；"
-        "若输出对象，必须包含 category、axis、batch_refs，并按当前证据元数据和允许值准确填写。\n"
+        "每一个实际生成的 summary、observation、possible_cause、further_check 和 limitation 都必须包含非 null 的 claim_scope 对象；"
+        "该对象必须包含 category、axis、batch_refs，并按当前证据元数据和允许值准确填写。"
+        "不得省略 claim_scope，也不得将其设为 null。\n"
     )
 
 

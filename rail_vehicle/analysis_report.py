@@ -28,7 +28,7 @@ from reportlab.graphics.charts.lineplots import LinePlot
 from reportlab.lib.colors import HexColor
 
 from rail_vehicle.ai.provider import input_fingerprint
-from rail_vehicle.ai.schemas import AIContractError, validate_output
+from rail_vehicle.ai.schemas import AIContractError, has_unverified_claim_scopes, validate_output
 
 
 REPORT_TITLE = "轨道车辆运行与动力学分析报告"
@@ -51,13 +51,20 @@ def _validated_ai_section(
         return None
     if ai_result.get("status") != "available":
         return None
+    scope_validation = ai_result.get("scope_validation")
+    if scope_validation not in (None, "verified", "legacy_unverified"):
+        return None
     if expected_selection_fingerprint is not None and ai_result.get("selection_fingerprint") != expected_selection_fingerprint:
         return None
     try:
         current_fingerprint = input_fingerprint(ai_context)
         if ai_result.get("input_fingerprint") != current_fingerprint:
             return None
-        output = validate_output(ai_result.get("analysis"), ai_context)
+        output = validate_output(
+            ai_result.get("analysis"),
+            ai_context,
+            allow_legacy_scope=scope_validation in (None, "legacy_unverified"),
+        )
     except (AIContractError, TypeError, ValueError):
         return None
 
@@ -73,6 +80,9 @@ def _validated_ai_section(
         "model": str(metadata.get("model") or "未记录"),
         "generated_at": str(metadata.get("generated_at") or "未记录"),
         "status": "success",
+        "scope_validation": (
+            "unverified" if has_unverified_claim_scopes(output) else "verified"
+        ),
     }
 
 
@@ -92,6 +102,11 @@ def _append_ai_section(
         return
 
     story.append(_paragraph(AI_SAFETY_NOTE, small_style))
+    if ai_section.get("scope_validation") == "unverified":
+        story.append(_paragraph(
+            "旧格式兼容：证据范围未验证（类别、轴向和批次范围未核对）。",
+            body_style,
+        ))
     story.append(
         _table(
             [

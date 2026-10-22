@@ -192,6 +192,9 @@ CLAIM_SCOPE_SCHEMA: dict[str, Any] = {
     },
     "additionalProperties": False,
 }
+# Kept optional at the JSON Schema layer solely so stored legacy output can be
+# parsed when an explicit compatibility flag is supplied. New output is made
+# strict by validate_output() and by both providers' request schemas.
 _OPTIONAL_CLAIM_SCOPE_SCHEMA = {**CLAIM_SCOPE_SCHEMA, "type": ["object", "null"]}
 
 _CLAIM = {
@@ -339,8 +342,19 @@ def collect_evidence_ids(payload: dict[str, Any]) -> set[str]:
     return set(_input_evidence_ids(payload))
 
 
-def validate_output(raw: str | bytes | dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
-    """Parse and validate provider output, including all traceable evidence refs."""
+def validate_output(
+    raw: str | bytes | dict[str, Any],
+    payload: dict[str, Any],
+    *,
+    allow_legacy_scope: bool = False,
+) -> dict[str, Any]:
+    """Parse and validate provider output, including all traceable evidence refs.
+
+    New AI output must include a non-null claim_scope for every claim. Callers
+    may opt into the legacy path only when handling an already-stored result;
+    evidence existence and safety checks still run, but missing scopes are not
+    represented as fully range-verified.
+    """
     if isinstance(raw, bytes):
         try:
             raw = raw.decode("utf-8")
@@ -384,9 +398,20 @@ def validate_output(raw: str | bytes | dict[str, Any], payload: dict[str, Any]) 
     catalog = _evidence_catalog(payload)
     for claim in _iter_claims(result):
         declared_scope = claim.get("claim_scope")
-        if declared_scope is not None:
-            _validate_claim_scope(claim["evidence_ids"], declared_scope, catalog)
+        if declared_scope is None:
+            if not allow_legacy_scope:
+                raise AIContractError(
+                    "AI 输出缺少 claim_scope，无法验证证据范围。",
+                    code="claim_scope_schema_invalid",
+                )
+            continue
+        _validate_claim_scope(claim["evidence_ids"], declared_scope, catalog)
     return result
+
+
+def has_unverified_claim_scopes(output: dict[str, Any]) -> bool:
+    """Whether a validated legacy-compatible output has any absent/null scope."""
+    return any(claim.get("claim_scope") is None for claim in _iter_claims(output))
 
 
 def _validate_claim_scope(

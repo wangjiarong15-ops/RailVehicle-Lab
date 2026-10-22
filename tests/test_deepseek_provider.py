@@ -60,7 +60,7 @@ def valid_output(context):
     evidence_id = "metric.speed.mean"
     assert evidence_id in collect_evidence_ids(context)
     return {
-        "summary": {"text": "观测到已计算的运行指标。", "evidence_ids": [evidence_id]},
+        "summary": {"text": "观测到已计算的运行指标。", "evidence_ids": [evidence_id], "claim_scope": {"category": "metric", "axis": "not_applicable", "batch_refs": ["B1"]}},
         "observations": [],
         "possible_causes": [],
         "further_checks": [],
@@ -188,7 +188,17 @@ class DeepSeekResponsesProviderTests(unittest.TestCase):
         self.assertEqual(set(output_format["schema"]["required"]), expected_fields)
         claim_schema = output_format["schema"]["properties"]["observations"]["items"]
         self.assertIn("claim_scope", claim_schema["properties"])
-        self.assertNotIn("claim_scope", claim_schema["required"])
+        self.assertIn("claim_scope", claim_schema["required"])
+        self.assertEqual(claim_schema["properties"]["claim_scope"]["type"], "object")
+        for node in (
+            output_format["schema"]["properties"]["summary"],
+            output_format["schema"]["properties"]["observations"]["items"],
+            output_format["schema"]["properties"]["possible_causes"]["items"],
+            output_format["schema"]["properties"]["further_checks"]["items"],
+            output_format["schema"]["properties"]["limitations"]["items"],
+        ):
+            self.assertIn("claim_scope", node["required"])
+            self.assertEqual(node["properties"]["claim_scope"]["type"], "object")
         self.assertNotIn("strict", output_format)
         serialized = json.dumps(request, ensure_ascii=False)
         self.assertIn("metric.speed.mean", serialized)

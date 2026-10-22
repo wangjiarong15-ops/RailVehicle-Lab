@@ -62,6 +62,9 @@ class EvidencePromptTests(unittest.TestCase):
         self.assertIn("非空 action、非空 reason", contract)
         self.assertIn("至少一个合法 evidence_id", contract)
         self.assertIn("claim_scope", contract)
+        self.assertIn("必须包含非 null 的 claim_scope", contract)
+        self.assertIn("不得省略 claim_scope", contract)
+        self.assertNotIn("claim_scope 可以省略", contract)
 
     def test_single_batch_metadata_matches_validator_categories_axes_and_batch(self):
         payload = input_payload("metric.speed.mean", "B-SINGLE")

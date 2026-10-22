@@ -46,7 +46,7 @@ def payload():
 
 def valid_output(context):
     return {
-        "summary": {"text": "观测到已计算的运行指标。", "evidence_ids": ["metric.speed.mean"]},
+        "summary": {"text": "观测到已计算的运行指标。", "evidence_ids": ["metric.speed.mean"], "claim_scope": {"category": "metric", "axis": "not_applicable", "batch_refs": ["B1"]}},
         "observations": [],
         "possible_causes": [],
         "further_checks": [],
@@ -148,7 +148,17 @@ class OpenAIProviderTests(unittest.TestCase):
         output_schema = output_format["schema"]
         summary_schema = output_schema["properties"]["summary"]
         self.assertEqual(set(summary_schema["properties"]), set(summary_schema["required"]))
-        self.assertEqual(summary_schema["properties"]["claim_scope"]["type"], ["object", "null"])
+        self.assertEqual(summary_schema["properties"]["claim_scope"]["type"], "object")
+        self.assertIn("claim_scope", summary_schema["required"])
+        for node in (
+            output_schema["properties"]["summary"],
+            output_schema["properties"]["observations"]["items"],
+            output_schema["properties"]["possible_causes"]["items"],
+            output_schema["properties"]["further_checks"]["items"],
+            output_schema["properties"]["limitations"]["items"],
+        ):
+            self.assertIn("claim_scope", node["required"])
+            self.assertEqual(node["properties"]["claim_scope"]["type"], "object")
         prompt = "".join(
             item["text"]
             for message in responses.calls[0]["input"]

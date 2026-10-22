@@ -27,12 +27,22 @@ def sample(timestamp, speed, lateral, vertical):
 def valid_output(context):
     metric = "metric.speed.mean" if context["analysis_type"] == "single_batch" else "batch.B1.speed.mean"
     event_id = "event.lateral.001" if context["analysis_type"] == "single_batch" else metric
+    metric_scope = {
+        "category": "metric" if context["analysis_type"] == "single_batch" else "batch_metric",
+        "axis": "not_applicable",
+        "batch_refs": ["B1"],
+    }
+    event_scope = {
+        "category": "event" if context["analysis_type"] == "single_batch" else "batch_metric",
+        "axis": "lateral" if context["analysis_type"] == "single_batch" else "not_applicable",
+        "batch_refs": ["B1"],
+    }
     return {
-        "summary": {"text": "当前分析显示已计算的速度统计。", "evidence_ids": [metric]},
-        "observations": [{"text": "存在已计算的运行指标。", "evidence_ids": [metric]}],
-        "possible_causes": [{"text": "可能与运行工况变化有关。", "evidence_ids": [event_id], "qualification": "hypothesis"}],
-        "further_checks": [{"action": "复核对应时段的记录。", "reason": "确认观察是否持续出现。", "evidence_ids": [metric]}],
-        "limitations": [{"text": "解读范围受输入统计指标限制。", "evidence_ids": [metric]}],
+        "summary": {"text": "当前分析显示已计算的速度统计。", "evidence_ids": [metric], "claim_scope": metric_scope},
+        "observations": [{"text": "存在已计算的运行指标。", "evidence_ids": [metric], "claim_scope": metric_scope}],
+        "possible_causes": [{"text": "可能与运行工况变化有关。", "evidence_ids": [event_id], "qualification": "hypothesis", "claim_scope": event_scope}],
+        "further_checks": [{"action": "复核对应时段的记录。", "reason": "确认观察是否持续出现。", "evidence_ids": [metric], "claim_scope": metric_scope}],
+        "limitations": [{"text": "解读范围受输入统计指标限制。", "evidence_ids": [metric], "claim_scope": metric_scope}],
     }
 
 
@@ -184,6 +194,36 @@ class AnalysisReportAITests(unittest.TestCase):
         report = self._single_report(bad_result, self.single_context)
         self.assertIsNone(report["ai_section"])
         pdf = generate_analysis_report_pdf(report)
+        self.assertTrue(pdf.startswith(b"%PDF-"))
+
+    def test_legacy_missing_or_null_scope_is_explicitly_marked_unverified_in_pdf(self):
+        for scope_state in ("missing", "null"):
+            with self.subTest(scope_state=scope_state):
+                legacy_result = dict(self.single_result)
+                legacy_result.pop("scope_validation", None)
+                legacy_result["analysis"] = dict(self.single_result["analysis"])
+                legacy_result["analysis"]["summary"] = dict(self.single_result["analysis"]["summary"])
+                if scope_state == "missing":
+                    legacy_result["analysis"]["summary"].pop("claim_scope")
+                else:
+                    legacy_result["analysis"]["summary"]["claim_scope"] = None
+
+                report = self._single_report(legacy_result, self.single_context)
+                self.assertEqual(report["ai_section"]["scope_validation"], "unverified")
+                pdf, text = self._generate_and_read_story(generate_analysis_report_pdf, report)
+                self.assertIn("证据范围未验证", text)
+                self.assertIn("类别、轴向和批次范围未核对", text)
+                self.assertTrue(pdf.startswith(b"%PDF-"))
+
+    def test_new_verified_result_with_missing_scope_is_omitted_from_pdf(self):
+        invalid_result = dict(self.single_result)
+        invalid_result["analysis"] = dict(self.single_result["analysis"])
+        invalid_result["analysis"]["summary"] = dict(self.single_result["analysis"]["summary"])
+        invalid_result["analysis"]["summary"].pop("claim_scope")
+        report = self._single_report(invalid_result, self.single_context)
+        self.assertIsNone(report["ai_section"])
+        pdf, text = self._generate_and_read_story(generate_analysis_report_pdf, report)
+        self.assertIn("AI 辅助解读未生成", text)
         self.assertTrue(pdf.startswith(b"%PDF-"))
 
     def test_batch_comparison_ai_is_written_only_to_comparison_pdf(self):

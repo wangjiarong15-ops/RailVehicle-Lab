@@ -15,6 +15,7 @@ from rail_vehicle.ai import (
     is_result_current,
     validate_output,
 )
+from rail_vehicle.ai.schemas import collect_evidence_metadata
 from rail_vehicle.anomaly import detect_anomalies
 from rail_vehicle.batch_comparison import compare_run_batches
 from rail_vehicle.dynamics import analyze_run_data
@@ -58,8 +59,17 @@ def make_single_payload(with_events=True):
 
 def valid_response(payload):
     evidence = sorted(collect_evidence_ids(payload))
+    metadata = {item["evidence_id"]: item for item in collect_evidence_metadata(payload)}[evidence[0]]
     return {
-        "summary": {"text": "已提供运行统计结果。", "evidence_ids": [evidence[0]]},
+        "summary": {
+            "text": "已提供运行统计结果。",
+            "evidence_ids": [evidence[0]],
+            "claim_scope": {
+                "category": metadata["category"],
+                "axis": metadata["axis"],
+                "batch_refs": metadata["batch_refs"],
+            },
+        },
         "observations": [],
         "possible_causes": [],
         "further_checks": [],
@@ -115,24 +125,28 @@ class AIInfrastructureTests(unittest.TestCase):
     def test_complete_output_with_all_claim_categories_is_accepted(self):
         payload = make_single_payload()
         response = {
-            "summary": {"text": "当前区间包含已计算的运行统计。", "evidence_ids": ["metric.speed.mean"]},
+            "summary": {"text": "当前区间包含已计算的运行统计。", "evidence_ids": ["metric.speed.mean"], "claim_scope": {"category": "metric", "axis": "not_applicable", "batch_refs": ["B1"]}},
             "observations": [{
                 "text": "横向加速度 RMS 可用于描述该区间的波动水平。",
                 "evidence_ids": ["metric.accel.lateral.rms"],
+                "claim_scope": {"category": "metric", "axis": "lateral", "batch_refs": ["B1"]},
             }],
             "possible_causes": [{
                 "text": "该波动可能与运行条件变化有关。",
                 "evidence_ids": ["event.lateral.001"],
                 "qualification": "hypothesis",
+                "claim_scope": {"category": "event", "axis": "lateral", "batch_refs": ["B1"]},
             }],
             "further_checks": [{
                 "action": "核对对应区间的运行记录。",
                 "reason": "确认异常事件发生时的上下文。",
                 "evidence_ids": ["metric.accel.vertical.rms"],
+                "claim_scope": {"category": "metric", "axis": "vertical", "batch_refs": ["B1"]},
             }],
             "limitations": [{
                 "text": "该统计仅覆盖当前筛选区间。",
                 "evidence_ids": ["metric.speed.maximum"],
+                "claim_scope": {"category": "metric", "axis": "not_applicable", "batch_refs": ["B1"]},
             }],
         }
 
@@ -193,16 +207,16 @@ class AIInfrastructureTests(unittest.TestCase):
         cases = {
             "summary": lambda response: response["summary"].update(evidence_ids=[unknown]),
             "observations": lambda response: response["observations"].append(
-                {"text": "统计观察。", "evidence_ids": [unknown]}
+                {"text": "统计观察。", "evidence_ids": [unknown], "claim_scope": {"category": "metric", "axis": "not_applicable", "batch_refs": ["B1"]}}
             ),
             "possible_causes": lambda response: response["possible_causes"].append(
-                {"text": "原因假设。", "evidence_ids": [unknown], "qualification": "hypothesis"}
+                {"text": "原因假设。", "evidence_ids": [unknown], "qualification": "hypothesis", "claim_scope": {"category": "metric", "axis": "not_applicable", "batch_refs": ["B1"]}}
             ),
             "further_checks": lambda response: response["further_checks"].append(
-                {"action": "进一步核对。", "reason": "确认记录。", "evidence_ids": [unknown]}
+                {"action": "进一步核对。", "reason": "确认记录。", "evidence_ids": [unknown], "claim_scope": {"category": "metric", "axis": "not_applicable", "batch_refs": ["B1"]}}
             ),
             "limitations": lambda response: response["limitations"].append(
-                {"text": "输入范围有限。", "evidence_ids": [unknown]}
+                {"text": "输入范围有限。", "evidence_ids": [unknown], "claim_scope": {"category": "metric", "axis": "not_applicable", "batch_refs": ["B1"]}}
             ),
         }
         for category, mutate in cases.items():
@@ -337,8 +351,73 @@ class AIInfrastructureTests(unittest.TestCase):
                 response["summary"]["evidence_ids"] = ["metric.accel.vertical.rms"]
                 if scope_state == "null":
                     response["summary"]["claim_scope"] = None
-                validated = validate_output(response, payload)
+                else:
+                    response["summary"].pop("claim_scope")
+                validated = validate_output(response, payload, allow_legacy_scope=True)
                 self.assertEqual(validated["summary"]["evidence_ids"], ["metric.accel.vertical.rms"])
+
+    def test_claim_scope_missing_or_null_is_rejected_for_new_output(self):
+        payload = make_single_payload()
+        for scope_state in ("missing", "null"):
+            with self.subTest(scope_state=scope_state):
+                response = valid_response(payload)
+                if scope_state == "null":
+                    response["summary"]["claim_scope"] = None
+                else:
+                    response["summary"].pop("claim_scope")
+                with self.assertRaises(AIContractError) as raised:
+                    validate_output(response, payload)
+                self.assertEqual(raised.exception.code, "claim_scope_schema_invalid")
+
+    def test_legacy_scope_compatibility_still_rejects_unknown_evidence(self):
+        payload = make_single_payload()
+        response = valid_response(payload)
+        response["summary"].pop("claim_scope")
+        response["summary"]["evidence_ids"] = ["metric.not-real"]
+        with self.assertRaises(AIContractError) as raised:
+            validate_output(response, payload, allow_legacy_scope=True)
+        self.assertEqual(raised.exception.code, "evidence_id_unknown")
+
+    def test_service_rejects_missing_or_null_scope_without_publishing_analysis(self):
+        payload = make_single_payload()
+        for scope_state in ("missing", "null"):
+            with self.subTest(scope_state=scope_state):
+                response = valid_response(payload)
+                if scope_state == "null":
+                    response["summary"]["claim_scope"] = None
+                else:
+                    response["summary"].pop("claim_scope")
+                result = AIAnalysisService(FakeProvider(response)).analyze(payload)
+                self.assertEqual(result["status"], "unavailable")
+                self.assertEqual(result["code"], "claim_scope_schema_invalid")
+                self.assertNotIn("analysis", result)
+
+    def test_every_claim_category_requires_non_null_scope_for_new_output(self):
+        payload = make_single_payload()
+        base = valid_response(payload)
+        claims = {
+            "summary": base["summary"],
+            "observations": {"text": "观察。", "evidence_ids": ["metric.speed.mean"], "claim_scope": {"category": "metric", "axis": "not_applicable", "batch_refs": ["B1"]}},
+            "possible_causes": {"text": "可能原因。", "evidence_ids": ["metric.speed.mean"], "qualification": "hypothesis", "claim_scope": {"category": "metric", "axis": "not_applicable", "batch_refs": ["B1"]}},
+            "further_checks": {"action": "复核。", "reason": "确认上下文。", "evidence_ids": ["metric.speed.mean"], "claim_scope": {"category": "metric", "axis": "not_applicable", "batch_refs": ["B1"]}},
+            "limitations": {"text": "范围有限。", "evidence_ids": ["metric.speed.mean"], "claim_scope": {"category": "metric", "axis": "not_applicable", "batch_refs": ["B1"]}},
+        }
+        for category, claim in claims.items():
+            for scope_state in ("missing", "null"):
+                with self.subTest(category=category, scope_state=scope_state):
+                    response = copy.deepcopy(base)
+                    if category == "summary":
+                        target = response[category]
+                    else:
+                        response[category] = [copy.deepcopy(claim)]
+                        target = response[category][0]
+                    if scope_state == "missing":
+                        target.pop("claim_scope", None)
+                    else:
+                        target["claim_scope"] = None
+                    with self.assertRaises(AIContractError) as raised:
+                        validate_output(response, payload)
+                    self.assertEqual(raised.exception.code, "claim_scope_schema_invalid")
 
     def test_claim_scope_empty_object_and_wrong_types_are_rejected(self):
         payload = make_single_payload()
