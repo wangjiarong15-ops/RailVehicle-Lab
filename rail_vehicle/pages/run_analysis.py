@@ -42,6 +42,15 @@ from rail_vehicle.run_data import (
 from rail_vehicle.vehicle_data import get_vehicle, list_vehicles
 
 
+def _safe_pdf_error_message(report_kind: str, _error: Exception) -> str:
+    """Return a fixed user message without exposing exception details."""
+    messages = {
+        "single": "分析报告生成失败，未生成下载文件。请重试；如问题持续，请联系维护人员。",
+        "comparison": "批次对比报告生成失败，未生成下载文件。请重试；如问题持续，请联系维护人员。",
+    }
+    return messages.get(report_kind, "PDF 报告生成失败，未生成下载文件。请稍后重试。")
+
+
 def _render_ai_interpretation(
     *, payload: dict, selection: dict, state_key: str, has_data: bool = True
 ) -> None:
@@ -528,7 +537,7 @@ def _render_dynamics_analysis() -> None:
             )
             pdf_bytes = generate_analysis_report_pdf(report_data)
         except Exception as exc:
-            st.error(f"分析报告生成失败：{exc}")
+            st.error(_safe_pdf_error_message("single", exc))
         else:
             st.session_state["analysis_report_key"] = report_key
             st.session_state["analysis_report_pdf"] = pdf_bytes
@@ -699,7 +708,7 @@ def _render_batch_comparison() -> None:
             )
             pdf_bytes = generate_batch_comparison_report_pdf(report_data)
         except Exception as exc:
-            st.error(f"批次对比报告生成失败：{exc}")
+            st.error(_safe_pdf_error_message("comparison", exc))
         else:
             st.session_state["comparison_report_key"] = comparison_report_key
             st.session_state["comparison_report_pdf"] = pdf_bytes

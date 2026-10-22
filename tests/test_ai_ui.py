@@ -19,6 +19,7 @@ from rail_vehicle.ai.schemas import collect_evidence_metadata, validate_output
 from rail_vehicle.anomaly import detect_anomalies
 from rail_vehicle.batch_comparison import compare_run_batches
 from rail_vehicle.dynamics import analyze_run_data
+from rail_vehicle.pages.run_analysis import _safe_pdf_error_message
 
 
 def sample(timestamp, speed, lateral, vertical):
@@ -167,6 +168,19 @@ class AIUIIntegrationTests(unittest.TestCase):
                 })
                 self.assertEqual(message, expected)
                 self.assertNotIn("PRIVATE_RAW_VALIDATOR_DETAILS", message)
+
+    def test_pdf_error_messages_do_not_expose_exception_details(self):
+        private_detail = "PRIVATE_LOCAL_PATH_OR_INTERNAL_ERROR"
+        error = RuntimeError(private_detail)
+        messages = (
+            _safe_pdf_error_message("single", error),
+            _safe_pdf_error_message("comparison", error),
+            _safe_pdf_error_message("unknown", error),
+        )
+        self.assertIn("分析报告生成失败", messages[0])
+        self.assertIn("批次对比报告生成失败", messages[1])
+        self.assertIn("PDF 报告生成失败", messages[2])
+        self.assertTrue(all(private_detail not in message for message in messages))
 
     def test_rejected_model_text_and_exception_details_never_reach_ui(self):
         private_marker = "PRIVATE_MODEL_BODY_OR_EXCEPTION"
