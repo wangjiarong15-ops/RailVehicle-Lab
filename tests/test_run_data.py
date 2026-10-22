@@ -141,6 +141,17 @@ class RunDataTests(unittest.TestCase):
         self.assertIn("lateral_accel", validation.errors[0])
         self.assertEqual(self.counts(), (0, 0))
 
+    def test_duplicate_headers_are_rejected(self):
+        duplicate_header = (
+            "timestamp,vehicle_id,speed_kmh,lateral_accel,vertical_accel,"
+            "speed_kmh"
+        )
+        validation = self.validate(f"{duplicate_header}\n{GOOD_ROW},81")
+
+        self.assertFalse(validation.is_valid)
+        self.assertEqual(validation.rows, [])
+        self.assertTrue(any("重复列名：speed_kmh" in error for error in validation.errors))
+
     def test_invalid_timestamp_unknown_vehicle_and_empty_value_are_rejected(self):
         text = (
             f"{HEADER}\n"

@@ -4,6 +4,7 @@ import csv
 import io
 import math
 import sqlite3
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -74,7 +75,9 @@ def validate_run_csv(
         headers = [header.strip() for header in headers]
         if any(not header for header in headers):
             errors.append("CSV 表头不能包含空列名。")
-        duplicates = sorted({header for header in headers if headers.count(header) > 1})
+        duplicates = sorted(
+            header for header, count in Counter(headers).items() if count > 1
+        )
         if duplicates:
             errors.append(f"CSV 存在重复列名：{', '.join(duplicates)}。")
         missing = [column for column in REQUIRED_COLUMNS if column not in headers]
