@@ -253,6 +253,30 @@ class AnalysisReportAITests(unittest.TestCase):
         self.assertIn("batch.B1.speed.mean", text)
         self.assertTrue(pdf.startswith(b"%PDF-"))
 
+    def test_legacy_scope_is_marked_unverified_in_batch_comparison_pdf(self):
+        comparisons = compare_run_batches([
+            {"batch_id": 1, "label": "A", "samples": self.samples},
+            {"batch_id": 2, "label": "B", "samples": self.samples},
+        ])
+        context = build_batch_comparison_payload(comparisons)
+        selection = {"vehicle_id": 5, "batch_ids": [1, 2]}
+        legacy_result = copy.deepcopy(self._success_result(context, selection))
+        legacy_result.pop("scope_validation", None)
+        legacy_result["analysis"]["summary"].pop("claim_scope")
+
+        report = build_batch_comparison_report_data(
+            comparisons,
+            context,
+            legacy_result,
+            selection_fingerprint(selection),
+            generated_at=datetime(2026, 10, 8, 10, tzinfo=timezone.utc),
+        )
+        self.assertEqual(report["ai_section"]["scope_validation"], "unverified")
+        pdf, text = self._generate_and_read_story(generate_batch_comparison_report_pdf, report)
+        self.assertIn("证据范围未验证", text)
+        self.assertIn("类别、轴向和批次范围未核对", text)
+        self.assertTrue(pdf.startswith(b"%PDF-"))
+
     def test_single_batch_ai_output_cannot_be_attached_to_comparison_report(self):
         comparisons = compare_run_batches([
             {"batch_id": 1, "label": "A", "samples": self.samples},
