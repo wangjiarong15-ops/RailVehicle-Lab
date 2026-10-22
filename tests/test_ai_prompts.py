@@ -122,6 +122,32 @@ class EvidencePromptTests(unittest.TestCase):
         self.assertIn("引用了不同类别就填 mixed", instructions)
         self.assertIn("没有批次范围时填空数组", instructions)
 
+    def test_anomaly_event_prompt_clarifies_duration_and_sampling_gaps(self):
+        payload = input_payload("metric.speed.mean", "B-SINGLE")
+        payload["anomaly_events"] = [{
+            "evidence_id": "event.lateral.001",
+            "type": "lateral",
+            "start_timestamp": "2026-10-01T00:00:00+00:00",
+            "end_timestamp": "2026-10-01T00:00:05+00:00",
+            "duration_seconds": 5,
+            "sample_count": 2,
+            "maximum_absolute_value": 1.2,
+        }]
+
+        instructions = build_evidence_reference_instructions(payload)
+
+        self.assertIn("首个与最后一个异常样本之间的时间差", instructions)
+        self.assertIn("不代表该区间内持续观测到异常", instructions)
+        self.assertIn("不得声称空档期间持续异常", instructions)
+
+    def test_no_anomaly_events_does_not_add_duration_guidance(self):
+        instructions = build_evidence_reference_instructions(
+            input_payload("metric.speed.mean", "B-SINGLE")
+        )
+
+        self.assertNotIn("【异常事件时间口径】", instructions)
+        self.assertNotIn("duration_seconds", instructions)
+
     def test_comparison_metadata_assigns_each_batch_metric_only_its_own_batch(self):
         payload = {
             "schema_version": "railvehicle.ai_input.v1",

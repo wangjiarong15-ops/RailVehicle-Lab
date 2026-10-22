@@ -34,6 +34,13 @@ def build_evidence_reference_instructions(payload: dict[str, Any]) -> str:
     allowed_ids = [item["evidence_id"] for item in evidence_metadata]
     allowed_ids_json = json.dumps(allowed_ids, ensure_ascii=False, separators=(",", ":"))
     metadata_json = json.dumps(evidence_metadata, ensure_ascii=False, separators=(",", ":"))
+    event_duration_guidance = ""
+    if payload.get("anomaly_events"):
+        event_duration_guidance = (
+            "【异常事件时间口径】\n"
+            "异常事件的 duration_seconds 表示首个与最后一个异常样本之间的时间差，"
+            "不代表该区间内持续观测到异常；存在采样空档时，不得声称空档期间持续异常。\n"
+        )
     return (
         build_output_contract_instructions()
         + "【本次请求的证据引用规则】\n"
@@ -48,4 +55,5 @@ def build_evidence_reference_instructions(payload: dict[str, Any]) -> str:
         "没有批次范围时填空数组。不得把未引用的批次加入范围。\n"
         "没有合适证据时，不生成相应的可选观察、可能原因、检查建议或局限项。"
         "summary 必须由至少一个现有证据 ID 支持；若无法支持，不得编造 summary 或伪造 ID。\n"
+        + event_duration_guidance
     )
