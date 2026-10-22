@@ -92,6 +92,22 @@ class RunDataTests(unittest.TestCase):
         self.assertEqual(len(samples), 1)
         self.assertEqual(samples[0]["speed_kmh"], 80)
 
+    def test_batch_samples_are_ordered_by_absolute_time_across_offsets(self):
+        text = (
+            f"{HEADER}\n"
+            "2026-10-08T10:00:00+02:00,RV-001,80,0.1,0.2\n"
+            "2026-10-08T09:00:00+00:00,RV-001,81,0.2,0.3\n"
+        )
+        validation = self.validate(text)
+        self.assertTrue(validation.is_valid, validation.errors)
+        batch_id = import_run_data("offsets.csv", validation, self.db_path)
+
+        samples = list_batch_samples(self.vehicle_id, batch_id, self.db_path)
+        self.assertEqual(
+            [sample["timestamp"] for sample in samples],
+            ["2026-10-08 10:00:00+02:00", "2026-10-08 09:00:00+00:00"],
+        )
+
     def test_utf8_bom_and_iso_timestamp_are_supported(self):
         validation = self.validate((f"{HEADER}\n{GOOD_ROW}\n").encode("utf-8-sig"))
         self.assertTrue(validation.is_valid, validation.errors)
