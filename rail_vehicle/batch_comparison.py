@@ -25,6 +25,14 @@ def compare_run_batches(batches: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
     comparisons: list[dict[str, Any]] = []
     for batch in batches:
+        if not isinstance(batch, dict) or not {
+            "batch_id",
+            "label",
+            "samples",
+        }.issubset(batch):
+            raise ValueError("批次数据缺少批次编号、名称或运行样本。")
+        batch_id = batch["batch_id"]
+        label = batch["label"]
         try:
             analysis = analyze_run_data(batch["samples"])
             ordered_samples = analysis["samples"]
@@ -32,7 +40,7 @@ def compare_run_batches(batches: list[dict[str, Any]]) -> list[dict[str, Any]]:
         except KeyError as exc:
             raise ValueError("批次数据缺少批次编号、名称或运行样本。") from exc
         except (TypeError, ValueError) as exc:
-            raise ValueError(f"批次 {batch.get('batch_id', '')} 数据无效：{exc}") from exc
+            raise ValueError(f"批次 {batch_id} 数据无效：{exc}") from exc
 
         lateral = analysis["lateral_accel"]
         vertical = analysis["vertical_accel"]
@@ -44,7 +52,7 @@ def compare_run_batches(batches: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 ).total_seconds()
             except (KeyError, TypeError, ValueError) as exc:
                 raise ValueError(
-                    f"批次 {batch.get('batch_id', '')} 包含无效时间戳。"
+                    f"批次 {batch_id} 包含无效时间戳。"
                 ) from exc
             series.append(
                 {
@@ -57,8 +65,8 @@ def compare_run_batches(batches: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
         comparisons.append(
             {
-                "batch_id": batch["batch_id"],
-                "label": str(batch["label"]),
+                "batch_id": batch_id,
+                "label": str(label),
                 "sample_count": analysis["sample_count"],
                 "mean_speed_kmh": analysis["speed"]["mean"],
                 "maximum_speed_kmh": analysis["speed"]["maximum"],

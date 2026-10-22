@@ -113,6 +113,17 @@ class BatchComparisonTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "时间戳"):
             compare_run_batches(invalid_batches)
 
+    def test_incomplete_batch_descriptor_returns_a_clear_validation_error(self):
+        for incomplete in (
+            {"label": "missing-id.csv", "samples": self.batches[0]["samples"]},
+            {"batch_id": 1, "samples": self.batches[0]["samples"]},
+            {"batch_id": 1, "label": "missing-samples.csv"},
+            None,
+        ):
+            with self.subTest(batch=incomplete):
+                with self.assertRaisesRegex(ValueError, "缺少批次编号、名称或运行样本"):
+                    compare_run_batches([incomplete, self.batches[1]])
+
 
 if __name__ == "__main__":
     unittest.main()
