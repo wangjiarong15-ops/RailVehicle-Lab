@@ -9,6 +9,10 @@ ACCELERATION_FIELDS = (
     ("lateral_accel", "横向加速度统计异常"),
     ("vertical_accel", "垂向加速度统计异常"),
 )
+EVENT_DURATION_NOTE = (
+    "区段时长按首末异常样本的时间差计算；两者之间存在采样空档时，"
+    "不代表空档内持续观测到异常。"
+)
 
 
 def _parse_timestamp(value: Any) -> datetime:

@@ -29,7 +29,7 @@ from rail_vehicle.ai.ui import (
 from rail_vehicle.ai.provider import input_fingerprint
 from rail_vehicle.batch_comparison import compare_run_batches
 from rail_vehicle.dynamics import analyze_run_data
-from rail_vehicle.anomaly import detect_anomalies
+from rail_vehicle.anomaly import EVENT_DURATION_NOTE, detect_anomalies
 from rail_vehicle.time_filter import filter_samples_by_time_range
 from rail_vehicle.run_data import (
     MAX_CSV_SIZE_MB,
@@ -400,6 +400,7 @@ def _render_dynamics_analysis() -> None:
         "同一方向相邻异常样本合并为一个区段，遇到正常样本则分段。"
         "异常区段仅描述数据/统计异常，不用于判断车辆故障或安全事故。"
     )
+    st.caption(EVENT_DURATION_NOTE)
     anomaly_columns = st.columns(2)
     anomaly_columns[0].metric("数据异常点", len(anomaly_result["points"]))
     anomaly_columns[1].metric("统计异常区段", len(anomaly_result["events"]))
@@ -411,7 +412,7 @@ def _render_dynamics_analysis() -> None:
                     "异常类型": event["type"],
                     "开始时间": event["start_timestamp"],
                     "结束时间": event["end_timestamp"],
-                    "持续时间（秒）": f"{event['duration_seconds']:.3f}",
+                    "首末样本间隔（秒）": f"{event['duration_seconds']:.3f}",
                     "区段最大绝对值（m/s²）": f"{event['maximum_absolute_value']:.4f}",
                     "对应有符号值（m/s²）": f"{event['maximum_signed_value']:.4f}",
                     "峰值时间": event["maximum_timestamp"],

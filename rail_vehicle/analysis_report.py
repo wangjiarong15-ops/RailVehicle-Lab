@@ -29,6 +29,7 @@ from reportlab.lib.colors import HexColor
 
 from rail_vehicle.ai.provider import input_fingerprint
 from rail_vehicle.ai.schemas import AIContractError, has_unverified_claim_scopes, validate_output
+from rail_vehicle.anomaly import EVENT_DURATION_NOTE
 
 
 REPORT_TITLE = "轨道车辆运行与动力学分析报告"
@@ -591,7 +592,7 @@ def generate_analysis_report_pdf(report: dict[str, Any]) -> bytes:
         events = report["anomaly_events"]
         story.append(Spacer(1, 2 * mm))
         story.append(_paragraph(f"异常事件数量：{len(events)}", body_style))
-        event_rows = [["异常类型", "开始时间", "结束时间", "持续时间（秒）", "最大绝对值（m/s^2）", "样本数"]]
+        event_rows = [["异常类型", "开始时间", "结束时间", "首末样本间隔（秒）", "最大绝对值（m/s^2）", "样本数"]]
         for event in events:
             event_rows.append(
                 [
@@ -609,6 +610,7 @@ def generate_analysis_report_pdf(report: dict[str, Any]) -> bytes:
                 small_style, header_style,
             )
         )
+        story.append(_paragraph(EVENT_DURATION_NOTE, small_style))
         story.append(
             Spacer(1, 2 * mm)
         )

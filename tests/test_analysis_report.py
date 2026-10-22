@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 import unittest
+from unittest.mock import patch
 
 from reportlab.lib import colors
 
@@ -114,6 +115,26 @@ class AnalysisReportTests(unittest.TestCase):
         self.assertTrue(output.startswith(b"%PDF-"))
         self.assertIn(b"%%EOF", output[-32:])
         self.assertGreater(len(output), 10_000)
+
+    def test_pdf_story_explains_anomaly_duration_across_sampling_gaps(self):
+        with patch(
+            "rail_vehicle.analysis_report.SimpleDocTemplate.build", autospec=True
+        ) as build:
+            def capture_story(document, story, **_kwargs):
+                document.filename.write(b"%PDF-test")
+
+            build.side_effect = capture_story
+            generate_analysis_report_pdf(self.report)
+
+        story = build.call_args.args[1]
+        paragraph_texts = [
+            item.getPlainText()
+            for item in story
+            if callable(getattr(item, "getPlainText", None))
+        ]
+        self.assertTrue(
+            any("不代表空档内持续观测到异常" in text for text in paragraph_texts)
+        )
 
     def test_single_and_comparison_charts_cap_points_and_preserve_endpoints(self):
         source_count = MAX_CHART_POINTS * 10
