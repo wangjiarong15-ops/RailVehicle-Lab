@@ -208,8 +208,10 @@ def import_run_data(
                 [{**row, "batch_id": batch_id} for row in validation.rows],
             )
             return batch_id
-    except sqlite3.IntegrityError as exc:
-        raise ValueError(f"数据写入失败，已回滚本次导入：{exc}") from exc
+    except sqlite3.IntegrityError:
+        raise ValueError("数据完整性校验失败，本次导入已回滚。") from None
+    except sqlite3.Error:
+        raise ValueError("数据库暂时无法保存运行数据，本次导入已回滚，请稍后重试。") from None
 
 
 def list_import_batches(db_path: Path | str = DB_PATH) -> list[dict[str, Any]]:

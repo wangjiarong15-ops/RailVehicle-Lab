@@ -1,5 +1,6 @@
 """Tests for CSV validation and transactional running-data imports."""
 
+import sqlite3
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -161,6 +162,38 @@ class RunDataTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "已回滚"):
             import_run_data("trip.csv", validation, self.db_path)
         self.assertEqual(self.counts(), (0, 0))
+
+    def test_sqlite_operational_error_is_sanitized_after_transaction_rollback(self):
+        validation = self.validate(f"{HEADER}\n{GOOD_ROW}")
+        private_detail = "PRIVATE_DATABASE_PATH_OR_SQL_DETAIL"
+
+        class FakeCursor:
+            lastrowid = 123
+
+        class FakeConnection:
+            def execute(self, *_args, **_kwargs):
+                return FakeCursor()
+
+            def executemany(self, *_args, **_kwargs):
+                raise sqlite3.OperationalError(private_detail)
+
+        class Transaction:
+            error_type = None
+
+            def __enter__(self):
+                return FakeConnection()
+
+            def __exit__(self, error_type, _error, _traceback):
+                self.error_type = error_type
+                return False
+
+        transaction = Transaction()
+        with patch("rail_vehicle.run_data.get_connection", return_value=transaction):
+            with self.assertRaisesRegex(ValueError, "数据库暂时无法保存") as raised:
+                import_run_data("trip.csv", validation, self.db_path)
+
+        self.assertIs(transaction.error_type, sqlite3.OperationalError)
+        self.assertNotIn(private_detail, str(raised.exception))
 
     def test_preview_and_row_count_are_available_before_import(self):
         text = f"{HEADER}\n{GOOD_ROW}\n{GOOD_ROW.replace('80', '81')}\n"
