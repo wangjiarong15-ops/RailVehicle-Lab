@@ -157,6 +157,15 @@ class RunDataTests(unittest.TestCase):
         self.assertTrue(validation.is_valid, validation.errors)
         self.assertEqual(validation.rows[0]["speed_kmh"], 80)
 
+    def test_invalid_utf8_bytes_are_rejected_during_streamed_decoding(self):
+        validation = self.validate(
+            f"{HEADER}\n{GOOD_ROW}\n".encode("utf-8") + b"\xff"
+        )
+
+        self.assertFalse(validation.is_valid)
+        self.assertEqual(validation.rows, [])
+        self.assertIn("UTF-8", validation.errors[0])
+
     def test_unterminated_quoted_field_is_rejected_without_usable_rows(self):
         malformed_csv = (
             f'{HEADER}\n2026-10-08T09:30:00,RV-001,80,0.12,"-0.04\n'

@@ -60,14 +60,13 @@ def validate_run_csv(
             [], [], [f"CSV 文件超过 {MAX_CSV_SIZE_MB} MB 大小上限。"], 0
         )
     errors: list[str] = []
-    try:
-        text = content.decode("utf-8-sig") if isinstance(content, bytes) else content
-    except UnicodeDecodeError:
-        return CsvValidationResult(
-            [], [], ["CSV 文件必须使用 UTF-8 编码（可包含 BOM）。"], 0
+    if isinstance(content, bytes):
+        text_stream = io.TextIOWrapper(
+            io.BytesIO(content), encoding="utf-8-sig", newline=""
         )
-    text = text.lstrip("\ufeff")
-    reader = csv.reader(io.StringIO(text, newline=""), strict=True)
+    else:
+        text_stream = io.StringIO(content.lstrip("\ufeff"), newline="")
+    reader = csv.reader(text_stream, strict=True)
     try:
         headers = next(reader, None)
         if not headers:
@@ -176,6 +175,10 @@ def validate_run_csv(
                 errors.append("错误数量较多，已停止显示后续错误。")
                 break
 
+    except UnicodeDecodeError:
+        return CsvValidationResult(
+            [], [], ["CSV 文件必须使用 UTF-8 编码（可包含 BOM）。"], 0
+        )
     except csv.Error:
         errors.append("CSV 格式无效，请检查引号、列分隔符和字段长度。")
         return CsvValidationResult([], [], errors, 0)
