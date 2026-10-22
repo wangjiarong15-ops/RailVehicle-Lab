@@ -257,6 +257,29 @@ class RunDataTests(unittest.TestCase):
             import_run_data("trip.csv", validation, self.db_path)
         self.assertEqual(self.counts(), (0, 0))
 
+    def test_second_pass_stream_error_rolls_back_batch_and_inserted_samples(self):
+        validation = self.validate(f"{HEADER}\n{GOOD_ROW}")
+        valid_row = {
+            "timestamp": "2026-10-08 09:30:00",
+            "vehicle_id": self.vehicle_id,
+            "speed_kmh": 80.0,
+            "lateral_accel": 0.12,
+            "vertical_accel": -0.04,
+        }
+
+        def rows_then_error(*_args):
+            yield valid_row
+            raise ValueError("private parser detail")
+
+        with patch(
+            "rail_vehicle.run_data._iter_normalized_csv_rows", rows_then_error
+        ):
+            with self.assertRaisesRegex(ValueError, "导入阶段无法重新校验") as raised:
+                import_run_data("trip.csv", validation, self.db_path)
+
+        self.assertNotIn("private parser detail", str(raised.exception))
+        self.assertEqual(self.counts(), (0, 0))
+
     def test_sqlite_operational_error_is_sanitized_after_transaction_rollback(self):
         validation = self.validate(f"{HEADER}\n{GOOD_ROW}")
         private_detail = "PRIVATE_DATABASE_PATH_OR_SQL_DETAIL"
