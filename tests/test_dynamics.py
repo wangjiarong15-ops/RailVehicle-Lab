@@ -30,6 +30,20 @@ class DynamicsAnalysisTests(unittest.TestCase):
         self.assertEqual(result["speed"]["minimum"], 10)
         self.assertEqual(result["speed"]["mean"], 20)
 
+    def test_means_use_stable_summation_for_cancellation_sensitive_values(self):
+        samples = [
+            sample("2026-10-08 09:30:00", 600, 100, 0),
+            sample("2026-10-08 09:30:01", 1e-14, 1e-14, 0),
+            sample("2026-10-08 09:30:02", 0, -100, 0),
+        ]
+
+        result = analyze_run_data(samples)
+
+        self.assertEqual(result["speed"]["mean"], math.fsum([600, 1e-14, 0]) / 3)
+        self.assertEqual(
+            result["lateral_accel"]["mean"], math.fsum([100, 1e-14, -100]) / 3
+        )
+
     def test_acceleration_mean_rms_and_extrema(self):
         result = analyze_run_data(self.samples)
         lateral = result["lateral_accel"]

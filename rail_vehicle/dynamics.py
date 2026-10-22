@@ -32,8 +32,8 @@ def _acceleration_statistics(
     return {
         "maximum": max(values),
         "minimum": min(values),
-        "mean": sum(values) / len(values),
-        "rms": math.sqrt(sum(value * value for value in values) / len(values)),
+        "mean": math.fsum(values) / len(values),
+        "rms": math.sqrt(math.fsum(value * value for value in values) / len(values)),
         "peak_absolute": abs(values[peak_index]),
         "peak_signed": values[peak_index],
         "peak_timestamp": ordered_samples[peak_index]["timestamp"],
@@ -74,7 +74,7 @@ def analyze_run_data(
     speed_statistics = {
         "maximum": max(speed),
         "minimum": min(speed),
-        "mean": sum(speed) / len(speed),
+        "mean": math.fsum(speed) / len(speed),
     }
     lateral_statistics = _acceleration_statistics(ordered_samples, lateral)
     vertical_statistics = _acceleration_statistics(ordered_samples, vertical)
