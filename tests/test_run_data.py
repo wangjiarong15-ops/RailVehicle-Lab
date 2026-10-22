@@ -195,6 +195,18 @@ class RunDataTests(unittest.TestCase):
         self.assertIs(transaction.error_type, sqlite3.OperationalError)
         self.assertNotIn(private_detail, str(raised.exception))
 
+    def test_database_filesystem_error_is_sanitized(self):
+        validation = self.validate(f"{HEADER}\n{GOOD_ROW}")
+        private_detail = "PRIVATE_LOCAL_DATABASE_PATH"
+        with patch(
+            "rail_vehicle.run_data.get_connection",
+            side_effect=PermissionError(private_detail),
+        ):
+            with self.assertRaisesRegex(ValueError, "无法访问数据库文件") as raised:
+                import_run_data("trip.csv", validation, self.db_path)
+
+        self.assertNotIn(private_detail, str(raised.exception))
+
     def test_preview_and_row_count_are_available_before_import(self):
         text = f"{HEADER}\n{GOOD_ROW}\n{GOOD_ROW.replace('80', '81')}\n"
         validation = self.validate(text)

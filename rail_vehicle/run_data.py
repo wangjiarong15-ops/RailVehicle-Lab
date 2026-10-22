@@ -212,6 +212,8 @@ def import_run_data(
         raise ValueError("数据完整性校验失败，本次导入已回滚。") from None
     except sqlite3.Error:
         raise ValueError("数据库暂时无法保存运行数据，本次导入已回滚，请稍后重试。") from None
+    except OSError:
+        raise ValueError("无法访问数据库文件，本次导入未完成。请检查本地目录权限后重试。") from None
 
 
 def list_import_batches(db_path: Path | str = DB_PATH) -> list[dict[str, Any]]:
