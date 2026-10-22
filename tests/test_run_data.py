@@ -174,6 +174,25 @@ class RunDataTests(unittest.TestCase):
             ["2026-10-08 10:00:00+02:00", "2026-10-08 09:00:00+00:00"],
         )
 
+    def test_legacy_sample_outside_utc_range_remains_visible_for_analysis_error(self):
+        with get_connection(self.db_path) as connection:
+            cursor = connection.execute(
+                "INSERT INTO import_batches (file_name, row_count) VALUES (?, ?)",
+                ("legacy.csv", 1),
+            )
+            batch_id = cursor.lastrowid
+            connection.execute(
+                """INSERT INTO run_samples
+                   (batch_id, vehicle_id, timestamp, speed_kmh, lateral_accel, vertical_accel)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (batch_id, self.vehicle_id, "0001-01-01T00:00:00+14:00", 80, 0, 0),
+            )
+
+        samples = list_batch_samples(self.vehicle_id, batch_id, self.db_path)
+
+        self.assertEqual(len(samples), 1)
+        self.assertEqual(samples[0]["timestamp"], "0001-01-01T00:00:00+14:00")
+
     def test_utf8_bom_and_iso_timestamp_are_supported(self):
         validation = self.validate((f"{HEADER}\n{GOOD_ROW}\n").encode("utf-8-sig"))
         self.assertTrue(validation.is_valid, validation.errors)

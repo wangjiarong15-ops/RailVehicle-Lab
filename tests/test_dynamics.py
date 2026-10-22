@@ -93,6 +93,12 @@ class DynamicsAnalysisTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "有限数值"):
             analyze_run_data(invalid_samples)
 
+    def test_timestamp_utc_conversion_overflow_is_reported_as_invalid(self):
+        invalid = [sample("0001-01-01T00:00:00+14:00", 10, 0, 0)]
+
+        with self.assertRaisesRegex(ValueError, "无效的时间戳"):
+            analyze_run_data(invalid)
+
 
 if __name__ == "__main__":
     unittest.main()

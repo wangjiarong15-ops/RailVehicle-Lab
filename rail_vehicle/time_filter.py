@@ -8,13 +8,16 @@ def _as_utc(value: datetime | str) -> datetime:
     if isinstance(value, str):
         try:
             value = datetime.fromisoformat(value)
-        except ValueError as exc:
+        except (OverflowError, ValueError) as exc:
             raise ValueError("时间范围必须使用有效的 ISO 8601 日期时间。") from exc
     if not isinstance(value, datetime):
         raise ValueError("时间范围必须使用有效的日期时间。")
     if value.tzinfo is None:
         return value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc)
+    try:
+        return value.astimezone(timezone.utc)
+    except OverflowError as exc:
+        raise ValueError("时间范围超出可支持的 UTC 时间范围。") from exc
 
 
 def filter_samples_by_time_range(

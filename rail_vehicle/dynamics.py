@@ -6,10 +6,13 @@ from typing import Any
 
 
 def _time_order(timestamp: str) -> datetime:
-    parsed = datetime.fromisoformat(timestamp)
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+    try:
+        parsed = datetime.fromisoformat(timestamp)
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    except (OverflowError, TypeError, ValueError) as exc:
+        raise ValueError("运行数据中存在无效的时间戳。") from exc
 
 
 def _validated_values(samples: list[dict[str, Any]], field: str) -> list[float]:

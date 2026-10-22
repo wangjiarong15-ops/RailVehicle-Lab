@@ -99,6 +99,14 @@ class AnomalyDetectionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "有限数值"):
             detect_anomalies([sample(1, float("inf"), 0)], 1)
 
+        edge_timestamp = {
+            "timestamp": "0001-01-01T00:00:00+14:00",
+            "lateral_accel": 2,
+            "vertical_accel": 0,
+        }
+        with self.assertRaisesRegex(ValueError, "无效的时间戳"):
+            detect_anomalies([edge_timestamp], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

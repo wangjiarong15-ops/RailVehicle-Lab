@@ -18,10 +18,13 @@ EVENT_DURATION_NOTE = (
 def _parse_timestamp(value: Any) -> datetime:
     if not isinstance(value, str):
         raise ValueError("样本时间戳必须是 ISO 8601 日期时间字符串。")
-    parsed = datetime.fromisoformat(value)
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+    try:
+        parsed = datetime.fromisoformat(value)
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    except (OverflowError, ValueError) as exc:
+        raise ValueError("样本时间戳超出可支持的 UTC 时间范围或格式无效。") from exc
 
 
 def detect_anomalies(

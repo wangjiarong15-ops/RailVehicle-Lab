@@ -357,14 +357,14 @@ def list_batch_samples(
     def chronological_key(sample: dict[str, Any]) -> tuple[int, datetime]:
         try:
             timestamp = datetime.fromisoformat(sample["timestamp"])
-        except (TypeError, ValueError):
+            if timestamp.tzinfo is None:
+                timestamp = timestamp.replace(tzinfo=timezone.utc)
+            else:
+                timestamp = timestamp.astimezone(timezone.utc)
+            return 0, timestamp
+        except (OverflowError, TypeError, ValueError):
             # Keep malformed legacy rows visible to callers, which report the
             # invalid timestamp, while sorting valid records deterministically.
             return 1, datetime.max.replace(tzinfo=timezone.utc)
-        if timestamp.tzinfo is None:
-            timestamp = timestamp.replace(tzinfo=timezone.utc)
-        else:
-            timestamp = timestamp.astimezone(timezone.utc)
-        return 0, timestamp
 
     return sorted(samples, key=chronological_key)

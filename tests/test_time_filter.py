@@ -45,6 +45,15 @@ class TimeRangeFilterTests(unittest.TestCase):
                 [{"timestamp": "bad"}], "2026-10-08T09:30:00", "2026-10-08T09:31:00"
             )
 
+    def test_utc_conversion_overflow_is_reported_as_invalid_input(self):
+        extreme = "0001-01-01T00:00:00+14:00"
+        with self.assertRaisesRegex(ValueError, "UTC 时间范围"):
+            filter_samples_by_time_range(self.samples, extreme, "2026-10-08T09:31:00")
+        with self.assertRaisesRegex(ValueError, "时间戳无效"):
+            filter_samples_by_time_range(
+                [{"timestamp": extreme}], "0001-01-01T00:00:00", "0001-01-02T00:00:00"
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

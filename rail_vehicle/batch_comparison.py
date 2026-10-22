@@ -7,10 +7,13 @@ from rail_vehicle.dynamics import analyze_run_data
 
 
 def _as_utc(timestamp: str) -> datetime:
-    parsed = datetime.fromisoformat(timestamp)
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+    try:
+        parsed = datetime.fromisoformat(timestamp)
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    except (OverflowError, TypeError, ValueError) as exc:
+        raise ValueError("时间戳超出可支持的 UTC 时间范围或格式无效。") from exc
 
 
 def compare_run_batches(batches: list[dict[str, Any]]) -> list[dict[str, Any]]:

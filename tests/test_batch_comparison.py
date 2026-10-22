@@ -112,6 +112,11 @@ class BatchComparisonTests(unittest.TestCase):
         invalid_batches[0]["samples"] = [sample("bad", 1, 0, 0)]
         with self.assertRaisesRegex(ValueError, "时间戳"):
             compare_run_batches(invalid_batches)
+        invalid_batches[0]["samples"] = [
+            sample("0001-01-01T00:00:00+14:00", 1, 0, 0)
+        ]
+        with self.assertRaisesRegex(ValueError, "时间戳"):
+            compare_run_batches(invalid_batches)
 
     def test_incomplete_batch_descriptor_returns_a_clear_validation_error(self):
         for incomplete in (
