@@ -66,7 +66,7 @@ def validate_run_csv(
             [], [], ["CSV 文件必须使用 UTF-8 编码（可包含 BOM）。"], 0
         )
     text = text.lstrip("\ufeff")
-    reader = csv.reader(io.StringIO(text, newline=""))
+    reader = csv.reader(io.StringIO(text, newline=""), strict=True)
     try:
         headers = next(reader, None)
         if not headers:
@@ -173,8 +173,8 @@ def validate_run_csv(
                 errors.append("错误数量较多，已停止显示后续错误。")
                 break
 
-    except csv.Error as exc:
-        errors.append(f"CSV 解析失败：{exc}")
+    except csv.Error:
+        errors.append("CSV 格式无效，请检查引号、列分隔符和字段长度。")
         return CsvValidationResult([], [], errors, 0)
 
     if source_row_count == 0:
