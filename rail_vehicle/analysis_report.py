@@ -173,16 +173,29 @@ def _comparison_chart_drawing(
     plot.y = 22
     plot.width = 425
     plot.height = 154
-    all_times = [point["relative_time_seconds"] for batch in batches for point in batch["series"]]
+    maximum_time = max(
+        (
+            point["relative_time_seconds"]
+            for batch in batches
+            for point in batch["series"]
+        ),
+        default=0,
+    )
     plot.data = [
-        [(point["relative_time_seconds"], float(point[field])) for point in batch["series"]]
+        [
+            (
+                batch["series"][index]["relative_time_seconds"],
+                float(batch["series"][index][field]),
+            )
+            for index in _sampled_indices(len(batch["series"]))
+        ]
         for batch in batches
     ]
     plot.lines[0].strokeColor = palette[0]
     for index in range(1, len(batches)):
         plot.lines[index].strokeColor = palette[index % len(palette)]
     plot.xValueAxis.valueMin = 0
-    plot.xValueAxis.valueMax = max(all_times) or 1
+    plot.xValueAxis.valueMax = maximum_time or 1
     plot.xValueAxis.labelTextFormat = "%.1f"
     plot.yValueAxis.labelTextFormat = "%.4g"
     for axis in (plot.xValueAxis, plot.yValueAxis):
@@ -389,12 +402,7 @@ def _chart_drawing(
     color_list: list[Any],
     font_name: str,
 ) -> Drawing:
-    indices = list(range(len(samples)))
-    if len(indices) > MAX_CHART_POINTS:
-        indices = [
-            round(index * (len(samples) - 1) / (MAX_CHART_POINTS - 1))
-            for index in range(MAX_CHART_POINTS)
-        ]
+    indices = _sampled_indices(len(samples))
     relative_seconds = _sample_time_seconds(samples)
     chart_points = [
         (relative_seconds[index], float(samples[index][field])) for index in indices
@@ -442,6 +450,16 @@ def _chart_drawing(
         )
     )
     return drawing
+
+
+def _sampled_indices(point_count: int) -> list[int]:
+    """Return evenly spaced chart indices while preserving both endpoints."""
+    if point_count <= MAX_CHART_POINTS:
+        return list(range(point_count))
+    return [
+        round(index * (point_count - 1) / (MAX_CHART_POINTS - 1))
+        for index in range(MAX_CHART_POINTS)
+    ]
 
 
 def generate_analysis_report_pdf(report: dict[str, Any]) -> bytes:
@@ -729,6 +747,13 @@ def generate_batch_comparison_report_pdf(report: dict[str, Any]) -> bytes:
         story.append(_table(metric_rows, widths, small_style, header_style))
 
         story.append(_paragraph("二、批次对比曲线", heading_style))
+        if any(len(batch["series"]) > MAX_CHART_POINTS for batch in report["batches"]):
+            story.append(
+                _paragraph(
+                    f"为保持 PDF 曲线清晰度，每个批次最多等距显示 {MAX_CHART_POINTS:,} 个点；对比表格指标仍使用完整批次数据计算。",
+                    small_style,
+                )
+            )
         for field, title, y_label in (
             ("speed_kmh", "速度对比曲线", "速度（km/h）"),
             ("lateral_accel", "横向加速度对比曲线", "横向加速度（m/s²）"),

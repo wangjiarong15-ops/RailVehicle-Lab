@@ -11,6 +11,7 @@ from rail_vehicle.ai.provider import AIAnalysisService, FakeProvider, input_fing
 from rail_vehicle.ai.schemas import validate_output
 from rail_vehicle.ai.ui import selection_fingerprint
 from rail_vehicle.analysis_report import (
+    MAX_CHART_POINTS,
     build_analysis_report_data,
     build_batch_comparison_report_data,
     generate_analysis_report_pdf,
@@ -275,6 +276,53 @@ class AnalysisReportAITests(unittest.TestCase):
         pdf, text = self._generate_and_read_story(generate_batch_comparison_report_pdf, report)
         self.assertIn("证据范围未验证", text)
         self.assertIn("类别、轴向和批次范围未核对", text)
+        self.assertTrue(pdf.startswith(b"%PDF-"))
+
+    def test_large_batch_comparison_pdf_notes_chart_sampling_and_still_generates(self):
+        series = [
+            {
+                "relative_time_seconds": float(index),
+                "speed_kmh": float(index % 100),
+                "lateral_accel": float(index % 5),
+                "vertical_accel": float(index % 3),
+            }
+            for index in range(MAX_CHART_POINTS + 1)
+        ]
+        comparisons = [
+            {
+                "label": "大样本批次 A",
+                "sample_count": len(series),
+                "mean_speed_kmh": 49.5,
+                "maximum_speed_kmh": 99.0,
+                "lateral_accel_rms": 2.0,
+                "vertical_accel_rms": 1.5,
+                "lateral_accel_peak_absolute": 4.0,
+                "vertical_accel_peak_absolute": 2.0,
+                "series": series,
+            },
+            {
+                "label": "大样本批次 B",
+                "sample_count": len(series),
+                "mean_speed_kmh": 50.5,
+                "maximum_speed_kmh": 99.0,
+                "lateral_accel_rms": 2.1,
+                "vertical_accel_rms": 1.6,
+                "lateral_accel_peak_absolute": 4.0,
+                "vertical_accel_peak_absolute": 2.0,
+                "series": series,
+            },
+        ]
+        report = build_batch_comparison_report_data(
+            comparisons,
+            generated_at=datetime(2026, 10, 8, 10, tzinfo=timezone.utc),
+        )
+
+        pdf, text = self._generate_and_read_story(
+            generate_batch_comparison_report_pdf, report
+        )
+
+        self.assertIn("每个批次最多等距显示 1,200 个点", text)
+        self.assertIn("仍使用完整批次数据计算", text)
         self.assertTrue(pdf.startswith(b"%PDF-"))
 
     def test_single_batch_ai_output_cannot_be_attached_to_comparison_report(self):

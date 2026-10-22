@@ -1,10 +1,15 @@
 """Tests for analysis report payloads and PDF generation."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import unittest
 
+from reportlab.lib import colors
+
 from rail_vehicle.analysis_report import (
+    MAX_CHART_POINTS,
     REPORT_TITLE,
+    _chart_drawing,
+    _comparison_chart_drawing,
     build_analysis_report_data,
     generate_analysis_report_pdf,
 )
@@ -109,6 +114,56 @@ class AnalysisReportTests(unittest.TestCase):
         self.assertTrue(output.startswith(b"%PDF-"))
         self.assertIn(b"%%EOF", output[-32:])
         self.assertGreater(len(output), 10_000)
+
+    def test_single_and_comparison_charts_cap_points_and_preserve_endpoints(self):
+        source_count = MAX_CHART_POINTS * 10
+        samples = [
+            {
+                "timestamp": (
+                    datetime(2026, 10, 8, tzinfo=timezone.utc)
+                    + timedelta(seconds=index)
+                ).isoformat(),
+                "speed_kmh": float(index),
+                "lateral_accel": float(index),
+                "vertical_accel": float(-index),
+            }
+            for index in range(source_count)
+        ]
+        single_drawing = _chart_drawing(
+            samples, "speed_kmh", "速度", [colors.blue], "Helvetica"
+        )
+        single_plot = single_drawing.contents[0]
+        self.assertEqual(len(single_plot.data[0]), MAX_CHART_POINTS)
+        self.assertEqual(single_plot.data[0][0], (0.0, 0.0))
+        self.assertEqual(single_plot.data[0][-1], (source_count - 1.0, source_count - 1.0))
+
+        short_series = [
+            {"relative_time_seconds": 0.0, "speed_kmh": 12.0},
+            {"relative_time_seconds": 1.0, "speed_kmh": 13.0},
+        ]
+        comparison_drawing = _comparison_chart_drawing(
+            [
+                {
+                    "batch_ref": "B1",
+                    "series": [
+                        {"relative_time_seconds": float(index), "speed_kmh": float(index)}
+                        for index in range(source_count)
+                    ],
+                },
+                {"batch_ref": "B2", "series": short_series},
+            ],
+            "speed_kmh",
+            "速度",
+            "Helvetica",
+        )
+        comparison_plot = comparison_drawing.contents[0]
+        self.assertEqual(len(comparison_plot.data[0]), MAX_CHART_POINTS)
+        self.assertEqual(len(comparison_plot.data[1]), len(short_series))
+        self.assertEqual(comparison_plot.data[0][0], (0.0, 0.0))
+        self.assertEqual(
+            comparison_plot.data[0][-1],
+            (source_count - 1.0, source_count - 1.0),
+        )
 
 
 if __name__ == "__main__":
