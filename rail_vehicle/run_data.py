@@ -208,7 +208,7 @@ def import_run_data(
                    (batch_id, vehicle_id, timestamp, speed_kmh, lateral_accel, vertical_accel)
                    VALUES (:batch_id, :vehicle_id, :timestamp, :speed_kmh,
                            :lateral_accel, :vertical_accel)""",
-                [{**row, "batch_id": batch_id} for row in validation.rows],
+                ({**row, "batch_id": batch_id} for row in validation.rows),
             )
             return batch_id
     except sqlite3.IntegrityError:

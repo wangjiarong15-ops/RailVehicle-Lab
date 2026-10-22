@@ -78,6 +78,40 @@ class RunDataTests(unittest.TestCase):
         self.assertEqual(sample["lateral_accel"], 0.12)
         self.assertEqual(sample["vertical_accel"], -0.04)
 
+    def test_import_passes_sample_rows_to_sqlite_as_a_lazy_iterator(self):
+        validation = self.validate(
+            f"{HEADER}\n{GOOD_ROW}\n{GOOD_ROW.replace('80', '81')}\n"
+        )
+
+        class FakeCursor:
+            lastrowid = 42
+
+        class Transaction:
+            received_iterator = False
+            inserted_rows = None
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def execute(self, *_args):
+                return FakeCursor()
+
+            def executemany(self, _sql, parameters):
+                self.received_iterator = iter(parameters) is parameters
+                self.inserted_rows = list(parameters)
+
+        transaction = Transaction()
+        with patch("rail_vehicle.run_data.get_connection", return_value=transaction):
+            batch_id = import_run_data("trip.csv", validation, self.db_path)
+
+        self.assertEqual(batch_id, 42)
+        self.assertTrue(transaction.received_iterator)
+        self.assertEqual(len(transaction.inserted_rows), 2)
+        self.assertTrue(all(row["batch_id"] == 42 for row in transaction.inserted_rows))
+
     def test_batch_and_sample_queries_filter_by_vehicle_and_batch(self):
         validation = self.validate(f"{HEADER}\n{GOOD_ROW}")
         first_batch = import_run_data("first.csv", validation, self.db_path)
