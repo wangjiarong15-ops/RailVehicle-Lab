@@ -5,7 +5,7 @@ import io
 import math
 import sqlite3
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -30,16 +30,157 @@ MAX_CSV_SIZE_BYTES = MAX_CSV_SIZE_MB * 1024 * 1024
 
 @dataclass
 class CsvValidationResult:
-    """Parsed rows, raw preview, and any validation errors."""
+    """Validation summary and source needed to stream valid rows on demand."""
 
-    rows: list[dict[str, Any]]
     preview: list[dict[str, Any]]
     errors: list[str]
     source_row_count: int
+    distinct_vehicle_count: int = 0
+    minimum_timestamp: str | None = None
+    maximum_timestamp: str | None = None
+    _source_content: bytes | str | None = field(default=None, repr=False)
+    _vehicle_ids: dict[str, int] = field(default_factory=dict, repr=False)
 
     @property
     def is_valid(self) -> bool:
-        return not self.errors and bool(self.rows)
+        return not self.errors and self.source_row_count > 0 and self._source_content is not None
+
+    @property
+    def rows(self) -> list[dict[str, Any]]:
+        """Materialize validated rows only for callers that explicitly need them."""
+        return list(self.iter_rows())
+
+    def iter_rows(self):
+        """Reparse the validated immutable upload and yield rows incrementally."""
+        if not self.is_valid:
+            return
+        yield from _iter_normalized_csv_rows(self._source_content, self._vehicle_ids)
+
+
+def _make_csv_reader(content: bytes | str):
+    if isinstance(content, bytes):
+        stream = io.TextIOWrapper(io.BytesIO(content), encoding="utf-8-sig", newline="")
+    else:
+        stream = io.StringIO(content.lstrip("\ufeff"), newline="")
+    return csv.reader(stream, strict=True)
+
+
+def _read_headers(reader) -> tuple[list[str] | None, list[str]]:
+    headers = next(reader, None)
+    if not headers:
+        return None, ["CSV 文件为空或缺少表头。"]
+
+    headers = [header.strip() for header in headers]
+    errors: list[str] = []
+    if any(not header for header in headers):
+        errors.append("CSV 表头不能包含空列名。")
+    duplicates = sorted(
+        header for header, count in Counter(headers).items() if count > 1
+    )
+    if duplicates:
+        errors.append(f"CSV 存在重复列名：{', '.join(duplicates)}。")
+    missing = [column for column in REQUIRED_COLUMNS if column not in headers]
+    if missing:
+        errors.append(f"CSV 缺少必需字段：{', '.join(missing)}。")
+    return headers, errors
+
+
+def _normalize_csv_row(
+    values: list[str],
+    headers: list[str],
+    vehicle_ids: dict[str, int],
+) -> tuple[dict[str, Any] | None, dict[str, str], list[str]]:
+    raw = {
+        header: values[index] if index < len(values) else ""
+        for index, header in enumerate(headers)
+    }
+    if len(values) > len(headers):
+        row_errors = ["列数超过表头定义"]
+    else:
+        row_errors = []
+
+    missing_values = [
+        column for column in REQUIRED_COLUMNS if not raw.get(column, "").strip()
+    ]
+    if missing_values:
+        row_errors.append(f"以下字段为空：{', '.join(missing_values)}")
+
+    parsed_timestamp: str | None = None
+    timestamp_text = raw.get("timestamp", "").strip()
+    if timestamp_text:
+        try:
+            if "T" not in timestamp_text and " " not in timestamp_text:
+                raise ValueError("时间戳必须同时包含日期和时间")
+            parsed = datetime.fromisoformat(
+                timestamp_text[:-1] + "+00:00"
+                if timestamp_text.endswith(("Z", "z"))
+                else timestamp_text
+            )
+            parsed_timestamp = parsed.isoformat(sep=" ")
+        except ValueError:
+            row_errors.append(
+                "timestamp 格式无效，请使用 ISO 8601 日期时间（例如 2026-10-08T09:30:00）"
+            )
+
+    vehicle_code = raw.get("vehicle_id", "").strip()
+    vehicle_db_id = vehicle_ids.get(vehicle_code)
+    if vehicle_code and vehicle_db_id is None:
+        row_errors.append(f"车辆编号“{vehicle_code}”不存在")
+
+    number_values: dict[str, float] = {}
+    for column in ("speed_kmh", "lateral_accel", "vertical_accel"):
+        value_text = raw.get(column, "").strip()
+        if not value_text:
+            continue
+        try:
+            value = float(value_text)
+        except ValueError:
+            row_errors.append(f"{column} 必须是数字")
+            continue
+        if not math.isfinite(value):
+            row_errors.append(f"{column} 必须是有限数值")
+            continue
+        number_values[column] = value
+
+    speed = number_values.get("speed_kmh")
+    if speed is not None and not 0 <= speed <= MAX_SPEED_KMH:
+        row_errors.append(f"speed_kmh 必须在 0 至 {MAX_SPEED_KMH:g} 之间")
+    for column in ("lateral_accel", "vertical_accel"):
+        acceleration = number_values.get(column)
+        if acceleration is not None and abs(acceleration) > MAX_ABS_ACCELERATION:
+            row_errors.append(f"{column} 绝对值不能超过 {MAX_ABS_ACCELERATION:g}")
+
+    if row_errors or parsed_timestamp is None or vehicle_db_id is None:
+        return None, raw, row_errors
+    return (
+        {
+            "timestamp": parsed_timestamp,
+            "vehicle_id": vehicle_db_id,
+            "speed_kmh": number_values["speed_kmh"],
+            "lateral_accel": number_values["lateral_accel"],
+            "vertical_accel": number_values["vertical_accel"],
+        },
+        raw,
+        [],
+    )
+
+
+def _iter_normalized_csv_rows(content: bytes | str, vehicle_ids: dict[str, int]):
+    """Yield validated normalized rows; fail closed if the source changed or is malformed."""
+    try:
+        reader = _make_csv_reader(content)
+        headers, header_errors = _read_headers(reader)
+        if header_errors or headers is None:
+            raise ValueError("CSV 内容与校验结果不一致。")
+        for values in reader:
+            if not values or all(not value.strip() for value in values):
+                continue
+            row, _raw, row_errors = _normalize_csv_row(values, headers, vehicle_ids)
+            if row_errors or row is None:
+                raise ValueError("CSV 内容与校验结果不一致。")
+            yield row
+    except (csv.Error, UnicodeDecodeError):
+        raise ValueError("CSV 内容与校验结果不一致。") from None
 
 
 def validate_run_csv(
@@ -53,123 +194,43 @@ def validate_run_csv(
             content_size = len(content.encode("utf-8"))
         except UnicodeEncodeError:
             return CsvValidationResult(
-                [], [], ["CSV 文件必须使用 UTF-8 编码（可包含 BOM）。"], 0
+                [], ["CSV 文件必须使用 UTF-8 编码（可包含 BOM）。"], 0
             )
     if content_size > MAX_CSV_SIZE_BYTES:
         return CsvValidationResult(
-            [], [], [f"CSV 文件超过 {MAX_CSV_SIZE_MB} MB 大小上限。"], 0
+            [], [f"CSV 文件超过 {MAX_CSV_SIZE_MB} MB 大小上限。"], 0
         )
+    vehicle_ids = {vehicle["vehicle_code"]: vehicle["id"] for vehicle in vehicles}
     errors: list[str] = []
-    if isinstance(content, bytes):
-        text_stream = io.TextIOWrapper(
-            io.BytesIO(content), encoding="utf-8-sig", newline=""
-        )
-    else:
-        text_stream = io.StringIO(content.lstrip("\ufeff"), newline="")
-    reader = csv.reader(text_stream, strict=True)
+    preview: list[dict[str, str]] = []
+    source_row_count = 0
+    distinct_vehicle_ids: set[int] = set()
+    minimum_timestamp: str | None = None
+    maximum_timestamp: str | None = None
     try:
-        headers = next(reader, None)
-        if not headers:
-            return CsvValidationResult([], [], ["CSV 文件为空或缺少表头。"], 0)
-        headers = [header.strip() for header in headers]
-        if any(not header for header in headers):
-            errors.append("CSV 表头不能包含空列名。")
-        duplicates = sorted(
-            header for header, count in Counter(headers).items() if count > 1
-        )
-        if duplicates:
-            errors.append(f"CSV 存在重复列名：{', '.join(duplicates)}。")
-        missing = [column for column in REQUIRED_COLUMNS if column not in headers]
-        if missing:
-            errors.append(f"CSV 缺少必需字段：{', '.join(missing)}。")
-        if errors:
-            return CsvValidationResult([], [], errors, 0)
-
-        vehicle_ids = {
-            vehicle["vehicle_code"]: vehicle["id"]
-            for vehicle in vehicles
-        }
-        normalized_rows: list[dict[str, Any]] = []
-        preview: list[dict[str, Any]] = []
-        source_row_count = 0
+        reader = _make_csv_reader(content)
+        headers, header_errors = _read_headers(reader)
+        if headers is None or header_errors:
+            return CsvValidationResult([], header_errors, 0)
         for row_number, values in enumerate(reader, start=2):
             if not values or all(not value.strip() for value in values):
                 continue
             source_row_count += 1
-            raw = {
-                header: values[index] if index < len(values) else ""
-                for index, header in enumerate(headers)
-            }
+            normalized_row, raw, row_errors = _normalize_csv_row(
+                values, headers, vehicle_ids
+            )
             if len(preview) < PREVIEW_LIMIT:
                 preview.append(raw)
-
-            row_errors: list[str] = []
-            if len(values) > len(headers):
-                row_errors.append("列数超过表头定义")
-            missing_values = [
-                column for column in REQUIRED_COLUMNS if not raw.get(column, "").strip()
-            ]
-            if missing_values:
-                row_errors.append(f"以下字段为空：{', '.join(missing_values)}")
-
-            timestamp_text = raw.get("timestamp", "").strip()
-            parsed_timestamp: str | None = None
-            if timestamp_text:
-                try:
-                    if "T" not in timestamp_text and " " not in timestamp_text:
-                        raise ValueError("时间戳必须同时包含日期和时间")
-                    parsed = datetime.fromisoformat(
-                        timestamp_text[:-1] + "+00:00"
-                        if timestamp_text.endswith(("Z", "z"))
-                        else timestamp_text
-                    )
-                    parsed_timestamp = parsed.isoformat(sep=" ")
-                except ValueError:
-                    row_errors.append(
-                        "timestamp 格式无效，请使用 ISO 8601 日期时间（例如 2026-10-08T09:30:00）"
-                    )
-
-            vehicle_code = raw.get("vehicle_id", "").strip()
-            vehicle_db_id = vehicle_ids.get(vehicle_code)
-            if vehicle_code and vehicle_db_id is None:
-                row_errors.append(f"车辆编号“{vehicle_code}”不存在")
-
-            number_values: dict[str, float] = {}
-            for column in ("speed_kmh", "lateral_accel", "vertical_accel"):
-                value_text = raw.get(column, "").strip()
-                if not value_text:
-                    continue
-                try:
-                    value = float(value_text)
-                except ValueError:
-                    row_errors.append(f"{column} 必须是数字")
-                    continue
-                if not math.isfinite(value):
-                    row_errors.append(f"{column} 必须是有限数值")
-                    continue
-                number_values[column] = value
-
-            speed = number_values.get("speed_kmh")
-            if speed is not None and not 0 <= speed <= MAX_SPEED_KMH:
-                row_errors.append(f"speed_kmh 必须在 0 至 {MAX_SPEED_KMH:g} 之间")
-            for column in ("lateral_accel", "vertical_accel"):
-                acceleration = number_values.get(column)
-                if acceleration is not None and abs(acceleration) > MAX_ABS_ACCELERATION:
-                    row_errors.append(
-                        f"{column} 绝对值不能超过 {MAX_ABS_ACCELERATION:g}"
-                    )
-
             if row_errors:
                 errors.extend(f"第 {row_number} 行：{message}。" for message in row_errors)
-            elif parsed_timestamp is not None and vehicle_db_id is not None:
-                normalized_rows.append(
-                    {
-                        "timestamp": parsed_timestamp,
-                        "vehicle_id": vehicle_db_id,
-                        "speed_kmh": number_values["speed_kmh"],
-                        "lateral_accel": number_values["lateral_accel"],
-                        "vertical_accel": number_values["vertical_accel"],
-                    }
+            elif normalized_row is not None:
+                distinct_vehicle_ids.add(normalized_row["vehicle_id"])
+                timestamp = normalized_row["timestamp"]
+                minimum_timestamp = (
+                    timestamp if minimum_timestamp is None else min(minimum_timestamp, timestamp)
+                )
+                maximum_timestamp = (
+                    timestamp if maximum_timestamp is None else max(maximum_timestamp, timestamp)
                 )
             if len(errors) >= ERROR_LIMIT:
                 errors.append("错误数量较多，已停止显示后续错误。")
@@ -177,15 +238,25 @@ def validate_run_csv(
 
     except UnicodeDecodeError:
         return CsvValidationResult(
-            [], [], ["CSV 文件必须使用 UTF-8 编码（可包含 BOM）。"], 0
+            [], ["CSV 文件必须使用 UTF-8 编码（可包含 BOM）。"], 0
         )
     except csv.Error:
-        errors.append("CSV 格式无效，请检查引号、列分隔符和字段长度。")
-        return CsvValidationResult([], [], errors, 0)
+        return CsvValidationResult(
+            [], ["CSV 格式无效，请检查引号、列分隔符和字段长度。"], 0
+        )
 
     if source_row_count == 0:
         errors.append("CSV 中没有可导入的数据行。")
-    return CsvValidationResult(normalized_rows, preview, errors, source_row_count)
+    return CsvValidationResult(
+        preview=preview,
+        errors=errors,
+        source_row_count=source_row_count,
+        distinct_vehicle_count=len(distinct_vehicle_ids),
+        minimum_timestamp=minimum_timestamp,
+        maximum_timestamp=maximum_timestamp,
+        _source_content=content,
+        _vehicle_ids=vehicle_ids,
+    )
 
 
 def import_run_data(
@@ -203,7 +274,7 @@ def import_run_data(
         with get_connection(db_path) as connection:
             cursor = connection.execute(
                 "INSERT INTO import_batches (file_name, row_count) VALUES (?, ?)",
-                (Path(file_name).name, len(validation.rows)),
+                (Path(file_name).name, validation.source_row_count),
             )
             batch_id = int(cursor.lastrowid)
             connection.executemany(
@@ -211,9 +282,11 @@ def import_run_data(
                    (batch_id, vehicle_id, timestamp, speed_kmh, lateral_accel, vertical_accel)
                    VALUES (:batch_id, :vehicle_id, :timestamp, :speed_kmh,
                            :lateral_accel, :vertical_accel)""",
-                ({**row, "batch_id": batch_id} for row in validation.rows),
+                ({**row, "batch_id": batch_id} for row in validation.iter_rows()),
             )
             return batch_id
+    except ValueError:
+        raise ValueError("CSV 内容在导入阶段无法重新校验，本次导入已回滚。") from None
     except sqlite3.IntegrityError:
         raise ValueError("数据完整性校验失败，本次导入已回滚。") from None
     except sqlite3.Error:

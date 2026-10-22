@@ -150,13 +150,14 @@ def _render_import() -> None:
             for error in validation.errors:
                 st.write(f"- {error}")
         else:
-            distinct_vehicles = len({row["vehicle_id"] for row in validation.rows})
-            timestamps = [row["timestamp"] for row in validation.rows]
             metric_columns = st.columns(3)
-            metric_columns[0].metric("数据行数", f"{len(validation.rows):,}")
-            metric_columns[1].metric("涉及车辆", distinct_vehicles)
+            metric_columns[0].metric("数据行数", f"{validation.source_row_count:,}")
+            metric_columns[1].metric(
+                "涉及车辆", validation.distinct_vehicle_count
+            )
             metric_columns[2].metric(
-                "时间范围", f"{min(timestamps)} — {max(timestamps)}"
+                "时间范围",
+                f"{validation.minimum_timestamp} — {validation.maximum_timestamp}",
             )
             st.success("格式检查通过，可以导入。")
             if st.button("导入到 SQLite", type="primary"):
@@ -166,7 +167,7 @@ def _render_import() -> None:
                     st.error(str(exc))
                 else:
                     st.success(
-                        f"导入成功：批次 #{batch_id}，共保存 {len(validation.rows):,} 行。"
+                        f"导入成功：批次 #{batch_id}，共保存 {validation.source_row_count:,} 行。"
                     )
 
     st.divider()

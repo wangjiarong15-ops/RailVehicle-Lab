@@ -78,6 +78,23 @@ class RunDataTests(unittest.TestCase):
         self.assertEqual(sample["lateral_accel"], 0.12)
         self.assertEqual(sample["vertical_accel"], -0.04)
 
+    def test_validation_summary_matches_rows_without_eagerly_storing_them(self):
+        text = (
+            f"{HEADER}\n"
+            "2026-10-08T09:30:00,RV-001,80,0.12,-0.04\n"
+            "2026-10-08T09:30:02,RV-001,81,0.15,-0.02\n"
+        )
+
+        validation = self.validate(text)
+
+        self.assertTrue(validation.is_valid)
+        self.assertEqual(validation.source_row_count, 2)
+        self.assertEqual(validation.distinct_vehicle_count, 1)
+        self.assertEqual(validation.minimum_timestamp, "2026-10-08 09:30:00")
+        self.assertEqual(validation.maximum_timestamp, "2026-10-08 09:30:02")
+        self.assertEqual(len(validation.preview), 2)
+        self.assertNotIn("rows", validation.__dict__)
+
     def test_import_passes_sample_rows_to_sqlite_as_a_lazy_iterator(self):
         validation = self.validate(
             f"{HEADER}\n{GOOD_ROW}\n{GOOD_ROW.replace('80', '81')}\n"
@@ -232,7 +249,10 @@ class RunDataTests(unittest.TestCase):
 
     def test_write_failure_rolls_back_batch_and_all_samples(self):
         validation = self.validate(f"{HEADER}\n{GOOD_ROW}")
-        validation.rows[0]["vehicle_id"] = 99999
+        with get_connection(self.db_path) as connection:
+            connection.execute(
+                "DELETE FROM vehicles WHERE id = ?", (self.vehicle_id,)
+            )
         with self.assertRaisesRegex(ValueError, "已回滚"):
             import_run_data("trip.csv", validation, self.db_path)
         self.assertEqual(self.counts(), (0, 0))
