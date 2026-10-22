@@ -1,6 +1,7 @@
 """PDF AI attachment tests; provider calls are represented by local validated data."""
 
 from datetime import datetime, timezone
+import copy
 import unittest
 from unittest.mock import patch
 
@@ -197,23 +198,28 @@ class AnalysisReportAITests(unittest.TestCase):
         self.assertTrue(pdf.startswith(b"%PDF-"))
 
     def test_legacy_missing_or_null_scope_is_explicitly_marked_unverified_in_pdf(self):
-        for scope_state in ("missing", "null"):
-            with self.subTest(scope_state=scope_state):
-                legacy_result = dict(self.single_result)
-                legacy_result.pop("scope_validation", None)
-                legacy_result["analysis"] = dict(self.single_result["analysis"])
-                legacy_result["analysis"]["summary"] = dict(self.single_result["analysis"]["summary"])
-                if scope_state == "missing":
-                    legacy_result["analysis"]["summary"].pop("claim_scope")
-                else:
-                    legacy_result["analysis"]["summary"]["claim_scope"] = None
+        categories = ("summary", "observations", "possible_causes", "further_checks", "limitations")
+        for category in categories:
+            for scope_state in ("missing", "null"):
+                with self.subTest(category=category, scope_state=scope_state):
+                    legacy_result = copy.deepcopy(self.single_result)
+                    legacy_result.pop("scope_validation", None)
+                    target = (
+                        legacy_result["analysis"][category]
+                        if category == "summary"
+                        else legacy_result["analysis"][category][0]
+                    )
+                    if scope_state == "missing":
+                        target.pop("claim_scope")
+                    else:
+                        target["claim_scope"] = None
 
-                report = self._single_report(legacy_result, self.single_context)
-                self.assertEqual(report["ai_section"]["scope_validation"], "unverified")
-                pdf, text = self._generate_and_read_story(generate_analysis_report_pdf, report)
-                self.assertIn("证据范围未验证", text)
-                self.assertIn("类别、轴向和批次范围未核对", text)
-                self.assertTrue(pdf.startswith(b"%PDF-"))
+                    report = self._single_report(legacy_result, self.single_context)
+                    self.assertEqual(report["ai_section"]["scope_validation"], "unverified")
+                    pdf, text = self._generate_and_read_story(generate_analysis_report_pdf, report)
+                    self.assertIn("证据范围未验证", text)
+                    self.assertIn("类别、轴向和批次范围未核对", text)
+                    self.assertTrue(pdf.startswith(b"%PDF-"))
 
     def test_new_verified_result_with_missing_scope_is_omitted_from_pdf(self):
         invalid_result = dict(self.single_result)

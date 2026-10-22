@@ -204,19 +204,22 @@ class AIUIIntegrationTests(unittest.TestCase):
 
     def test_legacy_missing_or_null_scope_is_rendered_with_unverified_warning(self):
         context = single_payload()
-        for scope_state in ("missing", "null"):
-            with self.subTest(scope_state=scope_state):
-                output = valid_response(context)
-                if scope_state == "missing":
-                    output["summary"].pop("claim_scope")
-                else:
-                    output["summary"]["claim_scope"] = None
-                recorder = RenderRecorder()
-                legacy_result = {"analysis": output, "input_fingerprint": input_fingerprint(context)}
-                self.assertTrue(render_validated_result(legacy_result, context, recorder))
-                rendered = "\n".join(str(value) for _, value in recorder.calls)
-                self.assertIn("证据范围未验证", rendered)
-                self.assertIn("类别、轴向和批次范围未核对", rendered)
+        categories = ("summary", "observations", "possible_causes", "further_checks", "limitations")
+        for category in categories:
+            for scope_state in ("missing", "null"):
+                with self.subTest(category=category, scope_state=scope_state):
+                    output = valid_response(context)
+                    target = output[category] if category == "summary" else output[category][0]
+                    if scope_state == "missing":
+                        target.pop("claim_scope")
+                    else:
+                        target["claim_scope"] = None
+                    recorder = RenderRecorder()
+                    legacy_result = {"analysis": output, "input_fingerprint": input_fingerprint(context)}
+                    self.assertTrue(render_validated_result(legacy_result, context, recorder))
+                    rendered = "\n".join(str(value) for _, value in recorder.calls)
+                    self.assertIn("证据范围未验证", rendered)
+                    self.assertIn("类别、轴向和批次范围未核对", rendered)
 
     def test_new_result_marked_verified_cannot_use_legacy_missing_scope(self):
         context = single_payload()
