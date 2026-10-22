@@ -255,7 +255,7 @@ def _render_dynamics_analysis() -> None:
 
     try:
         timestamps = [as_utc(sample["timestamp"]) for sample in samples]
-    except (KeyError, TypeError, ValueError):
+    except (KeyError, OverflowError, TypeError, ValueError):
         clear_result(st.session_state, "ai_single_batch_result")
         st.error("所选批次包含无效时间戳，无法进行时间筛选。")
         return
