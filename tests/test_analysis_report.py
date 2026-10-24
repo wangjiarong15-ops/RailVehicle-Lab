@@ -84,6 +84,10 @@ class AnalysisReportTests(unittest.TestCase):
         self.assertEqual(report["vertical_accel"]["peak_absolute"], 3)
         self.assertEqual(report["data_range"]["start"], "2026-10-08 09:30:01")
         self.assertEqual(report["data_range"]["end"], "2026-10-08 09:30:02")
+        self.assertEqual(report["sampling_summary"]["duplicate_timestamp_rows"], 0)
+        self.assertEqual(report["sampling_summary"]["interval_min_seconds"], 1)
+        self.assertEqual(report["sampling_summary"]["interval_median_seconds"], 1)
+        self.assertEqual(report["sampling_summary"]["interval_max_seconds"], 1)
 
     def test_payload_contains_threshold_proportions_and_anomaly_events(self):
         report = self.report
@@ -134,6 +138,36 @@ class AnalysisReportTests(unittest.TestCase):
         ]
         self.assertTrue(
             any("不代表空档内持续观测到异常" in text for text in paragraph_texts)
+        )
+
+    def test_pdf_story_includes_sampling_summary_from_filtered_samples(self):
+        with patch(
+            "rail_vehicle.analysis_report.SimpleDocTemplate.build", autospec=True
+        ) as build:
+            def capture_story(document, story, **_kwargs):
+                document.filename.write(b"%PDF-test")
+
+            build.side_effect = capture_story
+            generate_analysis_report_pdf(self.report)
+
+        story = build.call_args.args[1]
+        paragraphs = [
+            item.getPlainText()
+            for item in story
+            if callable(getattr(item, "getPlainText", None))
+        ]
+        tables = [item for item in story if hasattr(item, "_cellvalues")]
+        self.assertTrue(any("五、采样时间概览" in text for text in paragraphs))
+        self.assertTrue(any("仅描述采样分布" in text for text in paragraphs))
+        table_texts = [
+            cell.getPlainText()
+            for table in tables
+            for row in table._cellvalues
+            for cell in row
+            if callable(getattr(cell, "getPlainText", None))
+        ]
+        self.assertTrue(
+            "重复时间戳记录" in table_texts and "1.000" in table_texts
         )
 
     def test_single_and_comparison_charts_cap_points_and_preserve_endpoints(self):

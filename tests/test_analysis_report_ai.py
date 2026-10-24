@@ -248,11 +248,65 @@ class AnalysisReportAITests(unittest.TestCase):
             generated_at=datetime(2026, 10, 8, 10, tzinfo=timezone.utc),
         )
         self.assertEqual(report["ai_section"]["analysis_type"], "batch_comparison")
-        pdf, text = self._generate_and_read_story(generate_batch_comparison_report_pdf, report)
+        self.assertEqual(
+            report["batches"][0]["sampling_summary"]["interval_min_seconds"], 1
+        )
+        self.assertEqual(
+            report["batches"][1]["sampling_summary"]["interval_min_seconds"], 2
+        )
+        captured_rows = []
+        real_table = report_module._table
+
+        def capture_table(rows, *args, **kwargs):
+            captured_rows.extend(rows)
+            return real_table(rows, *args, **kwargs)
+
+        with patch.object(report_module, "_table", new=capture_table):
+            pdf, text = self._generate_and_read_story(
+                generate_batch_comparison_report_pdf, report
+            )
         self.assertIn("批次对比报告", text)
+        self.assertIn("二、批次采样时间概览", text)
+        self.assertIn("本概览仅描述采样分布", text)
+        self.assertIn(["最小间隔（秒）", "1.000", "2.000"], captured_rows)
+        self.assertIn(["重复时间戳记录", "0", "0"], captured_rows)
         self.assertIn("当前分析显示已计算的速度统计。", text)
         self.assertIn("batch.B1.speed.mean", text)
         self.assertTrue(pdf.startswith(b"%PDF-"))
+
+    def test_batch_comparison_acceleration_units_use_font_safe_notation(self):
+        comparisons = compare_run_batches([
+            {"batch_id": 1, "label": "A", "samples": self.samples},
+            {"batch_id": 2, "label": "B", "samples": self.samples},
+        ])
+        report = build_batch_comparison_report_data(comparisons)
+
+        captured_rows = []
+        captured_axis_labels = []
+        real_table = report_module._table
+        real_chart = report_module._comparison_chart_drawing
+
+        def capture_table(rows, *args, **kwargs):
+            captured_rows.extend(rows)
+            return real_table(rows, *args, **kwargs)
+
+        def capture_chart(batches, field, y_label, font_name):
+            captured_axis_labels.append(y_label)
+            return real_chart(batches, field, y_label, font_name)
+
+        with (
+            patch.object(report_module, "_table", new=capture_table),
+            patch.object(report_module, "_comparison_chart_drawing", new=capture_chart),
+        ):
+            pdf = generate_batch_comparison_report_pdf(report)
+
+        self.assertTrue(pdf.startswith(b"%PDF-"))
+        table_text = repr(captured_rows)
+        axis_text = repr(captured_axis_labels)
+        self.assertIn("m/s^2", table_text)
+        self.assertIn("m/s^2", axis_text)
+        self.assertNotIn("m/s²", table_text)
+        self.assertNotIn("m/s²", axis_text)
 
     def test_legacy_scope_is_marked_unverified_in_batch_comparison_pdf(self):
         comparisons = compare_run_batches([

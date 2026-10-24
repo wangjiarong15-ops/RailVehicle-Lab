@@ -30,6 +30,7 @@ from reportlab.lib.colors import HexColor
 from rail_vehicle.ai.provider import input_fingerprint
 from rail_vehicle.ai.schemas import AIContractError, has_unverified_claim_scopes, validate_output
 from rail_vehicle.anomaly import EVENT_DURATION_NOTE
+from rail_vehicle.data_quality import analyze_sampling_times
 
 
 REPORT_TITLE = "轨道车辆运行与动力学分析报告"
@@ -270,6 +271,7 @@ def build_analysis_report_data(
         "lateral_accel": dict(analysis["lateral_accel"]),
         "vertical_accel": dict(analysis["vertical_accel"]),
         "threshold": dict(analysis["threshold"]),
+        "sampling_summary": analyze_sampling_times(samples),
         "anomaly_events": [dict(event) for event in anomalies["events"]],
         "samples": [dict(sample) for sample in samples],
         "ai_section": _validated_ai_section(
@@ -301,6 +303,7 @@ def build_batch_comparison_report_data(
             "batch_ref": f"B{index}",
             "label": str(comparison.get("label") or f"批次 {index}"),
             **{key: comparison[key] for key in metric_keys},
+            "sampling_summary": dict(comparison.get("sampling_summary") or {}),
             "series": [dict(point) for point in comparison["series"]],
         })
     return {
@@ -621,7 +624,34 @@ def generate_analysis_report_pdf(report: dict[str, Any]) -> bytes:
             )
         )
 
-        story.append(_paragraph("五、运行曲线", heading_style))
+        sampling = report["sampling_summary"]
+        def interval_text(key: str) -> str:
+            value = sampling[key]
+            return f"{value:.3f}" if value is not None else "—"
+
+        story.append(_paragraph("五、采样时间概览", heading_style))
+        story.append(
+            _table(
+                [
+                    ["采样时间指标", "结果"],
+                    ["重复时间戳记录", sampling["duplicate_timestamp_rows"]],
+                    ["最小间隔（秒）", interval_text("interval_min_seconds")],
+                    ["中位间隔（秒）", interval_text("interval_median_seconds")],
+                    ["最大间隔（秒）", interval_text("interval_max_seconds")],
+                ],
+                [content_width * 0.5, content_width * 0.5],
+                body_style, header_style,
+            )
+        )
+        story.append(
+            _paragraph(
+                "重复数表示共享同一 UTC 时刻的额外记录；间隔按筛选范围内排序并去重后的相邻时刻计算。"
+                "本概览仅描述采样分布，不判断数据合格与否。",
+                small_style,
+            )
+        )
+
+        story.append(_paragraph("六、运行曲线", heading_style))
         samples = report["samples"]
         if len(samples) > MAX_CHART_POINTS:
             story.append(
@@ -657,7 +687,7 @@ def generate_analysis_report_pdf(report: dict[str, Any]) -> bytes:
             small_style,
             header_style,
             content_width,
-            "六",
+            "七",
         )
 
         def footer(canvas: Any, doc: Any) -> None:
@@ -732,10 +762,10 @@ def generate_batch_comparison_report_pdf(report: dict[str, Any]) -> bytes:
             ("sample_count", "数据点数量"),
             ("mean_speed_kmh", "平均速度（km/h）"),
             ("maximum_speed_kmh", "最大速度（km/h）"),
-            ("lateral_accel_rms", "横向加速度 RMS（m/s²）"),
-            ("vertical_accel_rms", "垂向加速度 RMS（m/s²）"),
-            ("lateral_accel_peak_absolute", "横向加速度绝对峰值（m/s²）"),
-            ("vertical_accel_peak_absolute", "垂向加速度绝对峰值（m/s²）"),
+            ("lateral_accel_rms", "横向加速度 RMS（m/s^2）"),
+            ("vertical_accel_rms", "垂向加速度 RMS（m/s^2）"),
+            ("lateral_accel_peak_absolute", "横向加速度绝对峰值（m/s^2）"),
+            ("vertical_accel_peak_absolute", "垂向加速度绝对峰值（m/s^2）"),
         )
         story.append(_paragraph("一、批次对比指标", heading_style))
         metric_rows = [["指标", *[batch["batch_ref"] for batch in report["batches"]]]]
@@ -748,7 +778,34 @@ def generate_batch_comparison_report_pdf(report: dict[str, Any]) -> bytes:
         widths = [content_width * 0.34] + [content_width * 0.66 / len(report["batches"])] * len(report["batches"])
         story.append(_table(metric_rows, widths, small_style, header_style))
 
-        story.append(_paragraph("二、批次对比曲线", heading_style))
+        story.append(_paragraph("二、批次采样时间概览", heading_style))
+        sampling_rows = [["采样时间指标", *[batch["batch_ref"] for batch in report["batches"]]]]
+        for key, label in (
+            ("duplicate_timestamp_rows", "重复时间戳记录"),
+            ("interval_min_seconds", "最小间隔（秒）"),
+            ("interval_median_seconds", "中位间隔（秒）"),
+            ("interval_max_seconds", "最大间隔（秒）"),
+        ):
+            row: list[Any] = [label]
+            for batch in report["batches"]:
+                value = batch["sampling_summary"].get(key)
+                if value is None:
+                    row.append("未提供")
+                elif key == "duplicate_timestamp_rows":
+                    row.append(f"{value:,}")
+                else:
+                    row.append(f"{value:.3f}")
+            sampling_rows.append(row)
+        story.append(_table(sampling_rows, widths, small_style, header_style))
+        story.append(
+            _paragraph(
+                "重复数表示共享同一 UTC 时刻的额外记录；间隔按各批次内部排序并去重后的相邻时刻计算。"
+                "本概览仅描述采样分布，不判断数据合格与否。",
+                small_style,
+            )
+        )
+
+        story.append(_paragraph("三、批次对比曲线", heading_style))
         if any(len(batch["series"]) > MAX_CHART_POINTS for batch in report["batches"]):
             story.append(
                 _paragraph(
@@ -758,8 +815,8 @@ def generate_batch_comparison_report_pdf(report: dict[str, Any]) -> bytes:
             )
         for field, title, y_label in (
             ("speed_kmh", "速度对比曲线", "速度（km/h）"),
-            ("lateral_accel", "横向加速度对比曲线", "横向加速度（m/s²）"),
-            ("vertical_accel", "垂向加速度对比曲线", "垂向加速度（m/s²）"),
+            ("lateral_accel", "横向加速度对比曲线", "横向加速度（m/s^2）"),
+            ("vertical_accel", "垂向加速度对比曲线", "垂向加速度（m/s^2）"),
         ):
             chart = _comparison_chart_drawing(report["batches"], field, y_label, regular_font)
             story.append(KeepTogether([_paragraph(title, label_style), chart]))
@@ -773,7 +830,7 @@ def generate_batch_comparison_report_pdf(report: dict[str, Any]) -> bytes:
             small_style,
             header_style,
             content_width,
-            "三",
+            "四",
         )
 
         def footer(canvas: Any, doc: Any) -> None:

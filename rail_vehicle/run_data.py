@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from rail_vehicle.data_quality import summarize_timestamps
 from rail_vehicle.db import DB_PATH, get_connection
 
 
@@ -38,6 +39,7 @@ class CsvValidationResult:
     distinct_vehicle_count: int = 0
     minimum_timestamp: str | None = None
     maximum_timestamp: str | None = None
+    sampling_summary: dict[str, Any] | None = None
     _source_content: bytes | str | None = field(default=None, repr=False)
     _vehicle_ids: dict[str, int] = field(default_factory=dict, repr=False)
 
@@ -215,6 +217,7 @@ def validate_run_csv(
     maximum_timestamp: str | None = None
     minimum_timestamp_order: datetime | None = None
     maximum_timestamp_order: datetime | None = None
+    sampling_timestamps: list[datetime] = []
     try:
         reader = _make_csv_reader(content)
         headers, header_errors = _read_headers(reader)
@@ -238,6 +241,7 @@ def validate_run_csv(
                 if timestamp_order.tzinfo is None:
                     timestamp_order = timestamp_order.replace(tzinfo=timezone.utc)
                 timestamp_order = timestamp_order.astimezone(timezone.utc)
+                sampling_timestamps.append(timestamp_order)
                 if (
                     minimum_timestamp_order is None
                     or timestamp_order < minimum_timestamp_order
@@ -272,6 +276,9 @@ def validate_run_csv(
         distinct_vehicle_count=len(distinct_vehicle_ids),
         minimum_timestamp=minimum_timestamp,
         maximum_timestamp=maximum_timestamp,
+        sampling_summary=(
+            summarize_timestamps(sampling_timestamps) if not errors else None
+        ),
         _source_content=content,
         _vehicle_ids=vehicle_ids,
     )

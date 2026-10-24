@@ -28,6 +28,7 @@ from rail_vehicle.ai.ui import (
 )
 from rail_vehicle.ai.provider import input_fingerprint
 from rail_vehicle.batch_comparison import compare_run_batches
+from rail_vehicle.data_quality import analyze_sampling_times
 from rail_vehicle.dynamics import analyze_run_data
 from rail_vehicle.anomaly import EVENT_DURATION_NOTE, detect_anomalies
 from rail_vehicle.time_filter import filter_samples_by_time_range
@@ -159,6 +160,29 @@ def _render_import() -> None:
                 "时间范围",
                 f"{validation.minimum_timestamp} — {validation.maximum_timestamp}",
             )
+            sampling_summary = validation.sampling_summary
+            if sampling_summary is None:
+                st.info("当前文件的时间采样概览暂不可用，不影响 CSV 导入。")
+            else:
+                st.subheader("采样时间概览（待导入数据）")
+                st.caption(
+                    "重复数表示共享同一 UTC 时刻的额外记录；间隔按排序并去重后的相邻时刻计算。"
+                    "此概览只描述采样分布，不影响通过校验的文件导入。"
+                )
+                sampling_columns = st.columns(4)
+                sampling_columns[0].metric(
+                    "重复时间戳记录",
+                    f"{sampling_summary['duplicate_timestamp_rows']:,}",
+                )
+                for column, label, key in (
+                    (sampling_columns[1], "最小间隔（秒）", "interval_min_seconds"),
+                    (sampling_columns[2], "中位间隔（秒）", "interval_median_seconds"),
+                    (sampling_columns[3], "最大间隔（秒）", "interval_max_seconds"),
+                ):
+                    value = sampling_summary[key]
+                    column.metric(
+                        label, f"{value:.3f}" if value is not None else "—"
+                    )
             st.success("格式检查通过，可以导入。")
             if st.button("导入到 SQLite", type="primary"):
                 try:
@@ -331,11 +355,35 @@ def _render_dynamics_analysis() -> None:
         return
     anomaly_result = detect_anomalies(result["samples"], threshold)
 
+    try:
+        sampling_summary = analyze_sampling_times(filtered_samples)
+    except ValueError as exc:
+        clear_result(st.session_state, "ai_single_batch_result")
+        st.error(str(exc))
+        return
+
     st.markdown(f"**分析样本数：** {result['sample_count']:,} 条")
     st.markdown(
         "**计算口径：** 最大值/最小值为样本极值；平均值为算术平均；"
         "RMS = √(Σx² / n)。加速度峰值取绝对值最大点，同时显示该点的有符号原始值和时间。"
     )
+
+    st.subheader("采样时间概览")
+    st.caption(
+        "以下统计仅描述当前时间筛选范围内的采样分布。重复数表示共享同一 UTC 时刻的额外记录；"
+        "间隔按排序并去重后的相邻时间计算，不据此判断数据合格与否。"
+    )
+    sampling_columns = st.columns(4)
+    sampling_columns[0].metric(
+        "重复时间戳记录", f"{sampling_summary['duplicate_timestamp_rows']:,}"
+    )
+    for column, label, key in (
+        (sampling_columns[1], "最小间隔（秒）", "interval_min_seconds"),
+        (sampling_columns[2], "中位间隔（秒）", "interval_median_seconds"),
+        (sampling_columns[3], "最大间隔（秒）", "interval_max_seconds"),
+    ):
+        value = sampling_summary[key]
+        column.metric(label, f"{value:.3f}" if value is not None else "—")
 
     st.subheader("速度统计")
     speed_columns = st.columns(3)
@@ -650,6 +698,37 @@ def _render_batch_comparison() -> None:
                 "垂向加速度 RMS（m/s²）": f"{result['vertical_accel_rms']:.4f}",
                 "横向加速度绝对峰值（m/s²）": f"{result['lateral_accel_peak_absolute']:.4f}",
                 "垂向加速度绝对峰值（m/s²）": f"{result['vertical_accel_peak_absolute']:.4f}",
+            }
+            for result in comparisons
+        ],
+        hide_index=True,
+        use_container_width=True,
+    )
+
+    st.subheader("批次采样时间概览")
+    st.caption(
+        "间隔按各批次内部排序并去重后的相邻 UTC 时刻计算；这些指标仅描述采样分布，不判断数据是否合格。"
+    )
+    st.dataframe(
+        [
+            {
+                "运行批次": result["label"],
+                "重复时间戳记录": result["sampling_summary"]["duplicate_timestamp_rows"],
+                "最小间隔（秒）": (
+                    f"{result['sampling_summary']['interval_min_seconds']:.3f}"
+                    if result["sampling_summary"]["interval_min_seconds"] is not None
+                    else "—"
+                ),
+                "中位间隔（秒）": (
+                    f"{result['sampling_summary']['interval_median_seconds']:.3f}"
+                    if result["sampling_summary"]["interval_median_seconds"] is not None
+                    else "—"
+                ),
+                "最大间隔（秒）": (
+                    f"{result['sampling_summary']['interval_max_seconds']:.3f}"
+                    if result["sampling_summary"]["interval_max_seconds"] is not None
+                    else "—"
+                ),
             }
             for result in comparisons
         ],

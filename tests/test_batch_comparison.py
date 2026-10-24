@@ -59,6 +59,39 @@ class BatchComparisonTests(unittest.TestCase):
             )
         self.assertEqual(comparisons[0]["series"][0]["speed_kmh"], 10)
 
+    def test_sampling_summary_is_calculated_per_batch(self):
+        batches = [
+            {
+                "batch_id": "A",
+                "label": "A",
+                "samples": [
+                    sample("2026-10-08T10:00:00Z", 10, 0, 0),
+                    sample("2026-10-08T10:00:01Z", 20, 0, 0),
+                    sample("2026-10-08T10:00:01Z", 21, 0, 0),
+                    sample("2026-10-08T10:00:03Z", 30, 0, 0),
+                ],
+            },
+            {
+                "batch_id": "B",
+                "label": "B",
+                "samples": [
+                    sample("2026-10-09T10:00:00Z", 10, 0, 0),
+                    sample("2026-10-09T10:00:04Z", 20, 0, 0),
+                ],
+            },
+        ]
+
+        first, second = compare_run_batches(batches)
+
+        self.assertEqual(first["sampling_summary"]["duplicate_timestamp_rows"], 1)
+        self.assertEqual(first["sampling_summary"]["interval_min_seconds"], 1)
+        self.assertEqual(first["sampling_summary"]["interval_median_seconds"], 1.5)
+        self.assertEqual(first["sampling_summary"]["interval_max_seconds"], 2)
+        self.assertEqual(second["sampling_summary"]["duplicate_timestamp_rows"], 0)
+        self.assertEqual(second["sampling_summary"]["interval_min_seconds"], 4)
+        self.assertEqual(second["sampling_summary"]["interval_median_seconds"], 4)
+        self.assertEqual(second["sampling_summary"]["interval_max_seconds"], 4)
+
     def test_batches_with_different_absolute_times_share_relative_axis(self):
         comparisons = compare_run_batches(self.batches)
         self.assertEqual(

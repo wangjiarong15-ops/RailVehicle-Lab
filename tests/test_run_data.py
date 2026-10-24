@@ -95,6 +95,26 @@ class RunDataTests(unittest.TestCase):
         self.assertEqual(len(validation.preview), 2)
         self.assertNotIn("rows", validation.__dict__)
 
+    def test_sampling_overview_uses_validated_iterator_without_importing(self):
+        text = (
+            f"{HEADER}\n"
+            "2026-10-08T09:30:00Z,RV-001,80,0.12,-0.04\n"
+            "2026-10-08T09:30:00+00:00,RV-001,81,0.15,-0.02\n"
+            "2026-10-08T09:30:02Z,RV-001,82,0.18,-0.01\n"
+        )
+
+        validation = self.validate(text)
+        summary = validation.sampling_summary
+
+        self.assertTrue(validation.is_valid, validation.errors)
+        self.assertIsNotNone(summary)
+        self.assertEqual(summary["sample_count"], 3)
+        self.assertEqual(summary["duplicate_timestamp_rows"], 1)
+        self.assertEqual(summary["interval_min_seconds"], 2)
+        self.assertEqual(summary["interval_median_seconds"], 2)
+        self.assertEqual(summary["interval_max_seconds"], 2)
+        self.assertEqual(self.counts(), (0, 0))
+
     def test_validation_time_range_compares_mixed_offsets_chronologically(self):
         text = (
             f"{HEADER}\n"

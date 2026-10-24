@@ -3,6 +3,7 @@
 from datetime import datetime, timezone
 from typing import Any
 
+from rail_vehicle.data_quality import analyze_sampling_times
 from rail_vehicle.dynamics import analyze_run_data
 
 
@@ -77,6 +78,7 @@ def compare_run_batches(batches: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "vertical_accel_rms": vertical["rms"],
                 "lateral_accel_peak_absolute": lateral["peak_absolute"],
                 "vertical_accel_peak_absolute": vertical["peak_absolute"],
+                "sampling_summary": analyze_sampling_times(ordered_samples),
                 "series": series,
             }
         )
