@@ -85,9 +85,8 @@ def analyze_run_data(
     lateral_exceedance = _exceedance(lateral, threshold)
     vertical_exceedance = _exceedance(vertical, threshold)
     combined_count = sum(
-        abs(row["lateral_accel"]) > threshold
-        or abs(row["vertical_accel"]) > threshold
-        for row in ordered_samples
+        abs(lateral_value) > threshold or abs(vertical_value) > threshold
+        for lateral_value, vertical_value in zip(lateral, vertical)
     )
     threshold_statistics = {
         "value": threshold,

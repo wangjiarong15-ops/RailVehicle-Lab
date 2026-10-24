@@ -84,6 +84,18 @@ class DynamicsAnalysisTests(unittest.TestCase):
         self.assertEqual(result["threshold"]["lateral"]["count"], 0)
         self.assertEqual(result["threshold"]["vertical"]["count"], 2)
 
+    def test_combined_threshold_count_uses_validated_numeric_values(self):
+        samples = [
+            sample("2026-10-08 09:30:00", "80", "-2.0", "0.5"),
+            sample("2026-10-08 09:30:01", "90", "0.2", "3.0"),
+        ]
+
+        result = analyze_run_data(samples, acceleration_threshold=1.5)
+
+        self.assertEqual(result["threshold"]["lateral"]["count"], 1)
+        self.assertEqual(result["threshold"]["vertical"]["count"], 1)
+        self.assertEqual(result["threshold"]["either"]["count"], 2)
+
     def test_empty_samples_negative_threshold_and_nonfinite_values_are_rejected(self):
         with self.assertRaisesRegex(ValueError, "没有运行数据"):
             analyze_run_data([])
