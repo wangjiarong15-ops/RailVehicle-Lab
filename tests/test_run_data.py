@@ -327,6 +327,20 @@ class RunDataTests(unittest.TestCase):
         self.assertIn("已停止显示后续错误", validation.errors[-1])
         self.assertEqual(self.counts(), (0, 0))
 
+    def test_csv_syntax_errors_after_error_limit_are_still_detected(self):
+        text = (
+            f"{HEADER}\n"
+            "2026-10-08T09:30:00,RV-001,fast,0.1,0.2\n"
+            f"{GOOD_ROW}\n"
+            '2026-10-08T09:30:02,RV-001,80,0.1,"unterminated\n'
+        )
+        with patch("rail_vehicle.run_data.ERROR_LIMIT", 1):
+            validation = self.validate(text)
+
+        self.assertFalse(validation.is_valid)
+        self.assertIn("CSV 格式无效", validation.errors[0])
+        self.assertEqual(self.counts(), (0, 0))
+
     def test_invalid_file_cannot_write_any_rows_or_batch(self):
         validation = self.validate(f"{HEADER}\n{GOOD_ROW}\ninvalid,RV-001,80,0,0")
         self.assertFalse(validation.is_valid)
