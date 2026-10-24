@@ -243,7 +243,14 @@ def validate_run_csv(
             if len(preview) < PREVIEW_LIMIT:
                 preview.append(_raw)
             if row_errors:
-                errors.extend(f"第 {row_number} 行：{message}。" for message in row_errors)
+                row_messages = [
+                    f"第 {row_number} 行：{message}。" for message in row_errors
+                ]
+                remaining_error_slots = max(0, ERROR_LIMIT - len(errors))
+                errors.extend(row_messages[:remaining_error_slots])
+                if len(row_messages) > remaining_error_slots:
+                    errors.append("错误数量较多，已停止显示后续错误。")
+                    error_details_truncated = True
             elif normalized_row is not None:
                 distinct_vehicle_ids.add(normalized_row["vehicle_id"])
                 timestamp = normalized_row["timestamp"]
@@ -264,10 +271,6 @@ def validate_run_csv(
                 ):
                     maximum_timestamp_order = timestamp_order
                     maximum_timestamp = timestamp
-            if len(errors) >= ERROR_LIMIT and not error_details_truncated:
-                errors.append("错误数量较多，已停止显示后续错误。")
-                error_details_truncated = True
-
     except UnicodeDecodeError:
         return CsvValidationResult(
             [], ["CSV 文件必须使用 UTF-8 编码（可包含 BOM）。"], 0
