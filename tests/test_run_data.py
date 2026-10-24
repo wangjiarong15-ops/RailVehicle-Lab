@@ -292,6 +292,26 @@ class RunDataTests(unittest.TestCase):
         self.assertIn("0 至 600", messages)
         self.assertIn("绝对值不能超过 100", messages)
 
+    def test_error_detail_limit_still_counts_all_nonblank_data_rows(self):
+        rows = [
+            "2026-10-08T09:30:00,RV-001,fast,0.1,0.2",
+            "2026-10-08T09:30:01,RV-001,fast,0.1,0.2",
+            GOOD_ROW,
+            "2026-10-08T09:30:03,RV-001,fast,0.1,0.2",
+            GOOD_ROW.replace("80", "81"),
+        ]
+        with (
+            patch("rail_vehicle.run_data.ERROR_LIMIT", 2),
+            patch("rail_vehicle.run_data.PREVIEW_LIMIT", 2),
+        ):
+            validation = self.validate(f"{HEADER}\n" + "\n".join(rows))
+
+        self.assertFalse(validation.is_valid)
+        self.assertEqual(validation.source_row_count, len(rows))
+        self.assertEqual(len(validation.preview), 2)
+        self.assertIn("已停止显示后续错误", validation.errors[-1])
+        self.assertEqual(self.counts(), (0, 0))
+
     def test_invalid_file_cannot_write_any_rows_or_batch(self):
         validation = self.validate(f"{HEADER}\n{GOOD_ROW}\ninvalid,RV-001,80,0,0")
         self.assertFalse(validation.is_valid)

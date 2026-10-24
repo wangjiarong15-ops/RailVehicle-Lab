@@ -218,6 +218,7 @@ def validate_run_csv(
     minimum_timestamp_order: datetime | None = None
     maximum_timestamp_order: datetime | None = None
     sampling_timestamps: list[datetime] = []
+    error_details_truncated = False
     try:
         reader = _make_csv_reader(content)
         headers, header_errors = _read_headers(reader)
@@ -227,11 +228,20 @@ def validate_run_csv(
             if not values or all(not value.strip() for value in values):
                 continue
             source_row_count += 1
-            normalized_row, raw, row_errors = _normalize_csv_row(
+            if error_details_truncated:
+                if len(preview) < PREVIEW_LIMIT:
+                    preview.append(
+                        {
+                            header: values[index] if index < len(values) else ""
+                            for index, header in enumerate(headers)
+                        }
+                    )
+                continue
+            normalized_row, _raw, row_errors = _normalize_csv_row(
                 values, headers, vehicle_ids
             )
             if len(preview) < PREVIEW_LIMIT:
-                preview.append(raw)
+                preview.append(_raw)
             if row_errors:
                 errors.extend(f"第 {row_number} 行：{message}。" for message in row_errors)
             elif normalized_row is not None:
@@ -254,9 +264,9 @@ def validate_run_csv(
                 ):
                     maximum_timestamp_order = timestamp_order
                     maximum_timestamp = timestamp
-            if len(errors) >= ERROR_LIMIT:
+            if len(errors) >= ERROR_LIMIT and not error_details_truncated:
                 errors.append("错误数量较多，已停止显示后续错误。")
-                break
+                error_details_truncated = True
 
     except UnicodeDecodeError:
         return CsvValidationResult(
