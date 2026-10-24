@@ -35,6 +35,18 @@ class TimeRangeFilterTests(unittest.TestCase):
         )
         self.assertEqual(filtered, samples)
 
+    def test_utc_z_suffix_is_accepted_for_range_and_sample_timestamps(self):
+        samples = [
+            {"timestamp": "2026-10-08T09:30:00Z", "value": 1},
+            {"timestamp": "2026-10-08T09:30:01z", "value": 2},
+        ]
+
+        filtered = filter_samples_by_time_range(
+            samples, "2026-10-08T09:30:00Z", "2026-10-08T09:30:01Z"
+        )
+
+        self.assertEqual(filtered, samples)
+
     def test_reversed_range_and_invalid_sample_timestamp_are_rejected(self):
         with self.assertRaisesRegex(ValueError, "开始时间"):
             filter_samples_by_time_range(

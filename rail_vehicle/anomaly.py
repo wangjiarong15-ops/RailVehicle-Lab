@@ -4,6 +4,8 @@ from datetime import datetime, timezone
 import math
 from typing import Any
 
+from rail_vehicle.timestamp_utils import parse_iso_timestamp
+
 
 ACCELERATION_FIELDS = (
     ("lateral_accel", "横向加速度统计异常"),
@@ -19,7 +21,7 @@ def _parse_timestamp(value: Any) -> datetime:
     if not isinstance(value, str):
         raise ValueError("样本时间戳必须是 ISO 8601 日期时间字符串。")
     try:
-        parsed = datetime.fromisoformat(value)
+        parsed = parse_iso_timestamp(value)
         if parsed.tzinfo is None:
             return parsed.replace(tzinfo=timezone.utc)
         return parsed.astimezone(timezone.utc)

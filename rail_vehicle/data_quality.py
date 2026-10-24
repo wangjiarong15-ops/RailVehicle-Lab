@@ -5,10 +5,12 @@ from datetime import datetime, timezone
 from statistics import median
 from typing import Any
 
+from rail_vehicle.timestamp_utils import parse_iso_timestamp
+
 
 def _utc_timestamp(value: Any) -> datetime:
     try:
-        parsed = value if isinstance(value, datetime) else datetime.fromisoformat(value)
+        parsed = value if isinstance(value, datetime) else parse_iso_timestamp(value)
         if parsed.tzinfo is None:
             return parsed.replace(tzinfo=timezone.utc)
         return parsed.astimezone(timezone.utc)

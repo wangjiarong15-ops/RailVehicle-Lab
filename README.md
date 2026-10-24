@@ -200,6 +200,7 @@ rail_vehicle/
   vehicle_data.py                  车辆参数校验和 SQLite 操作
   run_data.py                      CSV 校验、SQLite 导入和批次历史操作
   dynamics.py                      基础动力学指标和阈值统计计算
+  timestamp_utils.py               跨 Python 版本解析 ISO 8601 时间戳
   anomaly.py                       加速度异常点和区段识别
   time_filter.py                   按 UTC 时间范围筛选运行样本
   batch_comparison.py              多批次指标和相对时间曲线计算

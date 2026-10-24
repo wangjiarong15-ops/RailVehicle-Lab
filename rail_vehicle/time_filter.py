@@ -3,11 +3,13 @@
 from datetime import datetime, timezone
 from typing import Any
 
+from rail_vehicle.timestamp_utils import parse_iso_timestamp
+
 
 def _as_utc(value: datetime | str) -> datetime:
     if isinstance(value, str):
         try:
-            value = datetime.fromisoformat(value)
+            value = parse_iso_timestamp(value)
         except (OverflowError, ValueError) as exc:
             raise ValueError("时间范围必须使用有效的 ISO 8601 日期时间。") from exc
     if not isinstance(value, datetime):

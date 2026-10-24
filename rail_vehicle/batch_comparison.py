@@ -5,11 +5,12 @@ from typing import Any
 
 from rail_vehicle.data_quality import analyze_sampling_times
 from rail_vehicle.dynamics import analyze_run_data
+from rail_vehicle.timestamp_utils import parse_iso_timestamp
 
 
 def _as_utc(timestamp: str) -> datetime:
     try:
-        parsed = datetime.fromisoformat(timestamp)
+        parsed = parse_iso_timestamp(timestamp)
         if parsed.tzinfo is None:
             return parsed.replace(tzinfo=timezone.utc)
         return parsed.astimezone(timezone.utc)

@@ -30,6 +30,17 @@ class DynamicsAnalysisTests(unittest.TestCase):
         self.assertEqual(result["speed"]["minimum"], 10)
         self.assertEqual(result["speed"]["mean"], 20)
 
+    def test_utc_z_suffix_is_sorted_and_analyzed(self):
+        samples = [
+            sample("2026-10-08T09:30:01Z", 20, 1, -1),
+            sample("2026-10-08T09:30:00Z", 10, 0, 0),
+        ]
+
+        result = analyze_run_data(samples)
+
+        self.assertEqual(result["samples"][0]["speed_kmh"], 10)
+        self.assertEqual(result["speed"]["mean"], 15)
+
     def test_means_use_stable_summation_for_cancellation_sensitive_values(self):
         samples = [
             sample("2026-10-08 09:30:00", 600, 100, 0),

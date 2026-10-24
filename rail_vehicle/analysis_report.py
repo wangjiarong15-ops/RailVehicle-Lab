@@ -23,6 +23,8 @@ from reportlab.platypus import (
     Table,
     TableStyle,
 )
+
+from rail_vehicle.timestamp_utils import parse_iso_timestamp
 from reportlab.graphics.shapes import Drawing, String
 from reportlab.graphics.charts.lineplots import LinePlot
 from reportlab.lib.colors import HexColor
@@ -390,7 +392,7 @@ def _table(
 
 def _sample_time_seconds(samples: list[dict[str, Any]]) -> list[float]:
     def parse(value: str) -> datetime:
-        parsed = datetime.fromisoformat(value)
+        parsed = parse_iso_timestamp(value)
         if parsed.tzinfo is None:
             return parsed.replace(tzinfo=timezone.utc)
         return parsed.astimezone(timezone.utc)

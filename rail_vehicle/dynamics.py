@@ -4,10 +4,12 @@ from datetime import datetime, timezone
 import math
 from typing import Any
 
+from rail_vehicle.timestamp_utils import parse_iso_timestamp
+
 
 def _time_order(timestamp: str) -> datetime:
     try:
-        parsed = datetime.fromisoformat(timestamp)
+        parsed = parse_iso_timestamp(timestamp)
         if parsed.tzinfo is None:
             return parsed.replace(tzinfo=timezone.utc)
         return parsed.astimezone(timezone.utc)

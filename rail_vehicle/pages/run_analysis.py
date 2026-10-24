@@ -29,6 +29,7 @@ from rail_vehicle.ai.ui import (
 from rail_vehicle.ai.provider import input_fingerprint
 from rail_vehicle.batch_comparison import compare_run_batches
 from rail_vehicle.data_quality import analyze_sampling_times
+from rail_vehicle.timestamp_utils import parse_iso_timestamp
 from rail_vehicle.dynamics import analyze_run_data
 from rail_vehicle.anomaly import EVENT_DURATION_NOTE, detect_anomalies
 from rail_vehicle.time_filter import filter_samples_by_time_range
@@ -272,7 +273,7 @@ def _render_dynamics_analysis() -> None:
     # Stored timestamps without an explicit offset have always been treated as UTC.
     # Present range controls in UTC too, so the selected bounds match analysis order.
     def as_utc(value: str) -> datetime:
-        parsed = datetime.fromisoformat(value)
+        parsed = parse_iso_timestamp(value)
         if parsed.tzinfo is None:
             return parsed.replace(tzinfo=timezone.utc)
         return parsed.astimezone(timezone.utc)
