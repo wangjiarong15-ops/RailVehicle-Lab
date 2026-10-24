@@ -169,6 +169,31 @@ class AIUIIntegrationTests(unittest.TestCase):
                 self.assertEqual(message, expected)
                 self.assertNotIn("PRIVATE_RAW_VALIDATOR_DETAILS", message)
 
+    def test_incomplete_response_has_safe_message_and_diagnostics_without_partial_text(self):
+        private_text = "PRIVATE_PARTIAL_JSON"
+        response = {
+            "status": "unavailable",
+            "code": "incomplete_response",
+            "message": "private raw details must not be used",
+            "diagnostics": {
+                "status": "incomplete",
+                "incomplete_reason": "max_output_tokens",
+                "has_message": True,
+                "has_output_text": True,
+                "output_text_length": len(private_text),
+                "max_output_tokens_limit": 3000,
+                "usage_output_tokens": 3000,
+                "reasoning_tokens": "not-a-number",
+                "has_refusal": False,
+            },
+        }
+        message = status_message(response)
+        self.assertIn("未完整生成", message)
+        self.assertIn("incomplete_details.reason=max_output_tokens", message)
+        self.assertIn("reasoning_tokens=unknown", message)
+        self.assertNotIn(private_text, message)
+        self.assertNotIn("private raw details", message)
+
     def test_pdf_error_messages_do_not_expose_exception_details(self):
         private_detail = "PRIVATE_LOCAL_PATH_OR_INTERNAL_ERROR"
         error = RuntimeError(private_detail)

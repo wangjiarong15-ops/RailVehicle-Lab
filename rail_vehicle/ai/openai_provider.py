@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from copy import deepcopy
 from typing import Any, Callable
 
@@ -12,8 +13,65 @@ from rail_vehicle.ai.prompts import build_evidence_reference_instructions
 from rail_vehicle.ai.schemas import CLAIM_SCOPE_SCHEMA, validate_input_payload
 
 
-MAX_OUTPUT_TOKENS = 1200
+MAX_OUTPUT_TOKENS = 3000
 MAX_RETRIES = 1
+RESPONSE_STATUSES = {"completed", "incomplete", "in_progress", "failed"}
+INCOMPLETE_REASONS = {"max_output_tokens", "content_filter"}
+
+
+def _response_value(value: Any, name: str, default: Any = None) -> Any:
+    if isinstance(value, Mapping):
+        return value.get(name, default)
+    return getattr(value, name, default)
+
+
+def _response_diagnostics(response: Any, output_text: str) -> dict[str, Any]:
+    """Build a content-free response summary for safe UI diagnostics."""
+    status = _response_value(response, "status")
+    if not isinstance(status, str) or status not in RESPONSE_STATUSES:
+        status = "unknown" if status is None else "other"
+
+    details = _response_value(response, "incomplete_details")
+    reason = _response_value(details, "reason") if details is not None else None
+    if reason is not None and (not isinstance(reason, str) or reason not in INCOMPLETE_REASONS):
+        reason = "other"
+
+    output = _response_value(response, "output", [])
+    items = output if isinstance(output, (list, tuple)) else []
+    has_message = False
+    has_output_text = False
+    has_refusal = False
+    for item in items:
+        if _response_value(item, "type") != "message":
+            continue
+        has_message = True
+        content = _response_value(item, "content", [])
+        parts = content if isinstance(content, (list, tuple)) else []
+        for part in parts:
+            part_type = _response_value(part, "type")
+            has_output_text = has_output_text or part_type == "output_text"
+            has_refusal = has_refusal or part_type == "refusal"
+
+    usage = _response_value(response, "usage")
+    output_tokens = _response_value(usage, "output_tokens") if usage is not None else None
+    if not isinstance(output_tokens, int) or isinstance(output_tokens, bool) or output_tokens < 0:
+        output_tokens = None
+    token_details = _response_value(usage, "output_tokens_details") if usage is not None else None
+    reasoning_tokens = _response_value(token_details, "reasoning_tokens") if token_details is not None else None
+    if not isinstance(reasoning_tokens, int) or isinstance(reasoning_tokens, bool) or reasoning_tokens < 0:
+        reasoning_tokens = None
+
+    return {
+        "status": status,
+        "incomplete_reason": reason,
+        "has_message": has_message,
+        "has_output_text": has_output_text or bool(output_text.strip()),
+        "output_text_length": len(output_text),
+        "has_refusal": has_refusal,
+        "max_output_tokens_limit": MAX_OUTPUT_TOKENS,
+        "usage_output_tokens": output_tokens,
+        "reasoning_tokens": reasoning_tokens,
+    }
 
 
 def _claim_schema() -> dict[str, Any]:
@@ -166,8 +224,37 @@ class OpenAIResponsesProvider:
             raise safe_provider_error(exc) from None
 
         output_text = getattr(response, "output_text", None)
+        diagnostics = _response_diagnostics(response, output_text if isinstance(output_text, str) else "")
+        if diagnostics["status"] == "incomplete":
+            raise AIProviderUnavailable(
+                "incomplete_response",
+                "AI 响应未完整生成，未展示结果，请稍后重试。",
+                diagnostics=diagnostics,
+            )
+        if diagnostics["status"] == "in_progress":
+            raise AIProviderUnavailable(
+                "response_in_progress",
+                "AI 服务返回的仍是生成中状态，未展示结果，请稍后重试。",
+                diagnostics=diagnostics,
+            )
+        if diagnostics["status"] == "failed":
+            raise AIProviderUnavailable(
+                "response_failed",
+                "AI 服务未能生成分析结果，请稍后重试。",
+                diagnostics=diagnostics,
+            )
+        if diagnostics["status"] != "completed":
+            raise AIProviderUnavailable(
+                "invalid_response",
+                "AI 服务返回了无法确认完成状态的响应，未展示结果。",
+                diagnostics=diagnostics,
+            )
         if not isinstance(output_text, str) or not output_text.strip():
-            raise AIProviderUnavailable("invalid_response", "AI 返回了空结果或非结构化结果。")
+            raise AIProviderUnavailable(
+                "invalid_response",
+                "AI 返回了空结果或非结构化结果。",
+                diagnostics=diagnostics,
+            )
         return output_text
 
 

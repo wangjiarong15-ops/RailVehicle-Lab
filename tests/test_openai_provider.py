@@ -55,16 +55,23 @@ def valid_output(context):
 
 
 class MockResponses:
-    def __init__(self, output_text=None, error=None):
+    def __init__(self, output_text=None, error=None, response_status="completed", incomplete_details=None):
         self.output_text = output_text
         self.error = error
+        self.response_status = response_status
+        self.incomplete_details = incomplete_details
         self.calls = []
 
     def create(self, **kwargs):
         self.calls.append(kwargs)
         if self.error:
             raise self.error
-        return types.SimpleNamespace(output_text=self.output_text)
+        return types.SimpleNamespace(
+            output_text=self.output_text,
+            status=self.response_status,
+            incomplete_details=self.incomplete_details,
+            output=[],
+        )
 
 
 class OpenAIProviderTests(unittest.TestCase):
@@ -141,6 +148,7 @@ class OpenAIProviderTests(unittest.TestCase):
         self.assertEqual(result["status"], "available")
         self.assertEqual(responses.calls[0]["model"], "configured-model-x")
         self.assertEqual(responses.calls[0]["max_output_tokens"], MAX_OUTPUT_TOKENS)
+        self.assertEqual(responses.calls[0]["max_output_tokens"], 3000)
         self.assertFalse(responses.calls[0]["store"])
         output_format = responses.calls[0]["text"]["format"]
         self.assertEqual(output_format["type"], "json_schema")
@@ -224,6 +232,41 @@ class OpenAIProviderTests(unittest.TestCase):
         result = AIAnalysisService(provider).analyze(payload())
         self.assertEqual(result["code"], "output_json_invalid")
         self.assertNotIn("not json", result["message"])
+
+    def test_incomplete_partial_json_is_classified_before_json_parsing(self):
+        partial_text = '{"summary":{"text":"PRIVATE_PARTIAL_OUTPUT'
+        provider = OpenAIResponsesProvider(
+            AIConfig(enabled=True, model="m", api_key="configured"),
+            client=types.SimpleNamespace(responses=MockResponses(
+                output_text=partial_text,
+                response_status="incomplete",
+                incomplete_details=types.SimpleNamespace(reason="max_output_tokens"),
+            )),
+        )
+        result = AIAnalysisService(provider).analyze(payload())
+
+        self.assertEqual(result["status"], "unavailable")
+        self.assertEqual(result["code"], "incomplete_response")
+        self.assertEqual(result["diagnostics"]["status"], "incomplete")
+        self.assertEqual(result["diagnostics"]["incomplete_reason"], "max_output_tokens")
+        self.assertEqual(result["diagnostics"]["output_text_length"], len(partial_text))
+        self.assertNotIn("analysis", result)
+        self.assertNotIn("PRIVATE_PARTIAL_OUTPUT", json.dumps(result))
+
+    def test_in_progress_and_failed_responses_are_not_parsed_as_json(self):
+        for status, expected_code in (("in_progress", "response_in_progress"), ("failed", "response_failed")):
+            with self.subTest(status=status):
+                provider = OpenAIResponsesProvider(
+                    AIConfig(enabled=True, model="m", api_key="configured"),
+                    client=types.SimpleNamespace(responses=MockResponses(
+                        output_text="PRIVATE_PARTIAL_TEXT",
+                        response_status=status,
+                    )),
+                )
+                result = AIAnalysisService(provider).analyze(payload())
+                self.assertEqual(result["code"], expected_code)
+                self.assertNotIn("analysis", result)
+                self.assertNotIn("PRIVATE_PARTIAL_TEXT", json.dumps(result))
 
     def test_illegal_evidence_reference_from_model_is_rejected(self):
         output = valid_output(payload())
