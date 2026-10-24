@@ -9,7 +9,7 @@ description = "轨道车辆运行与动力学智能分析平台 MVP"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "streamlit>=1.36,<2.0",
+    "streamlit>=1.54,<2.0",
     "plotly>=5.18,<7.0",
     "reportlab>=4.2,<5.0",
     "jsonschema>=4.22,<5.0",

@@ -120,7 +120,7 @@ def _render_vehicle_list(vehicles: list[dict]) -> None:
     st.dataframe(
         [{labels[key]: vehicle[key] for key in labels} for vehicle in vehicles],
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
     )
 
 

@@ -140,7 +140,7 @@ def _render_import() -> None:
             st.dataframe(
                 validation.preview,
                 hide_index=True,
-                use_container_width=True,
+                width="stretch",
             )
             if validation.source_row_count > PREVIEW_LIMIT:
                 st.caption(
@@ -212,7 +212,7 @@ def _render_import() -> None:
                 for batch in batches
             ],
             hide_index=True,
-            use_container_width=True,
+            width="stretch",
         )
 
 
@@ -399,14 +399,14 @@ def _render_dynamics_analysis() -> None:
         st.dataframe(
             _format_stats_table(result["lateral_accel"], acceleration=True),
             hide_index=True,
-            use_container_width=True,
+            width="stretch",
         )
     with vertical_col:
         st.markdown("**垂向加速度（m/s²）**")
         st.dataframe(
             _format_stats_table(result["vertical_accel"], acceleration=True),
             hide_index=True,
-            use_container_width=True,
+            width="stretch",
         )
 
     peak_columns = st.columns(2)
@@ -440,7 +440,7 @@ def _render_dynamics_analysis() -> None:
             )
         ],
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
     )
 
     st.subheader("数据异常检测")
@@ -470,7 +470,7 @@ def _render_dynamics_analysis() -> None:
                 for event in anomaly_result["events"]
             ],
             hide_index=True,
-            use_container_width=True,
+            width="stretch",
         )
     else:
         st.info("当前批次未发现超过所设阈值的数据异常点。")
@@ -530,7 +530,7 @@ def _render_dynamics_analysis() -> None:
                 line_color="#d62728",
                 annotation_text="−阈值",
             )
-        st.plotly_chart(figure, use_container_width=True, key=f"chart_{field}")
+        st.plotly_chart(figure, width="stretch", key=f"chart_{field}")
 
     selected_vehicle = next(
         vehicle for vehicle in vehicles if vehicle["id"] == vehicle_id
@@ -703,7 +703,7 @@ def _render_batch_comparison() -> None:
             for result in comparisons
         ],
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
     )
 
     st.subheader("批次采样时间概览")
@@ -734,7 +734,7 @@ def _render_batch_comparison() -> None:
             for result in comparisons
         ],
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
     )
 
     chart_specs = (
@@ -760,7 +760,7 @@ def _render_batch_comparison() -> None:
             yaxis_title=y_title,
             margin={"l": 20, "r": 20, "t": 50, "b": 20},
         )
-        st.plotly_chart(figure, use_container_width=True, key=f"comparison_{field}")
+        st.plotly_chart(figure, width="stretch", key=f"comparison_{field}")
 
     ai_payload = build_batch_comparison_payload(comparisons)
     ai_selection = {"vehicle_id": vehicle_id, "batch_ids": selected_ids}
