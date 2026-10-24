@@ -43,10 +43,16 @@ class SamplingTimeAnalysisTests(unittest.TestCase):
 
     def test_single_unique_timestamp_has_no_interval_statistics(self):
         result = analyze_sampling_times(
-            [sample("2026-10-08T09:30:00Z"), sample("2026-10-08T09:30:00Z")]
+            [
+                sample("2026-10-08T09:30:00Z"),
+                sample("2026-10-08T09:30:00Z"),
+                sample("2026-10-08T09:30:00Z"),
+            ]
         )
 
-        self.assertEqual(result["duplicate_timestamp_rows"], 1)
+        self.assertEqual(result["sample_count"], 3)
+        self.assertEqual(result["unique_timestamp_count"], 1)
+        self.assertEqual(result["duplicate_timestamp_rows"], 2)
         self.assertIsNone(result["interval_min_seconds"])
         self.assertIsNone(result["interval_median_seconds"])
         self.assertIsNone(result["interval_max_seconds"])

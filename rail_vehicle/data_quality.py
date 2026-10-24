@@ -18,24 +18,26 @@ def _utc_timestamp(value: Any) -> datetime:
 
 def summarize_timestamps(timestamps: Iterable[Any]) -> dict[str, Any]:
     """Summarize duplicate timestamps and spacing between unique instants."""
-    normalized_timestamps = []
+    unique_timestamps: set[datetime] = set()
+    sample_count = 0
     try:
         for value in timestamps:
-            normalized_timestamps.append(_utc_timestamp(value))
+            unique_timestamps.add(_utc_timestamp(value))
+            sample_count += 1
     except (KeyError, TypeError, ValueError) as exc:
         raise ValueError("运行数据中存在无效的时间戳。") from exc
-    if not normalized_timestamps:
+    if sample_count == 0:
         raise ValueError("所选范围没有运行数据。")
 
-    unique_timestamps = sorted(set(normalized_timestamps))
+    ordered_timestamps = sorted(unique_timestamps)
     intervals = [
         (current - previous).total_seconds()
-        for previous, current in zip(unique_timestamps, unique_timestamps[1:])
+        for previous, current in zip(ordered_timestamps, ordered_timestamps[1:])
     ]
     return {
-        "sample_count": len(normalized_timestamps),
-        "unique_timestamp_count": len(unique_timestamps),
-        "duplicate_timestamp_rows": len(normalized_timestamps) - len(unique_timestamps),
+        "sample_count": sample_count,
+        "unique_timestamp_count": len(ordered_timestamps),
+        "duplicate_timestamp_rows": sample_count - len(ordered_timestamps),
         "interval_min_seconds": min(intervals) if intervals else None,
         "interval_median_seconds": median(intervals) if intervals else None,
         "interval_max_seconds": max(intervals) if intervals else None,
