@@ -315,13 +315,24 @@ def import_run_data(
                 (Path(file_name).name, validation.source_row_count),
             )
             batch_id = int(cursor.lastrowid)
+
+            inserted_row_count = 0
+
+            def rows_for_import():
+                nonlocal inserted_row_count
+                for row in validation.iter_rows():
+                    inserted_row_count += 1
+                    yield {**row, "batch_id": batch_id}
+
             connection.executemany(
                 """INSERT INTO run_samples
                    (batch_id, vehicle_id, timestamp, speed_kmh, lateral_accel, vertical_accel)
                    VALUES (:batch_id, :vehicle_id, :timestamp, :speed_kmh,
                            :lateral_accel, :vertical_accel)""",
-                ({**row, "batch_id": batch_id} for row in validation.iter_rows()),
+                rows_for_import(),
             )
+            if inserted_row_count != validation.source_row_count:
+                raise ValueError("CSV row count changed after validation")
             return batch_id
     except ValueError:
         raise ValueError("CSV 内容在导入阶段无法重新校验，本次导入已回滚。") from None

@@ -83,6 +83,42 @@ class VehicleDataTests(unittest.TestCase):
         with self.assertRaises(DuplicateVehicleCodeError):
             add_vehicle(sample_vehicle(vehicle_type="另一车型"), self.db_path)
 
+    def test_null_required_text_is_rejected_and_optional_notes_are_empty(self):
+        for field in ("vehicle_code", "vehicle_type"):
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                add_vehicle(sample_vehicle(**{field: None}), self.db_path)
+        self.assertEqual(list_vehicles(self.db_path), [])
+        vehicle_id = add_vehicle(sample_vehicle(notes=None), self.db_path)
+        self.assertEqual(get_vehicle(vehicle_id, self.db_path)["notes"], "")
+
+    def test_integer_counts_preserve_precision_through_sqlite(self):
+        # A float conversion silently rounds both of these integer values.
+        for count in (2**53 + 1, 2**63 - 1):
+            with self.subTest(count=count):
+                vehicle_id = add_vehicle(
+                    sample_vehicle(vehicle_code=f"RV-{count}", axle_count=str(count)),
+                    self.db_path,
+                )
+                self.assertEqual(get_vehicle(vehicle_id, self.db_path)["axle_count"], count)
+
+    def test_out_of_range_counts_do_not_insert_or_change_existing_vehicle(self):
+        vehicle_id = add_vehicle(sample_vehicle(), self.db_path)
+        original = get_vehicle(vehicle_id, self.db_path)
+        for field in ("axle_count", "bogie_count"):
+            for count in (2**63, "1e100", "4.0000000000000001"):
+                with self.subTest(field=field, count=count):
+                    invalid = sample_vehicle(**{field: count})
+                    with self.assertRaises(ValueError):
+                        add_vehicle(invalid, self.db_path)
+                    with self.assertRaises(ValueError):
+                        update_vehicle(vehicle_id, invalid, self.db_path)
+                    self.assertEqual(get_vehicle(vehicle_id, self.db_path), original)
+                    self.assertEqual(len(list_vehicles(self.db_path)), 1)
+
+    def test_overflowing_float_input_reports_validation_error(self):
+        with self.assertRaisesRegex(ValueError, "车辆质量必须"):
+            validate_vehicle_data(sample_vehicle(mass_kg=10**400))
+
     def test_update_missing_vehicle_reports_not_found(self):
         with self.assertRaises(VehicleNotFoundError):
             update_vehicle(999, sample_vehicle(), self.db_path)

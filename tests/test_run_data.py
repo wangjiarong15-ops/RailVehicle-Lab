@@ -381,6 +381,26 @@ class RunDataTests(unittest.TestCase):
         self.assertNotIn("private parser detail", str(raised.exception))
         self.assertEqual(self.counts(), (0, 0))
 
+    def test_second_pass_row_count_mismatch_rolls_back_without_losing_history(self):
+        original = self.validate(f"{HEADER}\n{GOOD_ROW}")
+        existing_batch_id = import_run_data("existing.csv", original, self.db_path)
+        validation = self.validate(f"{HEADER}\n{GOOD_ROW}\n{GOOD_ROW}")
+        valid_row = original.rows[0]
+
+        for actual_count in (0, 1, 3):
+            with self.subTest(actual_count=actual_count):
+                with patch(
+                    "rail_vehicle.run_data._iter_normalized_csv_rows",
+                    return_value=iter([valid_row] * actual_count),
+                ):
+                    with self.assertRaisesRegex(ValueError, "已回滚") as raised:
+                        import_run_data("mismatch.csv", validation, self.db_path)
+                self.assertNotIn("CSV row count changed", str(raised.exception))
+                self.assertEqual(self.counts(), (1, 1))
+                history = list_import_batches(self.db_path)
+                self.assertEqual(history[0]["id"], existing_batch_id)
+                self.assertEqual(history[0]["row_count"], 1)
+
     def test_sqlite_operational_error_is_sanitized_after_transaction_rollback(self):
         validation = self.validate(f"{HEADER}\n{GOOD_ROW}")
         private_detail = "PRIVATE_DATABASE_PATH_OR_SQL_DETAIL"

@@ -2,6 +2,7 @@
 
 import math
 import sqlite3
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
@@ -18,9 +19,13 @@ class VehicleNotFoundError(ValueError):
 
 def validate_vehicle_data(data: dict[str, Any]) -> dict[str, Any]:
     """Normalize and validate the fields entered for a vehicle."""
-    vehicle_code = str(data.get("vehicle_code", "")).strip()
-    vehicle_type = str(data.get("vehicle_type", "")).strip()
-    notes = str(data.get("notes", "")).strip()
+    def text_field(field: str) -> str:
+        value = data.get(field)
+        return "" if value is None else str(value).strip()
+
+    vehicle_code = text_field("vehicle_code")
+    vehicle_type = text_field("vehicle_type")
+    notes = text_field("notes")
     errors: list[str] = []
 
     if not vehicle_code:
@@ -35,7 +40,7 @@ def validate_vehicle_data(data: dict[str, Any]) -> dict[str, Any]:
     def positive_number(field: str, label: str) -> float | None:
         try:
             value = float(data[field])
-        except (KeyError, TypeError, ValueError):
+        except (KeyError, TypeError, ValueError, OverflowError):
             errors.append(f"{label}必须是大于 0 的数字。")
             return None
         if not math.isfinite(value) or value <= 0:
@@ -46,12 +51,15 @@ def validate_vehicle_data(data: dict[str, Any]) -> dict[str, Any]:
     def positive_integer(field: str, label: str) -> int | None:
         value = data.get(field)
         try:
-            number = float(value)
-        except (TypeError, ValueError):
+            number = Decimal(str(value))
+        except (InvalidOperation, TypeError, ValueError):
             errors.append(f"{label}必须是大于 0 的整数。")
             return None
-        if not math.isfinite(number) or not number.is_integer() or number <= 0:
+        if not number.is_finite() or number <= 0 or number != number.to_integral_value():
             errors.append(f"{label}必须是大于 0 的整数。")
+            return None
+        if number > 2**63 - 1:
+            errors.append(f"{label}超出数据库支持的整数范围。")
             return None
         return int(number)
 
