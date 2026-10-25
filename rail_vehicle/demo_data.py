@@ -45,6 +45,23 @@ def ml_demo_samples() -> tuple[list[dict], list[dict]]:
     return batches[0], batches[1]
 
 
+def vibration_demo_samples() -> list[dict]:
+    """Fictional 100 Hz, 30 s signal with known tones and a short amplitude rise."""
+    start = datetime(2026, 10, 8, 9, 30, tzinfo=timezone.utc)
+    samples = []
+    for index in range(3000):
+        seconds = index / 100
+        envelope = 2.5 if 18 <= seconds < 20 else 1.0
+        lateral = 0.04 + envelope * (0.25 * math.sin(2 * math.pi * 1.5 * seconds)
+                                    + 0.05 * math.sin(2 * math.pi * 8 * seconds))
+        vertical = -0.02 + envelope * (0.18 * math.sin(2 * math.pi * 6 * seconds)
+                                      + 0.04 * math.sin(2 * math.pi * 12 * seconds))
+        samples.append(dict(timestamp=(start + timedelta(milliseconds=index * 10)).isoformat(),
+                            speed_kmh=72, lateral_accel=round(lateral, 6),
+                            vertical_accel=round(vertical, 6)))
+    return samples
+
+
 def demo_csv_content(batch_index: int) -> str:
     """Return fictional CSV text for offline demonstrations without file writes."""
     start = datetime(2026, 10, 8, 9, 30, tzinfo=timezone.utc) + timedelta(

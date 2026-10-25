@@ -15,6 +15,7 @@ RailVehicle-Lab 是一个用于查看和分析轨道车辆运行数据的本地 
 - **AI 辅助解读：**在单批次或批次对比页面由用户主动触发，可选 OpenAI 或 DeepSeek Provider。
 - **动态运行驾驶舱：**选择车辆和历史批次，播放、暂停、重置或调整倍速，查看随回放更新的速度仪表、双轴加速度、曲线和超阈值提示；支持不写入数据库的内置虚构演示。
 - **机器学习异常检测：**可选本地 Isolation Forest，从参考批次学习分布，检测同一车辆另一批次中的离群样本，并与原有加速度规则并列展示；提供独立参考/检测数据的虚构实验。
+- **振动与平稳性分析：**选择历史批次与相对时间范围，查看采样质量、去均值振动 RMS、峰值因子、滑动 RMS、Welch 功率谱及频带内主峰；采样条件不足时保留时域统计并停用频域结果。
 
 动力学统计、阈值异常和模型离群结果用于描述数据，不直接构成法规合规、车辆故障或铁路运营安全结论。
 
@@ -66,6 +67,29 @@ AI 是可选增强能力。AI 调用失败或结果校验失败时，基础分�
 以下为内置虚构实验的实际本地模型结果，展示标记数量、规则重合情况以及离群分数与速度曲线。
 
 ![机器学习异常检测虚构实验](docs/screenshots/ml-anomaly-experiment.png)
+
+## 振动与平稳性分析（V0.6 基线，可选）
+
+本功能使用 NumPy 和 SciPy。在项目根目录按需安装后，重新启动应用：
+
+```powershell
+.venv\Scripts\python.exe -m pip install -e ".[signal]"
+.venv\Scripts\python.exe -m streamlit run app.py
+```
+
+在导航中选择“振动与平稳性分析”，选择车辆、历史批次和相对时间范围，或使用“内置高频虚构信号”。设置频带（默认 0.5–20 Hz）和滑动 RMS 窗口，点击“计算振动指标”。变更输入或参数会清除旧结果。
+
+- 时域显示原始均值/RMS、去均值 RMS、去均值绝对峰值和峰值因子。去均值不等于标准频率加权、重力或姿态校正。
+- 采样率按 UTC 相邻唯一时间间隔的中位数估计。频域要求无重复时间戳、间隔最大相对偏差不超过 1%、至少 64 个样本，记录至少覆盖最低频率的 5 个周期，且频带上限严格小于采样率的一半。这些是本项目的计算门槛，不是铁路标准条款。
+- 功率谱采用 SciPy [Welch 方法](https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.welch.html)：周期 Hann 窗、50% 重叠、每段去均值。段长按最低频率至少 5 个周期自适应选择，不补零；显示实际频率间隔及分段数。
+- 频带 RMS 使用闭区间频点的 `√(ΣPSD × Δf)` 估计，存在分辨率与谱泄漏误差。滑动 RMS 对整段去均值后的加速度计算，窗口点数按采样率四舍五入；不足 2 点或长于记录时不画滑动曲线。
+- 采样率低、时间戳重复、抖动较大或时长不足时，保留时域指标并给出具体提示，不自动重采样或补造数据。最多支持 200,000 条记录。
+
+内置演示为 100 Hz、30 秒虚构信号，横向主成分为 1.5 Hz、垂向为 6 Hz，第 18–20 秒设置幅值上升。它只用于验证指标、频谱和滑动强度展示，不写入数据库，不调用 AI。
+
+**本版未实现标准频率加权、Sperling 指标或标准舒适等级。**瞬时均方根不能直接作为正式舒适性评价；实际应用还需确认传感器安装位置、轴向、测量链路、抗混叠与适用标准。结果不构成故障、安全或法规结论，也未自动写入现有 PDF。
+
+![振动与平稳性分析高频虚构信号](docs/screenshots/vibration-analysis.png)
 
 ## 界面截图
 
@@ -231,7 +255,9 @@ python -m unittest discover -s tests -v
 .venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-安装 `.[ml]` 后也会运行真实本地 Isolation Forest 实验及其页面测试；未安装时相应可选测试明确跳过，依赖缺失时的降级测试仍会运行。CI 配置安装 `.[ml]`，覆盖机器学习测试。测试不调用真实 AI API。
+安装 `.[ml]` 后也会运行真实本地 Isolation Forest 实验及其页面测试；未安装时相应可选测试明确跳过，依赖缺失时的降级测试仍会运行。测试不调用真实 AI API。
+
+安装 `.[signal]` 后还会运行已知正弦信号、采样资格门槛、频带能量和振动页面测试。CI 安装 `.[ml,signal]` 同时验证两类可选功能。
 
 测试还会用临时 SQLite 数据库运行 Streamlit 的车辆页和运行分析页基础启动检查，不会修改项目本机数据库。
 
@@ -251,10 +277,12 @@ rail_vehicle/
   demo_data.py                     生成不覆盖现有文件的虚构演示 CSV
   replay.py                        历史数据回放时间轴、控制状态和阈值状态
   ml_anomaly.py                    本地 Isolation Forest、规则对比及输入指纹
+  vibration.py                     未加权振动指标、采样门槛与 Welch 频谱
   analysis_report.py               单批次/批次对比报告组装和 PDF 生成
   pages/                           Streamlit 页面
     cockpit.py                     动态运行驾驶舱与定时刷新
     ml_detection.py                机器学习异常检测页面
+    vibration_analysis.py          振动与平稳性分析页面
   ai/
     config.py                       AI 配置读取
     context.py                      已计算分析结果的结构化上下文组装
@@ -270,6 +298,8 @@ tests/
   test_cockpit.py                   驾驶舱控件、曲线及临时数据库回放测试
   test_ml_anomaly.py                真实模型实验、训练隔离及输入校验测试
   test_ml_detection.py              机器学习页面与可选依赖降级测试
+  test_vibration.py                 已知信号、频带能量及采样门槛测试
+  test_vibration_page.py            振动页面、范围失效和异常提示测试
   test_vehicle_data.py              车辆校验和数据库测试
   test_run_data.py                  CSV 校验和导入测试
   test_dynamics.py                  基础动力学统计指标测试
