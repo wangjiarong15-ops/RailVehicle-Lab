@@ -19,7 +19,8 @@ CSV_HEADER = (
 )
 
 
-def _render_demo_csv(batch_index: int) -> str:
+def demo_csv_content(batch_index: int) -> str:
+    """Return fictional CSV text for offline demonstrations without file writes."""
     start = datetime(2026, 10, 8, 9, 30, tzinfo=timezone.utc) + timedelta(
         days=batch_index
     )
@@ -68,7 +69,7 @@ def generate_demo_csvs(output_dir: Path | str) -> tuple[Path, Path]:
         )
 
     directory.mkdir(parents=True, exist_ok=True)
-    contents = (_render_demo_csv(0), _render_demo_csv(1))
+    contents = (demo_csv_content(0), demo_csv_content(1))
     created: list[Path] = []
     try:
         for path, content in zip(paths, contents):
