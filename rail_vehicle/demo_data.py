@@ -4,6 +4,7 @@ import csv
 from datetime import datetime, timedelta, timezone
 import io
 import math
+import random
 from pathlib import Path
 
 
@@ -17,6 +18,31 @@ CSV_HEADER = (
     "lateral_accel",
     "vertical_accel",
 )
+
+
+def ml_demo_samples() -> tuple[list[dict], list[dict]]:
+    """Independent fictional reference/target draws; no labels enter the model."""
+    generator = random.Random(2026)
+    batches = []
+    for day, count in ((0, 400), (1, 160)):
+        start = datetime(2026, 10, 8 + day, 9, 30, tzinfo=timezone.utc)
+        samples = []
+        for index in range(count):
+            speed = 72 + generator.gauss(0, 2)
+            lateral = generator.gauss(0, 0.12)
+            vertical = generator.gauss(0, 0.1)
+            if day == 1 and 40 <= index <= 45:
+                speed = 120 + generator.gauss(0, 1)
+            if day == 1 and 100 <= index <= 104:
+                lateral = 1.8 + generator.gauss(0, 0.05)
+                vertical = -1.6 + generator.gauss(0, 0.05)
+            samples.append(dict(
+                timestamp=(start + timedelta(seconds=index)).isoformat(),
+                speed_kmh=round(speed, 4), lateral_accel=round(lateral, 4),
+                vertical_accel=round(vertical, 4),
+            ))
+        batches.append(samples)
+    return batches[0], batches[1]
 
 
 def demo_csv_content(batch_index: int) -> str:
