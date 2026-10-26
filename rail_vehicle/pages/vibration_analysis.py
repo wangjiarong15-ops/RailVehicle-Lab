@@ -9,6 +9,7 @@ from rail_vehicle.demo_data import vibration_demo_samples
 from rail_vehicle.replay import prepare_replay
 from rail_vehicle.run_data import list_batch_samples, list_vehicle_batches
 from rail_vehicle.vehicle_data import list_vehicles
+from rail_vehicle.pages.experiment_export import render_export
 from rail_vehicle.vibration import (
     STATE_KEY, VibrationInputError, VibrationUnavailableError, analyze_vibration,
     signal_libraries, vibration_fingerprint,
@@ -148,3 +149,4 @@ def render():
         else:
             st.info("当前滑动窗口不足 2 个样本或长于记录，未生成滑动曲线。")
     st.caption("本功能未实施标准频率加权或舒适等级判定。传感器安装位置、轴向、重力、抗混叠与测量链路均需核实；仅凭 CSV 不能确认这些条件。计算不会调用 AI，也不会写入现有 PDF。")
+    render_export(saved, fingerprint, selection, "vibration")
