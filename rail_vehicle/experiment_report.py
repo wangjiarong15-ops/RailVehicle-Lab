@@ -14,6 +14,7 @@ import re
 
 from reportlab.graphics.charts.lineplots import LinePlot
 from reportlab.graphics.shapes import Drawing, Group, String
+from reportlab.graphics.widgets.markers import makeMarker
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
@@ -52,7 +53,7 @@ def _base(kind, fingerprint, selection, generated_at):
                 if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
                     raise ValueError("实验来源编号无效。")
                 identifiers[field] = value
-        required = {"vehicle", "reference", "target"} if kind == "ml" else {"vehicle", "batch"}
+        required = set() if kind == "fleet" else {"vehicle", "reference", "target"} if kind == "ml" else {"vehicle", "batch"}
         if not required.issubset(identifiers):
             raise ValueError("实验来源信息不完整。")
     return dict(kind=kind, input_fingerprint=fingerprint,
@@ -82,7 +83,7 @@ def _chart(title, x, y, x_label, y_label):
 def validated_experiment_ai(context, result, fingerprint, selection, kind):
     """Fail closed for optional AI; no legacy scope path or context reconstruction."""
     try:
-        expected = {"ml": "ml_experiment", "vibration": "vibration_experiment"}[kind]
+        expected = {"ml": "ml_experiment", "vibration": "vibration_experiment", "fleet": "fleet_comparison"}[kind]
         if not isinstance(context, dict) or not isinstance(result, dict):
             return None
         if context.get("analysis_type") != expected or result.get("status") != "available":
@@ -255,6 +256,15 @@ def _drawing(chart, font):
     plot.x, plot.y, plot.width, plot.height = 45, 25, 420, 150
     plot.data = [chart["points"]]
     plot.lines[0].strokeColor = colors.HexColor("#2563eb")
+    if "series" in chart:
+        plot.data = [item["points"] for item in chart["series"]]
+        plot.joinedLines = 0
+        palette = ("#2563eb", "#ea580c", "#7c3aed", "#059669", "#db2777", "#475569")
+        for index, item in enumerate(chart["series"]):
+            color = colors.HexColor(palette[index])
+            plot.lines[index].strokeColor = color
+            plot.lines[index].symbol = makeMarker("FilledCircle", size=2, fillColor=color, strokeColor=color)
+            drawing.add(String(55+index*65, 185, item["label"], fontName=font, fontSize=8, fillColor=color))
     if "horizontal_line" in chart:
         level = chart["horizontal_line"]
         plot.data.append([(chart["points"][0][0], level), (chart["points"][-1][0], level)])
@@ -318,18 +328,23 @@ def _render_experiment_pdf(report):
             value = "不适用/未定义" if fact["value"] is None else format(fact["value"], ".8g")
             rows.append([fact["id"] + "\n" + fact["label"], value, fact["unit"]])
         story.append(_table(rows, [doc.width*.61, doc.width*.24, doc.width*.15], small, header))
+        for table in report.get("tables", []):
+            story.append(_paragraph(table["title"], heading))
+            story.append(_table(table["rows"], [doc.width*part for part in table["widths"]], small, header))
         story.append(_paragraph("三、计算口径与局限", heading))
         for note in report["notes"]:
             story.append(_paragraph(note, body))
-        story.append(_paragraph("四、实验曲线", heading))
+        if report["kind"] != "fleet":
+            story.append(_paragraph("四、实验曲线", heading))
         if not report["charts"]:
             story.append(_paragraph("当前数据未满足频域条件，未绘制频域曲线。", body))
-        for chart in report["charts"]:
+        for index, chart in enumerate(report["charts"]):
             threshold_note = "橙色虚线为参考分布学习的模型分数阈值。" if "horizontal_line" in chart else ""
-            story.append(KeepTogether([
+            intro = [_paragraph("四、多车辆对比曲线", heading)] if report["kind"] == "fleet" and index == 0 else []
+            story.append(KeepTogether(intro + [
                 _paragraph(chart["title"], heading),
                 _drawing(chart, regular),
-                _paragraph(f"{threshold_note}原始计算序列 {chart['source_points']} 点；PDF 绘制 {len(chart['points'])} 点，按等间隔抽点并保留端点与全局极值；曲线不代表所有局部变化，统计指标使用完整分析结果。", small),
+                _paragraph(f"{threshold_note}原始计算序列 {chart['source_points']} 点；PDF 绘制 {len(chart['points'])} 点，按等间隔抽点并保留端点与全局极值；曲线不代表所有局部变化，统计指标使用完整分析结果。" + ("各车独立抽点，仅绘制散点，不插值或连接采样空档。" if "series" in chart else ""), small),
             ]))
             story.append(Spacer(1, 3*mm))
 

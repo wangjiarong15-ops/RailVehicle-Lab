@@ -72,6 +72,8 @@ def compare_run_batches(batches: list[dict[str, Any]]) -> list[dict[str, Any]]:
             {
                 "batch_id": batch_id,
                 "label": str(label),
+                "selected_start_utc": first_timestamp.isoformat(),
+                "selected_end_utc": _as_utc(ordered_samples[-1]["timestamp"]).isoformat(),
                 "sample_count": analysis["sample_count"],
                 "mean_speed_kmh": analysis["speed"]["mean"],
                 "maximum_speed_kmh": analysis["speed"]["maximum"],
