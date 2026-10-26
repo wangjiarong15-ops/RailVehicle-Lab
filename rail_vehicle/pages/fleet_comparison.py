@@ -35,7 +35,7 @@ def comparison_chart(results, field, unit):
 def render():
     st.header("多车辆运行对比")
     st.info("描述性运行表现对比，不代表同工况试验，不输出故障、安全或车辆优劣结论。")
-    source = st.radio("对比数据来源", ["历史车辆与批次", "内置虚构对比"], horizontal=True)
+    source = st.radio("对比数据来源", ["历史车辆与批次", "内置虚构对比"], horizontal=True, key="fleet_source")
     try:
         if source == "内置虚构对比":
             entries = demo_entries()
