@@ -32,6 +32,7 @@ from rail_vehicle.data_quality import analyze_sampling_times
 from rail_vehicle.timestamp_utils import parse_iso_timestamp
 from rail_vehicle.dynamics import analyze_run_data
 from rail_vehicle.anomaly import EVENT_DURATION_NOTE, detect_anomalies
+from rail_vehicle.pages.anomaly_review import render_event_review
 from rail_vehicle.time_filter import filter_samples_by_time_range
 from rail_vehicle.run_data import (
     MAX_CSV_SIZE_MB,
@@ -474,6 +475,11 @@ def _render_dynamics_analysis() -> None:
         )
     else:
         st.info("当前批次未发现超过所设阈值的数据异常点。")
+
+    render_event_review(result["samples"], anomaly_result, {
+        "vehicle_id": vehicle_id, "batch_id": batch_id,
+        "start": selected_start.isoformat(), "end": selected_end.isoformat(),
+    })
 
     st.subheader("运行曲线")
     chart_specs = (
