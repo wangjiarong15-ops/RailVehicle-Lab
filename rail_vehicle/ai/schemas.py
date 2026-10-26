@@ -61,7 +61,22 @@ INPUT_SCHEMA: dict[str, Any] = {
     "required": ["schema_version", "analysis_type", "metrics"],
     "properties": {
         "schema_version": {"const": "railvehicle.ai_input.v1"},
-        "analysis_type": {"enum": ["single_batch", "batch_comparison"]},
+        "analysis_type": {"enum": ["single_batch", "batch_comparison", "ml_experiment", "vibration_experiment"]},
+        "experiment": {
+            "type": "object",
+            "required": ["method", "ranges", "limitations"],
+            "properties": {
+                "method": {"type": "string", "minLength": 1},
+                "ranges": {"type": "array", "minItems": 1, "items": {
+                    "type": "object", "required": ["batch_ref", "start", "end"],
+                    "properties": {"batch_ref": {"type": "string", "minLength": 1},
+                                   "start": {"type": "string"}, "end": {"type": "string"}},
+                    "additionalProperties": False,
+                }},
+                "limitations": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+            },
+            "additionalProperties": False,
+        },
         "vehicle": {
             "type": "object",
             "properties": {
@@ -177,6 +192,14 @@ INPUT_SCHEMA: dict[str, Any] = {
         {
             "if": {"properties": {"analysis_type": {"const": "batch_comparison"}}},
             "then": {"required": ["batches"]},
+        },
+        {
+            "if": {"properties": {"analysis_type": {"const": "ml_experiment"}}},
+            "then": {"required": ["experiment", "sample_count", "batches"]},
+        },
+        {
+            "if": {"properties": {"analysis_type": {"const": "vibration_experiment"}}},
+            "then": {"required": ["experiment", "sample_count", "selection"]},
         },
     ],
     "additionalProperties": False,

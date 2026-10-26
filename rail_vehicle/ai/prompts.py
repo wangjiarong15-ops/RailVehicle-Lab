@@ -41,6 +41,17 @@ def build_evidence_reference_instructions(payload: dict[str, Any]) -> str:
             "异常事件的 duration_seconds 表示首个与最后一个异常样本之间的时间差，"
             "不代表该区间内持续观测到异常；存在采样空档时，不得声称空档期间持续异常。\n"
         )
+    experiment_guidance = ""
+    if payload.get("analysis_type") in {"ml_experiment", "vibration_experiment"}:
+        experiment_guidance = (
+            "【实验解读边界】\n"
+            "本次为离线探索性实验，仅解释已提供的 Python 聚合指标。"
+            "必须遵守 experiment.method 和 experiment.limitations 中的方法口径及局限。"
+            "不得自行计算比例、RMS、峰值、频率或其他输入没有的数值；不得推断未提供的局部时刻。"
+            "模型标记不是故障，离群分数不是故障概率；不能声称诊断准确率。"
+            "未加权振动指标不是标准舒适等级，频域证据缺失时不得推断频域结论。"
+            "不得声称所有结论的自然语言语义已经被本地证据范围校验所证明。\n"
+        )
     return (
         build_output_contract_instructions()
         + "【本次请求的证据引用规则】\n"
@@ -56,4 +67,5 @@ def build_evidence_reference_instructions(payload: dict[str, Any]) -> str:
         "没有合适证据时，不生成相应的可选观察、可能原因、检查建议或局限项。"
         "summary 必须由至少一个现有证据 ID 支持；若无法支持，不得编造 summary 或伪造 ID。\n"
         + event_duration_guidance
+        + experiment_guidance
     )

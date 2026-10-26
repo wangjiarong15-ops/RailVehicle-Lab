@@ -10,6 +10,7 @@ from rail_vehicle.replay import prepare_replay
 from rail_vehicle.run_data import list_batch_samples, list_vehicle_batches
 from rail_vehicle.vehicle_data import list_vehicles
 from rail_vehicle.pages.experiment_export import render_export
+from rail_vehicle.pages.experiment_ai import render_experiment_ai
 from rail_vehicle.vibration import (
     STATE_KEY, VibrationInputError, VibrationUnavailableError, analyze_vibration,
     signal_libraries, vibration_fingerprint,
@@ -107,6 +108,7 @@ def render():
             st.error("振动计算失败，未展示结果；其他分析与报告功能仍可使用。")
             return
     if not saved:
+        st.session_state.pop("experiment_vibration_ai", None)
         st.info("点击“计算振动指标”查看采样质量、时域与适用的频域结果。")
         return
     result = saved["result"]
@@ -148,5 +150,6 @@ def render():
             st.caption("每个滑动窗口对整段去均值后的加速度计算 RMS；窗口点数按采样率四舍五入，横轴表示窗口结束时刻。")
         else:
             st.info("当前滑动窗口不足 2 个样本或长于记录，未生成滑动曲线。")
-    st.caption("本功能未实施标准频率加权或舒适等级判定。传感器安装位置、轴向、重力、抗混叠与测量链路均需核实；仅凭 CSV 不能确认这些条件。计算不会调用 AI，也不会写入现有 PDF。")
+    st.caption("本功能未实施标准频率加权或舒适等级判定。传感器安装位置、轴向、重力、抗混叠与测量链路均需核实；仅凭 CSV 不能确认这些条件。振动计算不调用 AI；可单独导出实验 PDF 或主动请求聚合指标解读。")
     render_export(saved, fingerprint, selection, "vibration")
+    render_experiment_ai(saved, fingerprint, selection, "vibration")

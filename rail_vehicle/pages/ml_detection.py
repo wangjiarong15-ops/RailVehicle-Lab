@@ -13,6 +13,7 @@ from rail_vehicle.ml_anomaly import (
 from rail_vehicle.run_data import list_batch_samples, list_vehicle_batches
 from rail_vehicle.vehicle_data import list_vehicles
 from rail_vehicle.pages.experiment_export import render_export
+from rail_vehicle.pages.experiment_ai import render_experiment_ai
 
 
 CATEGORY_LABELS = dict(both="两者均标记", ml_only="仅模型标记", rule_only="仅规则标记", neither="两者均未标记")
@@ -50,7 +51,7 @@ def build_score_chart(result):
 def render():
     st.header("机器学习异常检测")
     st.info("本地 Isolation Forest · 学习参考批次分布，探索待检测数据中的离群样本。结果不代表故障或安全判断。")
-    st.caption("仅在点击“训练并检测”后计算；不调用 AI API，不上传样本，不保存模型文件。")
+    st.caption("仅在点击“训练并检测”后进行本地计算；模型计算不调用 AI API，不上传样本，不保存模型文件。可另行主动请求聚合指标的 AI 解读。")
     try:
         estimator_class()
     except MLUnavailableError:
@@ -117,6 +118,7 @@ def render():
             st.error("本地模型运行失败，未展示结果；原有统计分析和报告功能仍可使用。")
             return
     if not saved:
+        st.session_state.pop("experiment_ml_ai", None)
         st.info("数据已选择。点击“训练并检测”生成本地结果。")
         return
     result = saved["result"]
@@ -148,3 +150,4 @@ def render():
                       参考离群比例=result["contamination"], 模型分数阈值=result["score_threshold"]))
         st.caption("仅使用速度和双轴瞬时加速度，未建模频谱、线路、载荷或车辆故障机理。参考与检测工况不同会产生分布偏移和误报。无真实故障标签，不能据此宣称真实诊断准确率；模型未标记也不代表安全。单个批次最多支持 20,000 条。")
     render_export(saved, fingerprint, selection, "ml")
+    render_experiment_ai(saved, fingerprint, selection, "ml")
