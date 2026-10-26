@@ -15,6 +15,7 @@ from rail_vehicle.run_data import list_batch_samples, list_vehicle_batches
 from rail_vehicle.vehicle_data import list_vehicles
 from rail_vehicle.pages.experiment_export import render_export
 from rail_vehicle.pages.experiment_ai import render_experiment_ai
+from rail_vehicle.pages.ml_review import render_review
 
 
 CATEGORY_LABELS = dict(both="两者均标记", ml_only="仅模型标记", rule_only="仅规则标记", neither="两者均未标记")
@@ -142,6 +143,7 @@ def render():
         st.dataframe(flagged, hide_index=True, width="stretch")
     else:
         st.info("当前参数下，模型与规则均未标记样本。")
+    render_review(result, fingerprint)
     with st.expander("实验记录与局限", expanded=False):
         st.write(dict(算法="scikit-learn IsolationForest", 特征=result["features"],
                       参考样本数=result["reference_count"], 检测样本数=result["sample_count"],
