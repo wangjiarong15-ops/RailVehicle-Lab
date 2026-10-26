@@ -18,10 +18,10 @@ def render_experiment_ai(saved, fingerprint, selection, kind):
     key = f"experiment_{kind}_ai"
     if not saved or saved.get("fingerprint") != fingerprint:
         clear_result(st.session_state, key)
-        return
+        return None, None
     st.subheader("🤖 实验 AI 辅助解读")
     st.caption("AI 生成内容，仅解释当前聚合指标，不构成故障、事故、安全、法规或标准舒适等级结论。证据范围校验不证明自然语言推理正确。")
-    st.info("仅在主动点击后发送已计算的聚合指标、参数、时间范围和局限；不发送原始 CSV、样本、分数序列、频谱数组或 PDF。解读暂不写入实验 PDF。")
+    st.info("仅在主动点击后发送已计算的聚合指标、参数、时间范围和局限；不发送原始 CSV、样本、分数序列、频谱数组或 PDF。当前完整验证的解读可附加到实验 PDF。")
     st.caption("证据范围：B1 为参考批次，B2 为检测批次；模型参数不归属于单个批次。" if kind == "ml" else "证据范围：B1 为当前筛选后的振动分析记录。")
     try:
         builder = build_ml_experiment_payload if kind == "ml" else build_vibration_experiment_payload
@@ -31,13 +31,13 @@ def render_experiment_ai(saved, fingerprint, selection, kind):
     except (ValueError, TypeError, KeyError, OverflowError):
         clear_result(st.session_state, key)
         st.warning("当前实验结果不符合 AI 输入要求，未调用服务；实验报告仍可使用。")
-        return
+        return None, None
     try:
         config = AIConfig.from_sources()
     except Exception:
         clear_result(st.session_state, key)
         st.warning("无法读取 AI 配置，未调用服务；实验分析与报告仍可使用。")
-        return
+        return None, None
     unavailable = ai_configuration_message(config)
     if unavailable:
         clear_result(st.session_state, key)
@@ -69,3 +69,4 @@ def render_experiment_ai(saved, fingerprint, selection, kind):
             st.warning("实验 AI 证据范围未完整验证，未展示结果。")
         elif not render_validated_result(result, payload, st):
             clear_result(st.session_state, key)
+    return payload, st.session_state.get(key)

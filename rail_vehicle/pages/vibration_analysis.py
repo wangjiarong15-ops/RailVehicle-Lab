@@ -151,5 +151,5 @@ def render():
         else:
             st.info("当前滑动窗口不足 2 个样本或长于记录，未生成滑动曲线。")
     st.caption("本功能未实施标准频率加权或舒适等级判定。传感器安装位置、轴向、重力、抗混叠与测量链路均需核实；仅凭 CSV 不能确认这些条件。振动计算不调用 AI；可单独导出实验 PDF 或主动请求聚合指标解读。")
-    render_export(saved, fingerprint, selection, "vibration")
-    render_experiment_ai(saved, fingerprint, selection, "vibration")
+    ai_context, ai_result = render_experiment_ai(saved, fingerprint, selection, "vibration")
+    render_export(saved, fingerprint, selection, "vibration", ai_context=ai_context, ai_result=ai_result)

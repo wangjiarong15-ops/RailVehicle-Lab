@@ -5,6 +5,7 @@ This module neither fits models nor computes signal statistics nor calls AI.
 """
 
 from datetime import datetime, timezone
+from copy import deepcopy
 from hashlib import sha256
 from io import BytesIO
 import json
@@ -20,10 +21,13 @@ from reportlab.lib.units import mm
 from reportlab.platypus import KeepTogether, SimpleDocTemplate, Spacer
 
 from rail_vehicle.analysis_report import _font_names, _paragraph, _sampled_indices, _table
+from rail_vehicle.ai.provider import input_fingerprint
+from rail_vehicle.ai.schemas import collect_evidence_metadata, validate_output
+from rail_vehicle.ai.ui import selection_fingerprint
 from rail_vehicle.timestamp_utils import parse_iso_timestamp
 
 
-SAFETY_NOTE = "本报告为离线数据探索性实验记录，不构成车辆故障诊断、事故、安全、法规或标准舒适等级结论。未调用 AI。"
+SAFETY_NOTE = "本报告为离线数据探索性实验记录，不构成车辆故障诊断、事故、安全、法规或标准舒适等级结论。PDF 生成过程不调用 AI 服务。"
 SOURCE_FIELDS = ("vehicle", "reference", "target", "batch")
 
 
@@ -75,13 +79,66 @@ def _chart(title, x, y, x_label, y_label):
                 points=[(x[i], y[i]) for i in indices], source_points=len(x))
 
 
-def _finish(report):
+def validated_experiment_ai(context, result, fingerprint, selection, kind):
+    """Fail closed for optional AI; no legacy scope path or context reconstruction."""
+    try:
+        expected = {"ml": "ml_experiment", "vibration": "vibration_experiment"}[kind]
+        if not isinstance(context, dict) or not isinstance(result, dict):
+            return None
+        if context.get("analysis_type") != expected or result.get("status") != "available":
+            return None
+        if result.get("scope_validation") != "verified":
+            return None
+        if result.get("selection_fingerprint") != selection_fingerprint(
+            dict(selection=selection, analysis_fingerprint=fingerprint)
+        ):
+            return None
+        current = input_fingerprint(context)
+        if current != result.get("input_fingerprint"):
+            return None
+        analysis = validate_output(result.get("analysis"), context)
+        claims = [analysis["summary"]] + [claim for category in
+                  ("observations", "possible_causes", "further_checks", "limitations") for claim in analysis[category]]
+        cited = {eid for claim in claims for eid in claim["evidence_ids"]}
+        facts = {item["evidence_id"]: item for item in context["metrics"]}
+        for batch in context.get("batches", []):
+            facts.update({item["evidence_id"]: item for item in batch["metrics"]})
+        evidence = [{**item, **{field: facts[item["evidence_id"]][field] for field in ("name", "value", "unit")}}
+                    for item in collect_evidence_metadata(context) if item["evidence_id"] in cited]
+        metadata = result.get("ai_metadata", {})
+        if not isinstance(metadata, dict):
+            metadata = {}
+        # Only known metadata fields; never propagate arbitrary provider fields.
+        provider = metadata.get("provider")
+        provider = provider if provider in ("deepseek", "openai") else "未记录"
+        model = metadata.get("model")
+        model = model if isinstance(model, str) and 0 < len(model) <= 160 else "未记录"
+        generated = metadata.get("generated_at")
+        if not isinstance(generated, str):
+            generated = "未记录"
+        else:
+            try:
+                generated = parse_iso_timestamp(generated).isoformat()
+            except (ValueError, TypeError, OverflowError):
+                generated = "未记录"
+        section = deepcopy(dict(analysis=analysis, evidence=evidence, input_fingerprint=current,
+                                provider=provider, model=model, generated_at=generated,
+                                status="available", scope_validation="verified"))
+        json.dumps(section, ensure_ascii=False, allow_nan=False).encode("utf-8")
+        return section
+    except Exception:
+        # Optional rejected AI must never block the deterministic PDF.
+        return None
+
+
+def _finish(report, ai_context=None, ai_result=None, selection=None):
+    report["ai"] = validated_experiment_ai(ai_context, ai_result, report["input_fingerprint"], selection, report["kind"])
     encoded = json.dumps(report, sort_keys=True, ensure_ascii=False, allow_nan=False).encode("utf-8")
     report["report_fingerprint"] = sha256(encoded).hexdigest()
     return report
 
 
-def build_ml_report(result, fingerprint, selection, *, generated_at=None):
+def build_ml_report(result, fingerprint, selection, *, generated_at=None, ai_context=None, ai_result=None):
     report = _base("ml", fingerprint, selection, generated_at)
     report["title"] = "轨道车辆机器学习离群检测实验报告"
     report["ranges"] = dict(参考开始=result["reference_start"], 参考结束=result["reference_end"],
@@ -111,10 +168,10 @@ def build_ml_report(result, fingerprint, selection, *, generated_at=None):
         "参考离群比例不是检测数据的真实异常率。没有真实故障标签，不能据此报告准确率；参考批次不等于经过认证的正常车辆。",
         "线路、载荷、传感器位置及运行工况差异可能导致分布偏移。报告未验证参考与检测数据是否独立或工况一致。",
     ]
-    return _finish(report)
+    return _finish(report, ai_context, ai_result, selection)
 
 
-def build_vibration_report(result, fingerprint, selection, *, generated_at=None):
+def build_vibration_report(result, fingerprint, selection, *, generated_at=None, ai_context=None, ai_result=None):
     report = _base("vibration", fingerprint, selection, generated_at)
     report["title"] = "轨道车辆探索性振动分析实验报告"
     report["ranges"] = dict(分析开始=result["timestamps_utc"][0], 分析结束=result["timestamps_utc"][-1])
@@ -154,7 +211,42 @@ def build_vibration_report(result, fingerprint, selection, *, generated_at=None)
         "Welch：周期 Hann 窗、50% 重叠、每段去均值。频带 RMS：频带内 PSD 求和、乘以频率间隔后开平方，存在频率分辨率与谱泄漏误差；主峰不用于推断故障部件。",
         "滑动 RMS 使用整段去均值信号。未实施标准舒适性等级、Sperling、重力/姿态校正或传感器测量链路验证。",
     ]
-    return _finish(report)
+    return _finish(report, ai_context, ai_result, selection)
+
+
+def _append_experiment_ai(story, section, body, heading, small, header, width):
+    story.append(_paragraph("五、AI 辅助解读（可选）", heading))
+    if section is None:
+        story.append(_paragraph("当前没有匹配且完整验证的 AI 解读。本报告仍包含完整的确定性实验结果。", body))
+        return
+    story.append(_paragraph("AI 生成内容仅解释当前聚合指标，不构成故障、事故、安全、法规或标准舒适等级结论。证据范围校验不证明自然语言推理或因果解释正确。", body))
+    story.append(_table([["Provider / Model", "生成时间", "校验状态"],
+                         [section["provider"]+" / "+section["model"], section["generated_at"], "available / verified"]],
+                        [width*.38, width*.38, width*.24], small, header))
+    fingerprint = section["input_fingerprint"]
+    story.append(_paragraph(f"AI 输入指纹：{fingerprint[:32]} {fingerprint[32:]}", small))
+    analysis = section["analysis"]
+    groups = [("核心结论", [analysis["summary"]]), ("主要观察", analysis["observations"]),
+              ("可能原因（待核实的假设）", analysis["possible_causes"]),
+              ("建议进一步检查", analysis["further_checks"]), ("局限性", analysis["limitations"])]
+    for label, claims in groups:
+        story.append(_paragraph(label, heading))
+        if not claims:
+            story.append(_paragraph("未生成此类内容。", small))
+        for claim in claims:
+            text = (f"建议：{claim['action']}；依据：{claim['reason']}" if "action" in claim else claim["text"])
+            if "qualification" in claim:
+                text += "（待核实的假设，hypothesis）"
+            # Individual paragraphs can split over pages; do not KeepTogether
+            # an arbitrarily long model claim with its evidence references.
+            story.append(_paragraph(text, body))
+            story.append(_paragraph("证据：" + " · ".join(claim["evidence_ids"]), small))
+    story.append(_paragraph("AI 引用证据目录", heading))
+    rows = [["Evidence ID / 指标", "值 / 单位", "类别 / 轴向 / 批次"]]
+    for item in section["evidence"]:
+        rows.append([item["evidence_id"]+"\n"+item["name"], f"{item['value']:.8g} {item['unit']}",
+                     item["category"]+" / "+item["axis"]+" / "+(", ".join(item["batch_refs"]) or "不适用")])
+    story.append(_table(rows, [width*.48, width*.20, width*.32], small, header))
 
 
 def _drawing(chart, font):
@@ -181,6 +273,22 @@ def _drawing(chart, font):
 
 
 def generate_experiment_pdf(report):
+    """An optional AI layout failure falls back to the deterministic document."""
+    try:
+        return _render_experiment_pdf(report)
+    except Exception:
+        if isinstance(report, dict) and report.get("ai") is not None:
+            fallback = deepcopy(report)
+            fallback.pop("report_fingerprint", None)
+            fallback["notes"].append("AI 附录无法写入，已省略；确定性实验结果保持完整。")
+            try:
+                return _render_experiment_pdf(_finish(fallback))
+            except Exception:
+                pass
+        raise RuntimeError("实验报告生成失败，请重试；原有分析结果仍可使用。") from None
+
+
+def _render_experiment_pdf(report):
     """Render an allowlisted report to bytes; no network, keys or model execution."""
     try:
         regular, bold = _font_names()
@@ -224,6 +332,8 @@ def generate_experiment_pdf(report):
                 _paragraph(f"{threshold_note}原始计算序列 {chart['source_points']} 点；PDF 绘制 {len(chart['points'])} 点，按等间隔抽点并保留端点与全局极值；曲线不代表所有局部变化，统计指标使用完整分析结果。", small),
             ]))
             story.append(Spacer(1, 3*mm))
+
+        _append_experiment_ai(story, report.get("ai"), body, heading, small, header, doc.width)
 
         def footer(canvas, document):
             canvas.saveState()

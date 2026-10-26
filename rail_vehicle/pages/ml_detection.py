@@ -149,5 +149,5 @@ def render():
                       树数量=result["tree_count"], 随机种子=result["seed"],
                       参考离群比例=result["contamination"], 模型分数阈值=result["score_threshold"]))
         st.caption("仅使用速度和双轴瞬时加速度，未建模频谱、线路、载荷或车辆故障机理。参考与检测工况不同会产生分布偏移和误报。无真实故障标签，不能据此宣称真实诊断准确率；模型未标记也不代表安全。单个批次最多支持 20,000 条。")
-    render_export(saved, fingerprint, selection, "ml")
-    render_experiment_ai(saved, fingerprint, selection, "ml")
+    ai_context, ai_result = render_experiment_ai(saved, fingerprint, selection, "ml")
+    render_export(saved, fingerprint, selection, "ml", ai_context=ai_context, ai_result=ai_result)
