@@ -78,6 +78,13 @@ class RenderRecorder:
     def error(self, value): self._record("error", value)
     def warning(self, value): self._record("warning", value)
 
+    def expander(self, value, **kwargs):
+        from contextlib import nullcontext
+        self._record("expander", value)
+        return nullcontext()
+
+    def dataframe(self, value, **kwargs): self._record("dataframe", value)
+
 
 class AIUIIntegrationTests(unittest.TestCase):
     def setUp(self):

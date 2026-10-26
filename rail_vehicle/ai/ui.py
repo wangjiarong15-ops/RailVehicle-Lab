@@ -7,6 +7,7 @@ import json
 from typing import Any, Callable
 
 from rail_vehicle.ai.config import AIConfig
+from rail_vehicle.ai.evidence_view import evidence_detail_catalog
 from rail_vehicle.deployment import public_demo_enabled
 from rail_vehicle.ai.provider import (
     AIAnalysisService,
@@ -188,6 +189,7 @@ def render_validated_result(result: dict[str, Any], payload: dict[str, Any], st_
             raise AIContractError("AI 结果范围验证状态无效。")
         allow_legacy = scope_validation in (None, "legacy_unverified")
         analysis = validate_output(result["analysis"], payload, allow_legacy_scope=allow_legacy)
+        details = evidence_detail_catalog(payload)
     except (AttributeError, KeyError, TypeError, AIContractError):
         st_module.error("AI 结果校验失败，已阻止显示。")
         return False
@@ -197,42 +199,53 @@ def render_validated_result(result: dict[str, Any], payload: dict[str, Any], st_
 
     st_module.markdown("**核心结论**")
     st_module.text(analysis["summary"]["text"])
-    _render_evidence(st_module, analysis["summary"]["evidence_ids"])
+    _render_evidence(st_module, analysis["summary"], details, "核心结论")
 
     st_module.markdown("**主要观察**")
     if analysis["observations"]:
         for index, observation in enumerate(analysis["observations"], start=1):
             st_module.text(f"{index}. {observation['text']}")
-            _render_evidence(st_module, observation["evidence_ids"])
+            _render_evidence(st_module, observation, details, f"主要观察 {index}")
     else:
         st_module.caption("暂无主要观察。")
 
     st_module.markdown("**可能原因**")
     if analysis["possible_causes"]:
-        for cause in analysis["possible_causes"]:
+        for index, cause in enumerate(analysis["possible_causes"], start=1):
             st_module.text(f"{cause['text']}（待核实的假设：{cause['qualification']}）")
-            _render_evidence(st_module, cause["evidence_ids"])
+            _render_evidence(st_module, cause, details, f"可能原因 {index}")
     else:
         st_module.caption("暂无可能原因假设。")
 
     st_module.markdown("**建议进一步检查**")
     if analysis["further_checks"]:
-        for check in analysis["further_checks"]:
+        for index, check in enumerate(analysis["further_checks"], start=1):
             st_module.text(f"建议：{check['action']}")
             st_module.text(f"依据：{check['reason']}")
-            _render_evidence(st_module, check["evidence_ids"])
+            _render_evidence(st_module, check, details, f"建议检查 {index}")
     else:
         st_module.caption("暂无进一步检查建议。")
 
     st_module.markdown("**局限性**")
     if analysis["limitations"]:
-        for limitation in analysis["limitations"]:
+        for index, limitation in enumerate(analysis["limitations"], start=1):
             st_module.text(limitation["text"])
-            _render_evidence(st_module, limitation["evidence_ids"])
+            _render_evidence(st_module, limitation, details, f"局限性 {index}")
     else:
         st_module.caption("暂无补充局限性说明。")
     return True
 
 
-def _render_evidence(st_module: Any, evidence_ids: list[str]) -> None:
+def _render_evidence(st_module: Any, claim: dict, details: dict, label: str) -> None:
+    evidence_ids = claim["evidence_ids"]
     st_module.caption("证据：" + " · ".join(evidence_ids))
+    with st_module.expander(f"核查证据 · {label}", expanded=False):
+        scope = claim.get("claim_scope")
+        if scope:
+            st_module.caption(f"声明范围已核对：{scope['category']} / {scope['axis']} / "
+                              + ("、".join(scope["batch_refs"]) or "不归属单一批次"))
+        else:
+            st_module.warning("旧格式：本条结论的类别、轴向和批次范围未验证。")
+        st_module.dataframe([row for eid in evidence_ids for row in details[eid]],
+                            hide_index=True, width="stretch")
+        st_module.caption("以上为当前输入的 Python 聚合事实；范围匹配不证明结论的语义或因果关系正确。")
