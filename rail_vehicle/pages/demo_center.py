@@ -30,7 +30,7 @@ DEMOS = {
     "fleet": dict(page="多车辆运行对比", title="4 · 多车辆运行表现", dependency=None,
         description="对比两辆虚构车辆的速度、双轴 RMS、绝对峰值与采样范围。",
         steps="点击“计算多车辆对比”；调整共同速度区间并重新计算，解释可比性限制。",
-        settings=dict(fleet_source="内置虚构对比"), clear=()),
+        settings=dict(fleet_source="内置虚构对比"), clear=("fleet_comparison_result", "experiment_fleet_ai")),
 }
 
 

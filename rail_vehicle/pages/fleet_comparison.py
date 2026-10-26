@@ -10,6 +10,16 @@ from rail_vehicle.demo_data import ml_demo_samples
 from rail_vehicle.fleet_comparison import compare_vehicles
 from rail_vehicle.run_data import list_batch_samples, list_vehicle_batches
 from rail_vehicle.vehicle_data import list_vehicles
+from rail_vehicle.ai.ui import clear_result, selection_fingerprint
+from rail_vehicle.pages.experiment_ai import render_experiment_ai
+
+
+STATE_KEY = "fleet_comparison_result"
+
+
+def _clear_results():
+    st.session_state.pop(STATE_KEY, None)
+    clear_result(st.session_state, "experiment_fleet_ai")
 
 
 def demo_entries():
@@ -44,18 +54,21 @@ def render():
         else:
             vehicles = list_vehicles()
             if len(vehicles) < 2:
+                _clear_results()
                 st.info("请先登记至少两辆车并导入各自运行数据，或选择内置虚构对比。")
                 return
             by_id = {v["id"]: v for v in vehicles}
             selected = st.multiselect("选择 2–6 辆车辆", list(by_id),
                                       format_func=lambda vid: by_id[vid]["vehicle_code"], max_selections=6)
             if len(selected) < 2:
+                _clear_results()
                 st.info("请选择至少两辆不同车辆。")
                 return
             entries = []
             for vid in selected:
                 batches = list_vehicle_batches(vid)
                 if not batches:
+                    _clear_results()
                     st.warning("所选车辆中有车辆尚未导入运行数据。")
                     return
                 labels = {b["id"]: f"批次 {b['id']} · {b['sample_count']} 条" for b in batches}
@@ -63,14 +76,27 @@ def render():
                                    format_func=labels.get, key=f"fleet_batch_{vid}")
                 entries.append(dict(vehicle=by_id[vid], batch_id=bid, samples=list_batch_samples(vid, bid)))
         low, high = st.slider("共同速度区间（km/h，含边界）", 0, 600, (0, 600))
-        if not st.button("计算多车辆对比", type="primary"):
+        # Hash full local inputs; raw samples and private identifiers never enter AI context.
+        fingerprint = selection_fingerprint(dict(source=source, entries=entries, low=low, high=high))
+        saved = st.session_state.get(STATE_KEY)
+        if not saved or saved.get("fingerprint") != fingerprint:
+            _clear_results()
+            saved = None
+        if st.button("计算多车辆对比", type="primary"):
+            _clear_results()
+            comparison = compare_vehicles(entries, low, high)
+            saved = dict(fingerprint=fingerprint, result=dict(comparison=comparison, speed_min=low, speed_max=high))
+            st.session_state[STATE_KEY] = saved
+        if saved is None:
             st.caption("选择数据和区间后点击计算；更改选择后需重新计算，不保留旧结果。")
             return
-        comparison = compare_vehicles(entries, low, high)
+        comparison = saved["result"]["comparison"]
     except (sqlite3.Error, OSError):
+        _clear_results()
         st.error("暂时无法读取车辆运行数据，请稍后重试。")
         return
     except (ValueError, TypeError, KeyError, OverflowError):
+        _clear_results()
         st.warning("无法对比：请检查各批次数据和速度区间，确保每辆车都有有效样本。")
         return
     for warning in comparison["warnings"]:
@@ -99,3 +125,5 @@ def render():
         st.subheader(title)
         st.plotly_chart(comparison_chart(results, field, unit), width="stretch")
     st.caption("各车从首个保留样本对齐为 0 秒；保留真实时间间隔。散点不插值，不代表同一线路位置或同步测量。筛选后的跨度包含未保留样本形成的空档，并非累计运行时长。传感器安装、轴向、载荷和线路条件需人工核实。")
+    st.caption("匿名映射（仅本地展示）：" + "；".join(f"B{index} = {row['label']} / 批次 {row['batch_id']}" for index, row in enumerate(results, 1)))
+    render_experiment_ai(saved, fingerprint, dict(source="demo" if source == "内置虚构对比" else "history"), "fleet")

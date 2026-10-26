@@ -42,6 +42,14 @@ def build_evidence_reference_instructions(payload: dict[str, Any]) -> str:
             "不代表该区间内持续观测到异常；存在采样空档时，不得声称空档期间持续异常。\n"
         )
     experiment_guidance = ""
+    if payload.get("analysis_type") == "fleet_comparison":
+        experiment_guidance = (
+            "【多车辆对比边界】\n"
+            "每个匿名批次对应一辆不同车辆，必须遵守 comparison.method 与 comparison.limitations。"
+            "只能解释已有聚合指标；不得自行计算差值、百分比变化或质量归一化结果。"
+            "同一速度区间不证明同工况，不作车辆优劣、安全、故障、舒适等级或合规排名。"
+            "登记质量不是试验载荷；不能将统计差异确定归因为车辆性能或部件问题。\n"
+        )
     if payload.get("analysis_type") in {"ml_experiment", "vibration_experiment"}:
         experiment_guidance = (
             "【实验解读边界】\n"
