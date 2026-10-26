@@ -124,3 +124,21 @@ def generate_demo_csvs(output_dir: Path | str) -> tuple[Path, Path]:
             path.unlink(missing_ok=True)
         raise
     return paths
+
+
+def analysis_demo_data():
+    """Build independent fictional batches in memory, never import or write files."""
+    vehicle = dict(id=-1, vehicle_code="FICTIONAL-DEMO", vehicle_type="虚构演示车型（非实车）",
+                   vehicle_length_m=20, mass_kg=40000, axle_count=4, bogie_count=2,
+                   max_speed_kmh=160, notes="虚构数据，不代表真实车辆运行记录。")
+    batches, samples_by_batch = [], {}
+    for index in range(2):
+        batch_id = -(index + 1)
+        samples_by_batch[batch_id] = [
+            dict(timestamp=row["timestamp"], **{
+                field: float(row[field]) for field in ("speed_kmh", "lateral_accel", "vertical_accel")})
+            for row in csv.DictReader(io.StringIO(demo_csv_content(index)))
+        ]
+        batches.append(dict(id=batch_id, file_name=f"虚构演示批次{index + 1}（非实测）",
+                            imported_at="内存生成，未导入数据库", sample_count=DEMO_SAMPLE_COUNT))
+    return vehicle, batches, samples_by_batch

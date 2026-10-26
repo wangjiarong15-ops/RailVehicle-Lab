@@ -31,6 +31,11 @@ DEMOS = {
         description="对比两辆虚构车辆的速度、双轴 RMS、绝对峰值与采样范围。",
         steps="点击“计算多车辆对比”；调整共同速度区间并重新计算，解释可比性限制。",
         settings=dict(fleet_source="内置虚构对比"), clear=("fleet_comparison_result", "experiment_fleet_ai")),
+    "statistics": dict(page="统计与异常演示", title="5 · 基础统计与异常回查", dependency=None,
+        description="用两批虚构数据展示时间筛选、统计指标、异常区段和局部回查。",
+        steps="点击“计算虚构运行分析”；选择批次、调整阈值、展开事件回查，再导出离线 PDF。",
+        settings=dict(demo_analysis_threshold=1.0),
+        clear=("statistics_demo_started", "demo_analysis_report_key", "demo_analysis_report_pdf")),
 }
 
 
@@ -46,6 +51,10 @@ def launch_demo(name):
         for key in list(st.session_state):
             if key.startswith("vibration_range_") and "'source': 'demo'" in key:
                 st.session_state.pop(key, None)
+    if name == "statistics":
+        for key in list(st.session_state):
+            if (key.startswith("analysis_") and "_-1_-" in key) or key.startswith("demo_dynamics_"):
+                st.session_state.pop(key, None)
     st.session_state.update(demo["settings"])
     st.session_state["navigation_page"] = demo["page"]
 
@@ -53,12 +62,12 @@ def launch_demo(name):
 def render():
     st.header("演示中心")
     st.info("离线虚构数据演示 · 无需登记车辆或导入 CSV。入口只切换当前会话的数据源与默认参数，不自动计算、不调用 AI，也不写入数据库。")
-    st.caption("建议按 1→4 顺序展示。随时从左侧返回本页；打开入口会重置该演示的参数和临时结果，已有车辆、批次和文件不会删除。")
+    st.caption("可先用第 5 项展示基础统计，再按 1→4 展示驾驶舱与进阶实验。随时从左侧返回本页；打开入口会重置该演示的参数和临时结果，已有车辆、批次和文件不会删除。")
     columns = st.columns(3)
     columns[0].metric("Python", ".".join(map(str, sys.version_info[:3])), border=True)
     columns[1].metric("机器学习依赖", "可用" if importlib.util.find_spec("sklearn") else "未安装", border=True)
     columns[2].metric("振动依赖", "可用" if importlib.util.find_spec("scipy") else "未安装", border=True)
-    for pair in (("cockpit", "ml"), ("vibration", "fleet")):
+    for pair in (("cockpit", "ml"), ("vibration", "fleet"), ("statistics",)):
         for column, name in zip(st.columns(2), pair):
             demo = DEMOS[name]
             with column.container(border=True):

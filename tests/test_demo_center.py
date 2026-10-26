@@ -28,11 +28,11 @@ class DemoCenterTests(unittest.TestCase):
         self.assertEqual(len(app.exception), 0)
         return app
 
-    def test_portal_is_read_only_and_offers_four_explicit_launches(self):
+    def test_portal_is_read_only_and_offers_five_explicit_launches(self):
         with patch.object(ml_detection, "detect_ml_anomalies") as detect, \
              patch.object(vibration_analysis, "analyze_vibration") as analyze:
             app = self.app()
-        self.assertEqual(len(app.button), 4)
+        self.assertEqual(len(app.button), 5)
         self.assertTrue(any("不自动计算" in item.value for item in app.info))
         detect.assert_not_called()
         analyze.assert_not_called()

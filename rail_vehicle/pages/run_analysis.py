@@ -228,13 +228,17 @@ def _format_stats_table(metrics: dict, acceleration: bool = False) -> list[dict]
     return rows
 
 
-def _render_dynamics_analysis() -> None:
+def _render_dynamics_analysis(*, demo: bool = False) -> None:
+    ai_state_key = "demo_single_batch_result" if demo else "ai_single_batch_result"
     st.caption(
         "基础动力学统计分析 · 描述性统计结果不代表法规合规或安全结论。"
     )
-    vehicles = list_vehicles()
+    if demo:
+        from rail_vehicle.demo_data import analysis_demo_data
+        demo_vehicle, demo_batches, demo_samples = analysis_demo_data()
+    vehicles = [demo_vehicle] if demo else list_vehicles()
     if not vehicles:
-        clear_result(st.session_state, "ai_single_batch_result")
+        clear_result(st.session_state, ai_state_key)
         st.info("请先录入车辆并导入运行数据。")
         return
 
@@ -246,16 +250,16 @@ def _render_dynamics_analysis() -> None:
             for vehicle in vehicles
             if vehicle["id"] == selected_id
         ),
-        key="dynamics_vehicle_id",
+        key="demo_dynamics_vehicle_id" if demo else "dynamics_vehicle_id",
     )
-    batches = list_vehicle_batches(vehicle_id)
+    batches = demo_batches if demo else list_vehicle_batches(vehicle_id)
     if not batches:
-        clear_result(st.session_state, "ai_single_batch_result")
+        clear_result(st.session_state, ai_state_key)
         st.info("该车辆还没有导入运行数据。")
         return
 
     batch_id = st.selectbox(
-        "选择历史导入批次",
+        "选择虚构批次" if demo else "选择历史导入批次",
         options=[batch["id"] for batch in batches],
         format_func=lambda selected_id: next(
             f"{batch['file_name']} · {batch['imported_at']} · "
@@ -263,11 +267,11 @@ def _render_dynamics_analysis() -> None:
             for batch in batches
             if batch["id"] == selected_id
         ),
-        key="dynamics_batch_id",
+        key="demo_dynamics_batch_id" if demo else "dynamics_batch_id",
     )
-    samples = list_batch_samples(vehicle_id, batch_id)
+    samples = demo_samples[batch_id] if demo else list_batch_samples(vehicle_id, batch_id)
     if not samples:
-        clear_result(st.session_state, "ai_single_batch_result")
+        clear_result(st.session_state, ai_state_key)
         st.info("所选批次没有可分析的运行数据。")
         return
 
@@ -282,7 +286,7 @@ def _render_dynamics_analysis() -> None:
     try:
         timestamps = [as_utc(sample["timestamp"]) for sample in samples]
     except (KeyError, OverflowError, TypeError, ValueError):
-        clear_result(st.session_state, "ai_single_batch_result")
+        clear_result(st.session_state, ai_state_key)
         st.error("所选批次包含无效时间戳，无法进行时间筛选。")
         return
     # The time controls have one-second precision. Floor the defaults to a
@@ -325,7 +329,7 @@ def _render_dynamics_analysis() -> None:
         + timedelta(seconds=1, microseconds=-1)
     )
     if selected_start > selected_end:
-        clear_result(st.session_state, "ai_single_batch_result")
+        clear_result(st.session_state, ai_state_key)
         st.warning("开始时间不能晚于结束时间，请调整筛选范围。")
         return
     try:
@@ -333,11 +337,11 @@ def _render_dynamics_analysis() -> None:
             samples, selected_start, selected_end
         )
     except ValueError as exc:
-        clear_result(st.session_state, "ai_single_batch_result")
+        clear_result(st.session_state, ai_state_key)
         st.error(str(exc))
         return
     if not filtered_samples:
-        clear_result(st.session_state, "ai_single_batch_result")
+        clear_result(st.session_state, ai_state_key)
         st.info("所选时间范围内没有运行数据，请调整开始或结束时间。")
         return
 
@@ -346,13 +350,14 @@ def _render_dynamics_analysis() -> None:
         min_value=0.0,
         value=1.0,
         step=0.1,
+        key="demo_analysis_threshold" if demo else None,
         help="同一阈值用于统计占比和异常识别；绝对值严格大于阈值时标为数据异常点。",
     )
 
     try:
         result = analyze_run_data(filtered_samples, threshold)
     except ValueError as exc:
-        clear_result(st.session_state, "ai_single_batch_result")
+        clear_result(st.session_state, ai_state_key)
         st.error(str(exc))
         return
     anomaly_result = detect_anomalies(result["samples"], threshold)
@@ -360,7 +365,7 @@ def _render_dynamics_analysis() -> None:
     try:
         sampling_summary = analyze_sampling_times(filtered_samples)
     except ValueError as exc:
-        clear_result(st.session_state, "ai_single_batch_result")
+        clear_result(st.session_state, ai_state_key)
         st.error(str(exc))
         return
 
@@ -556,15 +561,20 @@ def _render_dynamics_analysis() -> None:
         "selected_end": selected_end.isoformat(),
         "threshold": threshold,
     }
-    _render_ai_interpretation(
-        payload=ai_payload,
-        selection=ai_selection,
-        state_key="ai_single_batch_result",
-    )
+    if demo:
+        st.info("虚构数据演示不调用 AI；统计、异常回查与 PDF 可离线使用。")
+    else:
+        _render_ai_interpretation(
+            payload=ai_payload,
+            selection=ai_selection,
+            state_key="ai_single_batch_result",
+        )
 
     st.subheader("导出分析报告")
     st.caption("PDF 报告将包含当前车辆、批次、时间范围、阈值、统计结果、异常事件和筛选后曲线。")
-    current_ai_result = st.session_state.get("ai_single_batch_result")
+    current_ai_result = None if demo else st.session_state.get("ai_single_batch_result")
+    report_state_key = "demo_analysis_report_key" if demo else "analysis_report_key"
+    report_pdf_key = "demo_analysis_report_pdf" if demo else "analysis_report_pdf"
     current_ai_pdf_fingerprint = (
         current_ai_result.get("input_fingerprint", "")
         if isinstance(current_ai_result, dict)
@@ -575,13 +585,13 @@ def _render_dynamics_analysis() -> None:
         f"{vehicle_id}:{batch_id}:{selected_start.isoformat()}:{selected_end.isoformat()}:"
         f"{threshold:.12g}:{current_ai_pdf_fingerprint}"
     )
-    if st.session_state.get("analysis_report_key") != report_key:
-        st.session_state.pop("analysis_report_key", None)
-        st.session_state.pop("analysis_report_pdf", None)
+    if st.session_state.get(report_state_key) != report_key:
+        st.session_state.pop(report_state_key, None)
+        st.session_state.pop(report_pdf_key, None)
 
-    if st.button("生成 PDF 分析报告", type="primary", key="generate_analysis_report"):
+    if st.button("生成 PDF 分析报告", type="primary", key="demo_generate_analysis_report" if demo else "generate_analysis_report"):
         try:
-            selected_vehicle = get_vehicle(vehicle_id)
+            selected_vehicle = demo_vehicle if demo else get_vehicle(vehicle_id)
             if selected_vehicle is None:
                 raise ValueError("找不到所选车辆，请刷新页面后重试。")
             selected_batch = next(
@@ -595,20 +605,20 @@ def _render_dynamics_analysis() -> None:
                 selected_start=selected_start,
                 selected_end=selected_end,
                 ai_context=ai_payload,
-                ai_result=st.session_state.get("ai_single_batch_result"),
+                ai_result=current_ai_result,
                 ai_selection_fingerprint=selection_fingerprint(ai_selection),
             )
             pdf_bytes = generate_analysis_report_pdf(report_data)
         except Exception as exc:
             st.error(_safe_pdf_error_message("single", exc))
         else:
-            st.session_state["analysis_report_key"] = report_key
-            st.session_state["analysis_report_pdf"] = pdf_bytes
+            st.session_state[report_state_key] = report_key
+            st.session_state[report_pdf_key] = pdf_bytes
             st.success("分析报告已生成，可以下载 PDF 文件。")
 
     if (
-        st.session_state.get("analysis_report_key") == report_key
-        and st.session_state.get("analysis_report_pdf")
+        st.session_state.get(report_state_key) == report_key
+        and st.session_state.get(report_pdf_key)
     ):
         selected_vehicle_code = next(
             vehicle["vehicle_code"]
@@ -621,11 +631,24 @@ def _render_dynamics_analysis() -> None:
         ) or "vehicle"
         st.download_button(
             "下载 PDF 报告",
-            data=st.session_state["analysis_report_pdf"],
+            data=st.session_state[report_pdf_key],
             file_name=f"rail_vehicle_report_{safe_vehicle_code}_batch_{batch_id}.pdf",
             mime="application/pdf",
-            key="download_analysis_report",
+            key="demo_download_analysis_report" if demo else "download_analysis_report",
         )
+
+
+def render_statistics_demo() -> None:
+    """Offline, explicitly fictional entry into the existing analysis workflow."""
+    st.header("统计与异常演示")
+    st.info("内置虚构数据 · 两个 120 条记录的批次，未导入数据库，不代表真实车辆。"
+            "仅演示基础动力学统计与规则异常，不判断车辆故障或运行安全。")
+    st.caption("默认阈值 1 m/s²：第 30–32 秒有横向变化，第 70–71 秒有垂向变化。"
+               "点击计算后可筛选 UTC 时间、调整阈值、回查事件并导出带虚构来源标识的 PDF；不会读取 AI 配置。")
+    if st.button("计算虚构运行分析", key="statistics_demo_calculate", type="primary"):
+        st.session_state["statistics_demo_started"] = True
+    if st.session_state.get("statistics_demo_started"):
+        _render_dynamics_analysis(demo=True)
 
 
 def _render_batch_comparison() -> None:

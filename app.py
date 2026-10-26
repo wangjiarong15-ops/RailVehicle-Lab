@@ -21,7 +21,7 @@ def main() -> None:
     st.title("轨道车辆运行与动力学智能分析平台")
     st.caption("公开演示 · 仅使用虚构数据 · AI 服务已禁用" if public_demo else "MVP · 本地运行")
 
-    pages = ["车辆参数", "运行分析", "动态运行驾驶舱", "机器学习异常检测", "振动与平稳性分析", "多车辆运行对比", "演示中心"]
+    pages = ["车辆参数", "运行分析", "动态运行驾驶舱", "机器学习异常检测", "振动与平稳性分析", "多车辆运行对比", "统计与异常演示", "演示中心"]
     if public_demo:
         pages = ["演示中心", *pages[2:-1]]
         if st.session_state.get("navigation_page") not in pages:
@@ -42,6 +42,8 @@ def main() -> None:
         vibration_analysis.render()
     elif page == "多车辆运行对比":
         fleet_comparison.render()
+    elif page == "统计与异常演示":
+        run_analysis.render_statistics_demo()
     else:
         demo_center.render()
 
