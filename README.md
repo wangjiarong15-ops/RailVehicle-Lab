@@ -1,5 +1,20 @@
 # 轨道车辆运行与动力学智能分析平台
 
+## 公开演示部署（准备阶段）
+
+本地完整版仍使用 `python -m streamlit run app.py`。公开演示使用独立入口：
+
+```powershell
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+.venv\Scripts\python.exe -m streamlit run demo_app.py
+```
+
+`demo_app.py` 强制启用 `RAIL_PUBLIC_DEMO=true`：只提供演示中心、驾驶舱、机器学习、振动分析和多车辆对比；数据来源固定为内置虚构数据。应用跳过数据库初始化，不开放车辆管理、CSV 上传或历史批次选择；AI 请求被禁用，不需要配置任何 API Key。实验计算和确定性实验 PDF 仍可使用。完整版入口也支持由主机环境变量启用此模式；不通过访客控件或 Session State 切换权限。
+
+在 Streamlit Community Cloud 创建应用时，选择本仓库的 `main` 分支，入口填写 **`demo_app.py`**，Python 建议选择 3.13。根目录 `requirements.txt` 安装项目以及 `ml`、`signal` 可选依赖。不要上传本机 `.venv`、数据库、测试 CSV 或 secrets 文件；公开演示不需要这些文件。部署后需实际核验依赖安装、中文 PDF、四个演示流程和外部访问，当前尚未完成云端部署验收。
+
+此模式是虚构数据展示，不是多人业务系统，也不提供登录、用户数据隔离或运营安全结论。公开计算仍消耗服务器资源，尚未实现用户配额或请求频率控制；长期开放前需根据访问规模补充资源限制。请勿将包含私人数据的本地完整版直接暴露到公网。
+
 RailVehicle-Lab 是一个用于查看和分析轨道车辆运行数据的本地 Web 平台。它以 Python 完成确定性计算，以 SQLite 保存车辆与运行记录，并提供可选的 AI 辅助解读。
 
 ## 核心功能

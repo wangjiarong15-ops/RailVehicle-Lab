@@ -4,6 +4,7 @@ import sqlite3
 
 import plotly.graph_objects as go
 import streamlit as st
+from rail_vehicle.deployment import demo_source_options
 
 from rail_vehicle.demo_data import vibration_demo_samples
 from rail_vehicle.replay import prepare_replay
@@ -45,7 +46,7 @@ def render():
         st.warning("振动分析可选依赖尚未安装，其他功能仍可使用。")
         st.code('.venv\\Scripts\\python.exe -m pip install -e ".[signal]"', language="powershell")
         return
-    source = st.radio("振动数据来源", ["历史运行批次", "内置高频虚构信号"], horizontal=True, key="vibration_source")
+    source = st.radio("振动数据来源", demo_source_options("历史运行批次", "内置高频虚构信号"), horizontal=True, key="vibration_source")
     try:
         if source == "内置高频虚构信号":
             samples = vibration_demo_samples()

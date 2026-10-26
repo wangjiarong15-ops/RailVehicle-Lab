@@ -3,6 +3,7 @@
 from datetime import datetime, timezone
 
 import streamlit as st
+from rail_vehicle.deployment import public_demo_enabled
 
 from rail_vehicle.ai.config import AIConfig
 from rail_vehicle.ai.experiment_context import build_ml_experiment_payload, build_vibration_experiment_payload
@@ -16,6 +17,10 @@ from rail_vehicle.ai.ui import (
 def render_experiment_ai(saved, fingerprint, selection, kind):
     """Never call a provider before an explicit click; cache only verified output."""
     key = f"experiment_{kind}_ai"
+    if public_demo_enabled():
+        clear_result(st.session_state, key)
+        st.info("公开演示模式不调用 AI 服务；本地实验分析与 PDF 导出仍可使用。")
+        return None, None
     if not saved or saved.get("fingerprint") != fingerprint:
         clear_result(st.session_state, key)
         return None, None

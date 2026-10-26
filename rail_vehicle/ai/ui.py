@@ -7,6 +7,7 @@ import json
 from typing import Any, Callable
 
 from rail_vehicle.ai.config import AIConfig
+from rail_vehicle.deployment import public_demo_enabled
 from rail_vehicle.ai.provider import (
     AIAnalysisService,
     AIProviderUnavailable,
@@ -72,6 +73,8 @@ def request_ai_analysis(
     provider_factory: Callable[[AIConfig], Provider],
 ) -> dict[str, Any]:
     """Call the abstraction only after explicit UI activation and readiness checks."""
+    if public_demo_enabled():
+        return {"status": "unavailable", "code": "public_demo", "message": "公开演示模式不调用 AI 服务。"}
     if not has_data:
         return {"status": "unavailable", "code": "no_data", "message": "当前分析没有数据，无法生成 AI 解读。"}
     message = ai_configuration_message(config)
@@ -106,6 +109,7 @@ def status_message(result: dict[str, Any]) -> str:
         }
         return code_messages.get(result.get("code"), "AI 返回内容未通过结构与证据校验，已阻止展示。")
     messages = {
+        "public_demo": "公开演示模式不调用 AI 服务。",
         "disabled": "AI 辅助解读当前未启用，请配置 AI_ENABLED 和 API Key。",
         "missing_api_key": "AI 服务未配置 API Key。",
         "not_configured": "AI 服务配置不完整，请检查 AI_PROVIDER 和 AI_MODEL。",

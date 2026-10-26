@@ -7,6 +7,7 @@ import streamlit as st
 from rail_vehicle.ml_anomaly import STATE_KEY as ML_STATE_KEY
 from rail_vehicle.vibration import STATE_KEY as VIBRATION_STATE_KEY
 from rail_vehicle.pages.cockpit import STATE_KEY as COCKPIT_STATE_KEY
+from rail_vehicle.deployment import public_demo_enabled
 
 
 DEMOS = {
@@ -72,4 +73,4 @@ def render():
     with st.expander("答辩时应明确说明", expanded=False):
         st.write("Python 计算指标；规则描述超阈值样本；Isolation Forest 检测相对参考分布的离群点；AI 只解释已计算的聚合结果。")
         st.write("演示数据为虚构数据，已知信号只用于验证展示与计算；不代表真实车辆诊断准确率。振动指标未做标准频率加权，不提供舒适等级或运行安全结论。")
-        st.write("实验 PDF 无需 AI 即可导出。AI 需要单独配置且主动触发，真实服务可能产生费用；演示入口不会更改或启用 AI 配置。")
+        st.write("实验 PDF 无需 AI 即可导出。公开演示模式禁用 AI 服务。" if public_demo_enabled() else "实验 PDF 无需 AI 即可导出。AI 需要单独配置且主动触发，真实服务可能产生费用；演示入口不会更改或启用 AI 配置。")

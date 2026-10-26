@@ -5,6 +5,7 @@ import sqlite3
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
+from rail_vehicle.deployment import demo_source_options
 
 from rail_vehicle.demo_data import ml_demo_samples
 from rail_vehicle.ml_anomaly import (
@@ -59,7 +60,7 @@ def render():
         st.warning("机器学习可选依赖尚未安装，其他功能仍可使用。")
         st.code('.venv\\Scripts\\python.exe -m pip install -e ".[ml]"', language="powershell")
         return
-    source = st.radio("检测数据来源", ["历史运行批次", "内置虚构实验"], horizontal=True, key="ml_source")
+    source = st.radio("检测数据来源", demo_source_options("历史运行批次", "内置虚构实验"), horizontal=True, key="ml_source")
     try:
         if source == "内置虚构实验":
             reference, target = ml_demo_samples()
