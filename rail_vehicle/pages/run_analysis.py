@@ -33,6 +33,7 @@ from rail_vehicle.timestamp_utils import parse_iso_timestamp
 from rail_vehicle.dynamics import analyze_run_data
 from rail_vehicle.anomaly import EVENT_DURATION_NOTE, detect_anomalies
 from rail_vehicle.pages.anomaly_review import render_event_review
+from rail_vehicle.ui import plot_chart, record_analysis
 from rail_vehicle.time_filter import filter_samples_by_time_range
 from rail_vehicle.run_data import (
     MAX_CSV_SIZE_MB,
@@ -242,7 +243,8 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         st.info("请先录入车辆并导入运行数据。")
         return
 
-    vehicle_id = st.selectbox(
+    selectors = st.columns(2)
+    vehicle_id = selectors[0].selectbox(
         "选择车辆",
         options=[vehicle["id"] for vehicle in vehicles],
         format_func=lambda selected_id: next(
@@ -258,7 +260,7 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         st.info("该车辆还没有导入运行数据。")
         return
 
-    batch_id = st.selectbox(
+    batch_id = selectors[1].selectbox(
         "选择虚构批次" if demo else "选择历史导入批次",
         options=[batch["id"] for batch in batches],
         format_func=lambda selected_id: next(
@@ -294,32 +296,32 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
     # at either batch boundary remain part of the default complete range.
     batch_start = min(timestamps).replace(tzinfo=None, microsecond=0)
     batch_end = max(timestamps).replace(tzinfo=None, microsecond=0)
-    st.markdown("**分析时间范围（UTC）**")
-    start_col, end_col = st.columns(2)
-    with start_col:
-        start_date = st.date_input(
-            "开始日期",
-            value=batch_start.date(),
-            key=f"analysis_start_date_{vehicle_id}_{batch_id}",
-        )
-        start_time = st.time_input(
-            "开始时间",
-            value=batch_start.time(),
-            step=timedelta(seconds=1),
-            key=f"analysis_start_time_{vehicle_id}_{batch_id}",
-        )
-    with end_col:
-        end_date = st.date_input(
-            "结束日期",
-            value=batch_end.date(),
-            key=f"analysis_end_date_{vehicle_id}_{batch_id}",
-        )
-        end_time = st.time_input(
-            "结束时间",
-            value=batch_end.time(),
-            step=timedelta(seconds=1),
-            key=f"analysis_end_time_{vehicle_id}_{batch_id}",
-        )
+    with st.expander("分析时间范围（UTC） · 调整筛选", expanded=False):
+        start_col, end_col = st.columns(2)
+        with start_col:
+            start_date = st.date_input(
+                "开始日期",
+                value=batch_start.date(),
+                key=f"analysis_start_date_{vehicle_id}_{batch_id}",
+            )
+            start_time = st.time_input(
+                "开始时间",
+                value=batch_start.time(),
+                step=timedelta(seconds=1),
+                key=f"analysis_start_time_{vehicle_id}_{batch_id}",
+            )
+        with end_col:
+            end_date = st.date_input(
+                "结束日期",
+                value=batch_end.date(),
+                key=f"analysis_end_date_{vehicle_id}_{batch_id}",
+            )
+            end_time = st.time_input(
+                "结束时间",
+                value=batch_end.time(),
+                step=timedelta(seconds=1),
+                key=f"analysis_end_time_{vehicle_id}_{batch_id}",
+            )
 
     selected_start = datetime.combine(start_date, start_time).replace(
         tzinfo=timezone.utc
@@ -345,7 +347,8 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         st.info("所选时间范围内没有运行数据，请调整开始或结束时间。")
         return
 
-    threshold = st.number_input(
+    parameter_columns = st.columns([1, 2], vertical_alignment="bottom")
+    threshold = parameter_columns[0].number_input(
         "加速度绝对值阈值（m/s²）",
         min_value=0.0,
         value=1.0,
@@ -353,6 +356,7 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         key="demo_analysis_threshold" if demo else None,
         help="同一阈值用于统计占比和异常识别；绝对值严格大于阈值时标为数据异常点。",
     )
+    parameter_columns[1].caption(f"当前范围：{selected_start:%Y-%m-%d %H:%M:%S} — {selected_end:%Y-%m-%d %H:%M:%S} UTC")
 
     try:
         result = analyze_run_data(filtered_samples, threshold)
@@ -375,28 +379,88 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         "RMS = √(Σx² / n)。加速度峰值取绝对值最大点，同时显示该点的有符号原始值和时间。"
     )
 
-    st.subheader("采样时间概览")
-    st.caption(
-        "以下统计仅描述当前时间筛选范围内的采样分布。重复数表示共享同一 UTC 时刻的额外记录；"
-        "间隔按排序并去重后的相邻时间计算，不据此判断数据合格与否。"
-    )
-    sampling_columns = st.columns(4)
-    sampling_columns[0].metric(
-        "重复时间戳记录", f"{sampling_summary['duplicate_timestamp_rows']:,}"
-    )
-    for column, label, key in (
-        (sampling_columns[1], "最小间隔（秒）", "interval_min_seconds"),
-        (sampling_columns[2], "中位间隔（秒）", "interval_median_seconds"),
-        (sampling_columns[3], "最大间隔（秒）", "interval_max_seconds"),
-    ):
-        value = sampling_summary[key]
-        column.metric(label, f"{value:.3f}" if value is not None else "—")
+    with st.expander("采样分布与数据口径", expanded=False):
+        st.subheader("采样时间概览")
+        st.caption(
+            "以下统计仅描述当前时间筛选范围内的采样分布。重复数表示共享同一 UTC 时刻的额外记录；"
+            "间隔按排序并去重后的相邻时间计算，不据此判断数据合格与否。"
+        )
+        sampling_columns = st.columns(4)
+        sampling_columns[0].metric(
+            "重复时间戳记录", f"{sampling_summary['duplicate_timestamp_rows']:,}"
+        )
+        for column, label, key in (
+            (sampling_columns[1], "最小间隔（秒）", "interval_min_seconds"),
+            (sampling_columns[2], "中位间隔（秒）", "interval_median_seconds"),
+            (sampling_columns[3], "最大间隔（秒）", "interval_max_seconds"),
+        ):
+            value = sampling_summary[key]
+            column.metric(label, f"{value:.3f}" if value is not None else "—")
 
     st.subheader("速度统计")
     speed_columns = st.columns(3)
-    speed_columns[0].metric("最大速度", f"{result['speed']['maximum']:.3f} km/h")
-    speed_columns[1].metric("最小速度", f"{result['speed']['minimum']:.3f} km/h")
-    speed_columns[2].metric("平均速度", f"{result['speed']['mean']:.3f} km/h")
+    speed_columns[0].metric("最大速度（km/h）", f"{result['speed']['maximum']:.3f}", border=True)
+    speed_columns[1].metric("最小速度（km/h）", f"{result['speed']['minimum']:.3f}", border=True)
+    speed_columns[2].metric("平均速度（km/h）", f"{result['speed']['mean']:.3f}", border=True)
+
+    st.subheader("运行曲线")
+    chart_specs = (
+        ("speed_kmh", "速度—时间", "速度（km/h）"),
+        ("lateral_accel", "横向加速度—时间", "横向加速度（m/s²）"),
+        ("vertical_accel", "垂向加速度—时间", "垂向加速度（m/s²）"),
+    )
+    ordered_samples = result["samples"]
+    curve_tabs = st.tabs([spec[1] for spec in chart_specs])
+    for curve_tab, (field, title, y_title) in zip(curve_tabs, chart_specs):
+        figure = go.Figure(
+            data=[
+                go.Scatter(
+                    x=[sample["timestamp"] for sample in ordered_samples],
+                    y=[sample[field] for sample in ordered_samples],
+                    mode="lines",
+                    name=y_title,
+                    hovertemplate="%{x}<br>%{y:.4f}<extra></extra>",
+                )
+            ]
+        )
+        figure.update_layout(
+            title=title,
+            xaxis_title="时间",
+            yaxis_title=y_title,
+            margin={"l": 20, "r": 20, "t": 50, "b": 20},
+        )
+        if field in ("lateral_accel", "vertical_accel"):
+            axis_points = [
+                point
+                for point in anomaly_result["points"]
+                if point["field"] == field
+            ]
+            if axis_points:
+                figure.add_trace(
+                    go.Scatter(
+                        x=[point["timestamp"] for point in axis_points],
+                        y=[point["value"] for point in axis_points],
+                        mode="markers",
+                        name="统计异常点",
+                        marker={"color": "#d62728", "size": 10, "symbol": "diamond"},
+                        customdata=[point["type"] for point in axis_points],
+                        hovertemplate="%{x}<br>%{customdata}<br>%{y:.4f} m/s²<extra></extra>",
+                    )
+                )
+            figure.add_hline(
+                y=threshold,
+                line_dash="dash",
+                line_color="#d62728",
+                annotation_text="+阈值",
+            )
+            figure.add_hline(
+                y=-threshold,
+                line_dash="dash",
+                line_color="#d62728",
+                annotation_text="−阈值",
+            )
+        with curve_tab:
+            plot_chart(figure, width="stretch", key=f"chart_{field}")
 
     st.subheader("加速度统计")
     lateral_col, vertical_col = st.columns(2)
@@ -457,8 +521,8 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
     )
     st.caption(EVENT_DURATION_NOTE)
     anomaly_columns = st.columns(2)
-    anomaly_columns[0].metric("数据异常点", len(anomaly_result["points"]))
-    anomaly_columns[1].metric("统计异常区段", len(anomaly_result["events"]))
+    anomaly_columns[0].metric("数据异常点", len(anomaly_result["points"]), border=True)
+    anomaly_columns[1].metric("统计异常区段", len(anomaly_result["events"]), border=True)
     st.markdown("**异常事件列表**")
     if anomaly_result["events"]:
         st.dataframe(
@@ -486,63 +550,6 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         "start": selected_start.isoformat(), "end": selected_end.isoformat(),
     })
 
-    st.subheader("运行曲线")
-    chart_specs = (
-        ("speed_kmh", "速度—时间", "速度（km/h）"),
-        ("lateral_accel", "横向加速度—时间", "横向加速度（m/s²）"),
-        ("vertical_accel", "垂向加速度—时间", "垂向加速度（m/s²）"),
-    )
-    ordered_samples = result["samples"]
-    for field, title, y_title in chart_specs:
-        figure = go.Figure(
-            data=[
-                go.Scatter(
-                    x=[sample["timestamp"] for sample in ordered_samples],
-                    y=[sample[field] for sample in ordered_samples],
-                    mode="lines",
-                    name=y_title,
-                    hovertemplate="%{x}<br>%{y:.4f}<extra></extra>",
-                )
-            ]
-        )
-        figure.update_layout(
-            title=title,
-            xaxis_title="时间",
-            yaxis_title=y_title,
-            margin={"l": 20, "r": 20, "t": 50, "b": 20},
-        )
-        if field in ("lateral_accel", "vertical_accel"):
-            axis_points = [
-                point
-                for point in anomaly_result["points"]
-                if point["field"] == field
-            ]
-            if axis_points:
-                figure.add_trace(
-                    go.Scatter(
-                        x=[point["timestamp"] for point in axis_points],
-                        y=[point["value"] for point in axis_points],
-                        mode="markers",
-                        name="统计异常点",
-                        marker={"color": "#d62728", "size": 10, "symbol": "diamond"},
-                        customdata=[point["type"] for point in axis_points],
-                        hovertemplate="%{x}<br>%{customdata}<br>%{y:.4f} m/s²<extra></extra>",
-                    )
-                )
-            figure.add_hline(
-                y=threshold,
-                line_dash="dash",
-                line_color="#d62728",
-                annotation_text="+阈值",
-            )
-            figure.add_hline(
-                y=-threshold,
-                line_dash="dash",
-                line_color="#d62728",
-                annotation_text="−阈值",
-            )
-        st.plotly_chart(figure, width="stretch", key=f"chart_{field}")
-
     selected_vehicle = next(
         vehicle for vehicle in vehicles if vehicle["id"] == vehicle_id
     )
@@ -561,6 +568,8 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         "selected_end": selected_end.isoformat(),
         "threshold": threshold,
     }
+    record_analysis("单批次统计分析", {"selection": ai_selection, "facts": ai_payload},
+                    result["sample_count"], fictional=demo)
     if demo:
         st.info("虚构数据演示不调用 AI；统计、异常回查与 PDF 可离线使用。")
     else:
@@ -712,6 +721,7 @@ def _render_batch_comparison() -> None:
         st.error(f"无法完成批次对比：{exc}")
         return
 
+    record_analysis("多批次对比", {"vehicle": vehicle_id, "facts": [{key: value for key, value in row.items() if key != "series"} for row in comparisons]}, sum(row["sample_count"] for row in comparisons))
     st.subheader("批次对比指标")
     st.caption(
         "平均速度、最大速度单位为 km/h；加速度 RMS 和绝对峰值单位为 m/s²。"
@@ -789,7 +799,7 @@ def _render_batch_comparison() -> None:
             yaxis_title=y_title,
             margin={"l": 20, "r": 20, "t": 50, "b": 20},
         )
-        st.plotly_chart(figure, width="stretch", key=f"comparison_{field}")
+        plot_chart(figure, width="stretch", key=f"comparison_{field}")
 
     ai_payload = build_batch_comparison_payload(comparisons)
     ai_selection = {"vehicle_id": vehicle_id, "batch_ids": selected_ids}
@@ -845,11 +855,10 @@ def _render_batch_comparison() -> None:
 
 def render() -> None:
     st.header("运行分析")
-    import_tab, analysis_tab, comparison_tab = st.tabs(
-        ["CSV 数据导入", "基础动力学统计分析", "批次对比"]
+    st.caption("分析工作台 / 时间范围 → 指标与曲线 → 异常事件 → 报告")
+    analysis_tab, comparison_tab = st.tabs(
+        ["基础动力学统计分析", "批次对比"]
     )
-    with import_tab:
-        _render_import()
     with analysis_tab:
         _render_dynamics_analysis()
     with comparison_tab:

@@ -23,8 +23,8 @@ class DemoCenterTests(unittest.TestCase):
         self.stack.enter_context(patch.object(vehicles, "list_vehicles", return_value=[]))
 
     def app(self):
-        app = AppTest.from_file(str(Path(__file__).resolve().parents[1]/"app.py")).run()
-        app.sidebar.radio(key="navigation_page").set_value("演示中心").run()
+        app = AppTest.from_file(str(Path(__file__).resolve().parents[1]/"app.py"), default_timeout=15).run()
+        app.button(key="nav_演示中心").click().run()
         self.assertEqual(len(app.exception), 0)
         return app
 
@@ -32,7 +32,7 @@ class DemoCenterTests(unittest.TestCase):
         with patch.object(ml_detection, "detect_ml_anomalies") as detect, \
              patch.object(vibration_analysis, "analyze_vibration") as analyze:
             app = self.app()
-        self.assertEqual(len(app.button), 5)
+        self.assertEqual(len([button for button in app.button if button.key and button.key.startswith("launch_demo_")]), 5)
         self.assertTrue(any("不自动计算" in item.value for item in app.info))
         detect.assert_not_called()
         analyze.assert_not_called()
@@ -42,7 +42,7 @@ class DemoCenterTests(unittest.TestCase):
             app = self.app()
             app.button(key="launch_demo_cockpit").click().run()
         self.assertEqual(len(app.exception), 0)
-        self.assertEqual(app.sidebar.radio(key="navigation_page").value, "动态运行驾驶舱")
+        self.assertEqual(app.session_state["navigation_page"], "动态运行驾驶舱")
         self.assertEqual(app.radio(key="cockpit_source").value, "内置虚构演示")
         self.assertFalse(app.session_state[cockpit.STATE_KEY].playing)
 

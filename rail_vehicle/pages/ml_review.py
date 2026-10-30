@@ -3,6 +3,7 @@
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
+from rail_vehicle.ui import plot_chart
 
 from rail_vehicle.ml_review import flagged_indices, sample_window
 
@@ -55,6 +56,6 @@ def render_review(result, fingerprint):
                        模型离群分数_非概率=sample["ml_score"])])
         st.caption(f"UTC：{sample['timestamp']}；分类：{LABELS[sample['category']]}；模型阈值：{result['score_threshold']:.6g}；加速度规则阈值：{result['rule_threshold']:.6g} m/s²。")
         st.caption("样本序号为当前检测结果按 UTC 排序后的记录顺序，不是 CSV 原始行号；内置实验使用虚构数据，历史批次使用用户导入数据。")
-        st.plotly_chart(review_chart(window, result["rule_threshold"]), width="stretch", key="ml_review_chart")
+        plot_chart(review_chart(window, result["rule_threshold"]), width="stretch", key="ml_review_chart")
         st.caption(f"窗口含 {len(window['rows'])} 条原有记录，绘制 {len(window['visible'])} 条；红色菱形为所选样本，橙色虚线为 ±规则阈值。大窗口最多等距抽取约 2,000 条并保留所选样本，不能据此排除未绘制的局部变化。")
         st.caption("按 UTC 时间差回查，重复时间戳按不同记录保留；散点不插值，不将采样空档解释成连续观测。窗口不重新训练、不改变分类，不证明异常原因或车辆故障；不发送给 AI，也不改变当前报告。")

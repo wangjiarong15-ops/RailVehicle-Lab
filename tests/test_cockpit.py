@@ -124,10 +124,10 @@ class CockpitTests(unittest.TestCase):
         self.stack.enter_context(patch.object(db, "init_db", lambda: initialize(Path(directory) / "app.sqlite3")))
         self.stack.enter_context(patch.object(vehicles, "list_vehicles", return_value=[]))
         app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py")).run()
-        app.sidebar.radio[0].set_value("动态运行驾驶舱").run()
+        app.button(key="nav_动态运行驾驶舱").click().run()
         app.radio(key="cockpit_source").set_value("内置虚构演示").run()
         app.button[0].click().run()
-        app.sidebar.radio[0].set_value("车辆参数").run()
+        app.button(key="nav_车辆参数").click().run()
         self.assertNotIn(cockpit.STATE_KEY, app.session_state)
         self.assertEqual(len(app.exception), 0)
 

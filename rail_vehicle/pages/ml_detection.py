@@ -5,6 +5,7 @@ import sqlite3
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
+from rail_vehicle.ui import plot_chart, record_analysis
 from rail_vehicle.deployment import demo_source_options
 
 from rail_vehicle.demo_data import ml_demo_samples
@@ -52,6 +53,7 @@ def build_score_chart(result):
 
 def render():
     st.header("机器学习异常检测")
+    st.caption("智能分析工作台 / 数据与参数 → 计算结果 → 证据与报告")
     st.info("本地 Isolation Forest · 学习参考批次分布，探索待检测数据中的离群样本。结果不代表故障或安全判断。")
     st.caption("仅在点击“训练并检测”后进行本地计算；模型计算不调用 AI API，不上传样本，不保存模型文件。可另行主动请求聚合指标的 AI 解读。")
     try:
@@ -124,6 +126,7 @@ def render():
         st.info("数据已选择。点击“训练并检测”生成本地结果。")
         return
     result = saved["result"]
+    record_analysis("机器学习异常检测", fingerprint, result["sample_count"], fictional=selection.get("source") == "demo")
     st.subheader("模型与规则结果对比")
     columns = st.columns(4)
     for col, label, value in zip(columns, ("检测样本数", "模型标记样本", "规则标记样本", "两者均标记"),
@@ -132,7 +135,7 @@ def render():
     st.dataframe([dict(分类=CATEGORY_LABELS[key], 样本数=value,
                        占比=f"{value / result['sample_count']:.2%}") for key, value in result["counts"].items()],
                   hide_index=True, width="stretch")
-    st.plotly_chart(build_score_chart(result), width="stretch", key="ml_score_chart")
+    plot_chart(build_score_chart(result), width="stretch", key="ml_score_chart")
     st.caption("分数越高表示相对参考分布越容易被孤立，不是故障概率。虚线为参考数据学习得到的分数阈值；同分样本使用严格大于比较。曲线底线最多绘制约 2,000 个点，异常标记和统计使用全部记录。")
     st.subheader("需进一步查看的样本")
     flagged = [dict(时间_UTC=r["timestamp"], 速度_kmh=r["speed_kmh"],

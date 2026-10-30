@@ -32,7 +32,7 @@ class AppSmokeTests(unittest.TestCase):
                 self.assertEqual(len(app.exception), 0)
                 self.assertGreaterEqual(len(app.title), 1)
 
-                app.radio[0].set_value(app.radio[0].options[1]).run()
+                app.button(key="nav_运行分析").click().run()
                 self.assertEqual(len(app.exception), 0)
 
     def test_legacy_timestamp_utc_overflow_shows_page_error_without_crashing(self):
@@ -72,9 +72,7 @@ class AppSmokeTests(unittest.TestCase):
                 patch.object(run_analysis, "list_batch_samples", return_value=samples),
             ):
                 app = AppTest.from_file(str(PROJECT_ROOT / "app.py")).run()
-                app.sidebar.radio[0].set_value(
-                    app.sidebar.radio[0].options[1]
-                ).run()
+                app.button(key="nav_运行分析").click().run()
 
             self.assertEqual(len(app.exception), 0)
             self.assertTrue(
@@ -128,9 +126,7 @@ class AppSmokeTests(unittest.TestCase):
                 patch.object(run_analysis, "list_batch_samples", return_value=samples),
             ):
                 app = AppTest.from_file(str(PROJECT_ROOT / "app.py")).run()
-                app.sidebar.radio[0].set_value(
-                    app.sidebar.radio[0].options[1]
-                ).run()
+                app.button(key="nav_运行分析").click().run()
 
             self.assertEqual(len(app.exception), 0)
             self.assertTrue(any(item.value == "采样时间概览" for item in app.subheader))
@@ -206,9 +202,7 @@ class AppSmokeTests(unittest.TestCase):
                 ),
             ):
                 app = AppTest.from_file(str(PROJECT_ROOT / "app.py")).run()
-                app.sidebar.radio[0].set_value(
-                    app.sidebar.radio[0].options[1]
-                ).run()
+                app.button(key="nav_运行分析").click().run()
 
             self.assertEqual(len(app.exception), 0)
             self.assertTrue(
@@ -247,9 +241,7 @@ class AppSmokeTests(unittest.TestCase):
                 patch.object(run_analysis, "list_import_batches", return_value=[]),
             ):
                 app = AppTest.from_file(str(PROJECT_ROOT / "app.py")).run()
-                app.sidebar.radio[0].set_value(
-                    app.sidebar.radio[0].options[1]
-                ).run()
+                app.button(key="nav_CSV 数据导入").click().run()
                 app.file_uploader[0].upload(
                     "sampling-demo.csv", csv_content, "text/csv"
                 ).run()

@@ -1,6 +1,8 @@
 """Vehicle parameter entry, browsing, and editing page."""
 
 import streamlit as st
+import sqlite3
+from rail_vehicle.ui import navigate
 
 from rail_vehicle.vehicle_data import (
     DuplicateVehicleCodeError,
@@ -104,7 +106,7 @@ def _vehicle_form(prefix: str, vehicle: dict | None = None) -> dict:
 def _render_vehicle_list(vehicles: list[dict]) -> None:
     st.subheader("车辆列表")
     if not vehicles:
-        st.info("还没有车辆记录。请先使用上方表单新增车辆。")
+        st.info("暂无匹配车辆。可调整搜索条件，或点击“新增车辆”建立档案。")
         return
 
     labels = {
@@ -124,52 +126,67 @@ def _render_vehicle_list(vehicles: list[dict]) -> None:
     )
 
 
+def _open_editor(vehicle=None):
+    prefix = "vehicle_edit" if vehicle is not None else "vehicle_new"
+    for field in VEHICLE_FIELDS:
+        st.session_state.pop(f"{prefix}_{field}", None)
+    st.session_state["vehicle_editor"] = {"vehicle": vehicle}
+
+
+def _close_editor():
+    st.session_state.pop("vehicle_editor", None)
+
+
+@st.dialog("车辆档案", width="large", on_dismiss=_close_editor)
+def _vehicle_dialog(vehicle=None):
+    editing = vehicle is not None
+    st.caption("编辑车辆" if editing else "新增车辆 · 带 * 为必填，数值必须大于 0")
+    with st.form("vehicle_edit_form" if editing else "vehicle_create_form"):
+        values = _vehicle_form("vehicle_edit" if editing else "vehicle_new", vehicle)
+        submitted = st.form_submit_button("保存修改" if editing else "保存车辆", type="primary")
+    if submitted:
+        try:
+            update_vehicle(vehicle["id"], values) if editing else add_vehicle(values)
+        except (ValueError, DuplicateVehicleCodeError, VehicleNotFoundError) as exc:
+            st.error(str(exc))
+        except (sqlite3.Error, OSError):
+            st.error("暂时无法保存车辆，请检查数据库后重试。")
+        else:
+            st.session_state["vehicle_flash"] = "车辆档案已保存。"
+            _close_editor()
+            st.rerun()
+
+
 def render() -> None:
     st.header("车辆参数")
-    st.caption("录入并维护车辆基础信息。带 * 的字段为必填项，数值必须大于 0。")
-
-    vehicles = list_vehicles()
-    mode = st.radio("操作", ["新增车辆", "编辑车辆"], horizontal=True)
-
-    if mode == "新增车辆":
-        with st.form("vehicle_create_form", clear_on_submit=True):
-            values = _vehicle_form("vehicle_new")
-            submitted = st.form_submit_button("保存车辆", type="primary")
-        if submitted:
-            try:
-                add_vehicle(values)
-            except (ValueError, DuplicateVehicleCodeError) as exc:
-                st.error(str(exc))
-            else:
-                st.success(f"车辆“{values['vehicle_code'].strip()}”已保存。")
-                vehicles = list_vehicles()
-    elif not vehicles:
-        st.info("当前没有可编辑的车辆，请先新增车辆。")
-    else:
-        selected_id = st.selectbox(
-            "选择要编辑的车辆",
-            options=[vehicle["id"] for vehicle in vehicles],
-            format_func=lambda vehicle_id: next(
-                f"{vehicle['vehicle_code']} · {vehicle['vehicle_type']}"
-                for vehicle in vehicles
-                if vehicle["id"] == vehicle_id
-            ),
-            key="edit_vehicle_id",
-            on_change=_clear_edit_fields,
-        )
-        selected_vehicle = next(
-            vehicle for vehicle in vehicles if vehicle["id"] == selected_id
-        )
-        with st.form("vehicle_edit_form"):
-            values = _vehicle_form("vehicle_edit", selected_vehicle)
-            submitted = st.form_submit_button("保存修改", type="primary")
-        if submitted:
-            try:
-                update_vehicle(selected_id, values)
-            except (ValueError, DuplicateVehicleCodeError, VehicleNotFoundError) as exc:
-                st.error(str(exc))
-            else:
-                st.success(f"车辆“{values['vehicle_code'].strip()}”的修改已保存。")
-                vehicles = list_vehicles()
-
-    _render_vehicle_list(vehicles)
+    st.caption("数据工作台 / 车辆档案 · 参数维护 · 运行分析")
+    if message := st.session_state.pop("vehicle_flash", None):
+        st.success(message)
+    try:
+        vehicles = list_vehicles()
+    except (sqlite3.Error, OSError):
+        st.error("暂时无法读取车辆档案，请检查数据库后重试。")
+        return
+    search, action = st.columns([4, 1], vertical_alignment="bottom")
+    query = search.text_input("搜索车辆", placeholder="输入车辆编号或车型", key="vehicle_search").strip().casefold()
+    action.button("＋ 新增车辆", type="primary", key="vehicle_add", width="stretch", on_click=_open_editor)
+    if editor := st.session_state.get("vehicle_editor"):
+        _vehicle_dialog(editor["vehicle"])
+    matches = [vehicle for vehicle in vehicles if query in vehicle["vehicle_code"].casefold() or query in vehicle["vehicle_type"].casefold()]
+    st.caption(f"登记车辆 {len(vehicles)} 辆 · 当前匹配 {len(matches)} 辆")
+    with st.container(border=True):
+        _render_vehicle_list(matches)
+    if not matches:
+        return
+    by_id = {vehicle["id"]: vehicle for vehicle in matches}
+    if st.session_state.get("vehicle_selected_id") not in by_id:
+        st.session_state.pop("vehicle_selected_id", None)
+    selection, edit, analysis = st.columns([3, 1, 1], vertical_alignment="bottom")
+    selected_id = selection.selectbox("当前车辆", list(by_id), format_func=lambda value: f"{by_id[value]['vehicle_code']} · {by_id[value]['vehicle_type']}", key="vehicle_selected_id")
+    selected = by_id[selected_id]
+    edit.button("编辑车辆", key="vehicle_edit_open", width="stretch", on_click=_open_editor, args=(selected,))
+    analysis.button("进入分析 →", key="vehicle_analyze", width="stretch", on_click=navigate,
+                    args=("运行分析",), kwargs={"dynamics_vehicle_id": selected_id})
+    with st.expander("查看车辆详情", expanded=False):
+        st.table([{ "参数": label, "值": str(selected.get(field, "")) } for field, label in VEHICLE_FIELDS.items() if field != "notes"])
+        st.text(selected.get("notes", "") or "未填写备注")

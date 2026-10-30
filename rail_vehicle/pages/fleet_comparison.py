@@ -4,6 +4,7 @@ import sqlite3
 
 import plotly.graph_objects as go
 import streamlit as st
+from rail_vehicle.ui import plot_chart, record_analysis
 from rail_vehicle.deployment import demo_source_options
 
 from rail_vehicle.demo_data import ml_demo_samples
@@ -46,6 +47,7 @@ def comparison_chart(results, field, unit):
 
 def render():
     st.header("多车辆运行对比")
+    st.caption("智能分析工作台 / 数据与参数 → 计算结果 → 证据与报告")
     st.info("描述性运行表现对比，不代表同工况试验，不输出故障、安全或车辆优劣结论。")
     source = st.radio("对比数据来源", demo_source_options("历史车辆与批次", "内置虚构对比"), horizontal=True, key="fleet_source")
     try:
@@ -100,6 +102,7 @@ def render():
         _clear_results()
         st.warning("无法对比：请检查各批次数据和速度区间，确保每辆车都有有效样本。")
         return
+    record_analysis("多车辆对比", fingerprint, sum(r["sample_count"] for r in comparison["results"]), fictional=source == "内置虚构对比")
     for warning in comparison["warnings"]:
         st.warning(warning)
     results = comparison["results"]
@@ -124,7 +127,7 @@ def render():
                                ("lateral_accel", "横向加速度对比", "横向加速度（m/s²）"),
                                ("vertical_accel", "垂向加速度对比", "垂向加速度（m/s²）")):
         st.subheader(title)
-        st.plotly_chart(comparison_chart(results, field, unit), width="stretch")
+        plot_chart(comparison_chart(results, field, unit), width="stretch")
     st.caption("各车从首个保留样本对齐为 0 秒；保留真实时间间隔。散点不插值，不代表同一线路位置或同步测量。筛选后的跨度包含未保留样本形成的空档，并非累计运行时长。传感器安装、轴向、载荷和线路条件需人工核实。")
     st.caption("匿名映射（仅本地展示）：" + "；".join(f"B{index} = {row['label']} / 批次 {row['batch_id']}" for index, row in enumerate(results, 1)))
     selection = dict(source="demo" if source == "内置虚构对比" else "history")

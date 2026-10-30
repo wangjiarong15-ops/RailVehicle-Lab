@@ -1,2 +1,24 @@
 [server]
 address = "127.0.0.1"
+
+[theme]
+base = "light"
+primaryColor = "#176BCE"
+backgroundColor = "#F4F7FB"
+secondaryBackgroundColor = "#E8EFF7"
+textColor = "#142D4E"
+font = "sans-serif"
+baseFontSize = 14
+headingFontSizes = ["28px", "24px", "19px", "16px", "14px", "12px"]
+headingFontWeights = [650, 650, 600, 600, 600, 600]
+baseRadius = "medium"
+borderColor = "#D8E3EF"
+dataframeHeaderBackgroundColor = "#E1EBF5"
+dataframeHeaderTextColor = "#142D4E"
+chartCategoricalColors = ["#176BCE", "#0D9488", "#8258B5", "#E39A24", "#D34444", "#526E8B"]
+
+[theme.sidebar]
+backgroundColor = "#102B49"
+secondaryBackgroundColor = "#1B3B5D"
+textColor = "#ECF3FC"
+primaryColor = "#5AA9FF"

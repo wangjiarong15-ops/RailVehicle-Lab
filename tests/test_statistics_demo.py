@@ -46,7 +46,7 @@ class StatisticsDemoTests(unittest.TestCase):
     def test_public_entry_waits_for_explicit_calculation_without_private_reads(self):
         with patch.object(run_analysis, "analyze_run_data", wraps=run_analysis.analyze_run_data) as calculate:
             app = self.app()
-            self.assertEqual(app.sidebar.radio(key="navigation_page").value, "统计与异常演示")
+            self.assertEqual(app.session_state["navigation_page"], "统计与异常演示")
             self.assertEqual(len(app.metric), 0)
             calculate.assert_not_called()
             app.button(key="statistics_demo_calculate").click().run()

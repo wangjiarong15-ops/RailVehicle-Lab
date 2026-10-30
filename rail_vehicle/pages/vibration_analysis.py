@@ -4,6 +4,7 @@ import sqlite3
 
 import plotly.graph_objects as go
 import streamlit as st
+from rail_vehicle.ui import plot_chart, record_analysis
 from rail_vehicle.deployment import demo_source_options
 
 from rail_vehicle.demo_data import vibration_demo_samples
@@ -38,6 +39,7 @@ def vibration_chart(result, *, rolling=False):
 
 def render():
     st.header("振动与平稳性分析")
+    st.caption("智能分析工作台 / 数据与参数 → 计算结果 → 证据与报告")
     st.info("探索性振动分析 · 提供未加权指标，不输出标准舒适等级、故障诊断或运行安全结论。")
     try:
         signal_libraries()
@@ -113,6 +115,7 @@ def render():
         st.info("点击“计算振动指标”查看采样质量、时域与适用的频域结果。")
         return
     result = saved["result"]
+    record_analysis("振动与平稳性分析", fingerprint, result["sample_count"], fictional=selection.get("source") == "demo")
     columns = st.columns(4)
     columns[0].metric("分析样本数", result["sample_count"], border=True)
     columns[1].metric("记录时长（秒）", f"{result['duration_seconds']:.2f}", border=True)
@@ -139,7 +142,7 @@ def render():
             peak = result["channels"][field]["dominant_frequency_hz"]
             column.metric(f"{label}频带内主峰（Hz）", f"{peak:.3f}" if peak is not None else "无非零振动")
         st.subheader("加速度功率谱（Welch）")
-        st.plotly_chart(vibration_chart(result), width="stretch", key="vibration_psd")
+        plot_chart(vibration_chart(result), width="stretch", key="vibration_psd")
         st.caption(f"周期 Hann 窗、每段 {result['segment_samples']} 点、50% 重叠、每段去均值；共 {result['segment_count']} 段，频率间隔 {result['frequency_resolution_hz']:.4f} Hz。窗口按最低频率至少 5 个周期选择，不补零。主峰仅为当前频带内 PSD 最大频点，不用于推断故障部件。")
         st.dataframe([dict(方向=label, 频带_Hz=f"{band_low:g}–{band_high:g}",
                            未加权频带RMS_ms2=result["channels"][field]["band_rms"]) for field, label in LABELS.items()],
@@ -147,7 +150,7 @@ def render():
         st.caption("频带 RMS=√(Σ频带内 PSD×频率间隔)，使用闭区间内的离散频点，存在频率分辨率与谱泄漏误差；不代表加权舒适性指标。")
         st.subheader("滑动振动强度")
         if result["channels"]["lateral_accel"]["rolling_rms"]:
-            st.plotly_chart(vibration_chart(result, rolling=True), width="stretch", key="vibration_rolling")
+            plot_chart(vibration_chart(result, rolling=True), width="stretch", key="vibration_rolling")
             st.caption("每个滑动窗口对整段去均值后的加速度计算 RMS；窗口点数按采样率四舍五入，横轴表示窗口结束时刻。")
         else:
             st.info("当前滑动窗口不足 2 个样本或长于记录，未生成滑动曲线。")

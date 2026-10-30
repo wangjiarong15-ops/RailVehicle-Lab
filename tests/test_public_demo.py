@@ -31,10 +31,10 @@ class PublicDemoTests(unittest.TestCase):
                     stack.enter_context(patch.object(module, name, side_effect=AssertionError("no history")))
             app = AppTest.from_file(str(Path(__file__).resolve().parents[1]/"app.py")).run()
             self.assertFalse(app.exception)
-            navigation = app.sidebar.radio(key="navigation_page")
-            self.assertEqual(navigation.value, "演示中心")
-            self.assertNotIn("车辆参数", navigation.options)
-            self.assertNotIn("运行分析", navigation.options)
+            navigation = [button.key.removeprefix("nav_") for button in app.sidebar.button]
+            self.assertEqual(app.session_state["navigation_page"], "演示中心")
+            self.assertNotIn("车辆参数", navigation)
+            self.assertNotIn("运行分析", navigation)
             for name, page, key in (
                 ("cockpit", "动态运行驾驶舱", "cockpit_source"),
                 ("ml", "机器学习异常检测", "ml_source"),
@@ -42,7 +42,7 @@ class PublicDemoTests(unittest.TestCase):
                 ("fleet", "多车辆运行对比", "fleet_source"),
             ):
                 with self.subTest(page=page):
-                    app.sidebar.radio(key="navigation_page").set_value("演示中心").run()
+                    app.button(key="nav_演示中心").click().run()
                     if app.button(key=f"launch_demo_{name}").disabled:
                         continue
                     app.button(key=f"launch_demo_{name}").click().run()
@@ -66,7 +66,7 @@ class PublicDemoTests(unittest.TestCase):
             app = AppTest.from_file(str(Path(__file__).resolve().parents[1]/"app.py"), default_timeout=30).run()
             for kind, action, state_key in (("ml", "ml_train", ML_KEY), ("vibration", "vibration_calculate", VIBRATION_KEY)):
                 with self.subTest(kind=kind):
-                    app.sidebar.radio(key="navigation_page").set_value("演示中心").run()
+                    app.button(key="nav_演示中心").click().run()
                     if app.button(key=f"launch_demo_{kind}").disabled:
                         continue
                     app.button(key=f"launch_demo_{kind}").click().run()

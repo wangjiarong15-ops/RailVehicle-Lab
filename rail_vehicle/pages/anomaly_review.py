@@ -3,6 +3,7 @@
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
+from rail_vehicle.ui import plot_chart
 
 from rail_vehicle.ai.ui import selection_fingerprint
 from rail_vehicle.anomaly import EVENT_DURATION_NOTE
@@ -56,5 +57,5 @@ def render_event_review(samples, anomalies, selection):
         st.caption(f"窗口含 {len(window['rows'])} 条当前筛选内记录，绘制 {len(window['visible'])} 条；"
                    f"同轴异常点 {len(window['points'])} 个，绘制 {len(window['visible_points'])} 个。"
                    "各图层最多绘制 2,000 点，按序抽样可能省略局部细节；不插值、不重新检测。")
-        st.plotly_chart(event_chart(window, anomalies["threshold"]), width="stretch", key="anomaly_review_chart")
+        plot_chart(event_chart(window, anomalies["threshold"]), width="stretch", key="anomaly_review_chart")
         st.caption(EVENT_DURATION_NOTE + "此视图用于数据回查，不构成故障原因或安全结论。")

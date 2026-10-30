@@ -106,6 +106,6 @@ class MLExperimentPageTests(unittest.TestCase):
         self.stack.enter_context(patch.object(db, "init_db", lambda: initialize(Path(directory) / "nav.sqlite3")))
         self.stack.enter_context(patch.object(vehicles, "list_vehicles", return_value=[]))
         app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py")).run()
-        app.sidebar.radio[0].set_value("机器学习异常检测").run()
+        app.button(key="nav_机器学习异常检测").click().run()
         self.assertEqual(len(app.exception), 0)
         self.assertTrue(any(item.value == "机器学习异常检测" for item in app.header))
