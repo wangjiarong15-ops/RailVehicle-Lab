@@ -7,7 +7,7 @@ from rail_vehicle.deployment import public_demo_enabled
 from rail_vehicle.pages import cockpit, ml_detection, run_analysis, vehicles, vibration_analysis
 from rail_vehicle.pages import demo_center, fleet_comparison
 from rail_vehicle.pages import home
-from rail_vehicle.ui import render_navigation
+from rail_vehicle.ui import apply_design, render_navigation, initialize_theme
 
 
 def main() -> None:
@@ -20,8 +20,7 @@ def main() -> None:
     if not public_demo:
         init_db()
 
-    st.title("轨道车辆运行与动力学智能分析平台")
-    st.caption("RAILVEHICLE LAB / 公开演示 · 仅使用虚构数据 · AI 服务已禁用" if public_demo else "RAILVEHICLE LAB / 本地运行与动力学分析工作空间")
+    apply_design()
     page = render_navigation(public_demo)
     if page != "动态运行驾驶舱":
         # Returning to the cockpit starts paused, never advances while hidden.
@@ -48,6 +47,7 @@ def main() -> None:
         run_analysis.render_statistics_demo()
     else:
         demo_center.render()
+    initialize_theme()
 
 
 if __name__ == "__main__":

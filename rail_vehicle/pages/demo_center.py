@@ -4,6 +4,7 @@ import importlib.util
 import sys
 
 import streamlit as st
+from rail_vehicle.ui import page_title
 from rail_vehicle.ml_anomaly import STATE_KEY as ML_STATE_KEY
 from rail_vehicle.vibration import STATE_KEY as VIBRATION_STATE_KEY
 from rail_vehicle.pages.cockpit import STATE_KEY as COCKPIT_STATE_KEY
@@ -60,7 +61,7 @@ def launch_demo(name):
 
 
 def render():
-    st.header("演示中心")
+    page_title("演示中心")
     st.caption("运行与实验工作台 / 数据来源清晰 · 用户主动操作")
     st.info("离线虚构数据演示 · 无需登记车辆或导入 CSV。入口只切换当前会话的数据源与默认参数，不自动计算、不调用 AI，也不写入数据库。")
     st.caption("可先用第 5 项展示基础统计，再按 1→4 展示驾驶舱与进阶实验。随时从左侧返回本页；打开入口会重置该演示的参数和临时结果，已有车辆、批次和文件不会删除。")

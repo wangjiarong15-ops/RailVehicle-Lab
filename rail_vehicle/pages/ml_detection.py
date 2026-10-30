@@ -5,6 +5,7 @@ import sqlite3
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
+from rail_vehicle.ui import page_title
 from rail_vehicle.ui import plot_chart, record_analysis
 from rail_vehicle.deployment import demo_source_options
 
@@ -52,7 +53,7 @@ def build_score_chart(result):
 
 
 def render():
-    st.header("机器学习异常检测")
+    page_title("机器学习异常检测")
     st.caption("智能分析工作台 / 数据与参数 → 计算结果 → 证据与报告")
     st.info("本地 Isolation Forest · 学习参考批次分布，探索待检测数据中的离群样本。结果不代表故障或安全判断。")
     st.caption("仅在点击“训练并检测”后进行本地计算；模型计算不调用 AI API，不上传样本，不保存模型文件。可另行主动请求聚合指标的 AI 解读。")

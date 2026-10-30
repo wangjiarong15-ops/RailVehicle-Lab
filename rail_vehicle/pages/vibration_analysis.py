@@ -4,6 +4,7 @@ import sqlite3
 
 import plotly.graph_objects as go
 import streamlit as st
+from rail_vehicle.ui import page_title
 from rail_vehicle.ui import plot_chart, record_analysis
 from rail_vehicle.deployment import demo_source_options
 
@@ -38,7 +39,7 @@ def vibration_chart(result, *, rolling=False):
 
 
 def render():
-    st.header("振动与平稳性分析")
+    page_title("振动与平稳性分析")
     st.caption("智能分析工作台 / 数据与参数 → 计算结果 → 证据与报告")
     st.info("探索性振动分析 · 提供未加权指标，不输出标准舒适等级、故障诊断或运行安全结论。")
     try:

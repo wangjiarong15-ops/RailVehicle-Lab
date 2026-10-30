@@ -8,6 +8,7 @@ from time import monotonic
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
+from rail_vehicle.ui import page_title
 from rail_vehicle.ui import plot_chart
 from rail_vehicle.deployment import demo_source_options
 
@@ -102,7 +103,7 @@ def _render_instruments(track: ReplayTrack, threshold: float, max_speed: float) 
 
 
 def render() -> None:
-    st.header("动态运行驾驶舱")
+    page_title("动态运行驾驶舱")
     st.caption("运行与实验工作台 / 数据来源清晰 · 用户主动操作")
     st.info("历史数据模拟回放 · 使用已保存的运行样本，不代表真实实时监测。")
     source = st.radio("回放数据来源", demo_source_options("历史运行批次", "内置虚构演示"), horizontal=True,

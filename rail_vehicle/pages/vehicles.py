@@ -1,6 +1,7 @@
 """Vehicle parameter entry, browsing, and editing page."""
 
 import streamlit as st
+from rail_vehicle.ui import page_title
 import sqlite3
 from rail_vehicle.ui import navigate
 
@@ -158,7 +159,7 @@ def _vehicle_dialog(vehicle=None):
 
 
 def render() -> None:
-    st.header("车辆参数")
+    page_title("车辆参数")
     st.caption("数据工作台 / 车辆档案 · 参数维护 · 运行分析")
     if message := st.session_state.pop("vehicle_flash", None):
         st.success(message)

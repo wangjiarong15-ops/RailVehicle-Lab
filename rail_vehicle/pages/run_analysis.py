@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 import plotly.graph_objects as go
 import streamlit as st
+from rail_vehicle.ui import page_title
 
 from rail_vehicle.analysis_report import (
     build_analysis_report_data,
@@ -649,7 +650,7 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
 
 def render_statistics_demo() -> None:
     """Offline, explicitly fictional entry into the existing analysis workflow."""
-    st.header("统计与异常演示")
+    page_title("统计与异常演示")
     st.info("内置虚构数据 · 两个 120 条记录的批次，未导入数据库，不代表真实车辆。"
             "仅演示基础动力学统计与规则异常，不判断车辆故障或运行安全。")
     st.caption("默认阈值 1 m/s²：第 30–32 秒有横向变化，第 70–71 秒有垂向变化。"
@@ -854,7 +855,7 @@ def _render_batch_comparison() -> None:
 
 
 def render() -> None:
-    st.header("运行分析")
+    page_title("运行分析")
     st.caption("分析工作台 / 时间范围 → 指标与曲线 → 异常事件 → 报告")
     analysis_tab, comparison_tab = st.tabs(
         ["基础动力学统计分析", "批次对比"]

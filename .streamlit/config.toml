@@ -2,23 +2,40 @@
 address = "127.0.0.1"
 
 [theme]
-base = "light"
-primaryColor = "#176BCE"
-backgroundColor = "#F4F7FB"
-secondaryBackgroundColor = "#E8EFF7"
-textColor = "#142D4E"
+base = "dark"
 font = "sans-serif"
 baseFontSize = 14
-headingFontSizes = ["28px", "24px", "19px", "16px", "14px", "12px"]
-headingFontWeights = [650, 650, 600, 600, 600, 600]
+headingFontSizes = ["26px", "23px", "18px", "16px", "14px", "12px"]
 baseRadius = "medium"
-borderColor = "#D8E3EF"
-dataframeHeaderBackgroundColor = "#E1EBF5"
-dataframeHeaderTextColor = "#142D4E"
-chartCategoricalColors = ["#176BCE", "#0D9488", "#8258B5", "#E39A24", "#D34444", "#526E8B"]
 
-[theme.sidebar]
-backgroundColor = "#102B49"
-secondaryBackgroundColor = "#1B3B5D"
-textColor = "#ECF3FC"
-primaryColor = "#5AA9FF"
+[theme.dark]
+primaryColor = "#4D9DFF"
+backgroundColor = "#091422"
+secondaryBackgroundColor = "#132338"
+textColor = "#E5EDF8"
+borderColor = "#263C55"
+dataframeHeaderBackgroundColor = "#1B304A"
+dataframeHeaderTextColor = "#E5EDF8"
+chartCategoricalColors = ["#63ACFF", "#39CCBC", "#BA9BFF", "#F5B65A", "#FF737D", "#9BB3D0"]
+
+[theme.dark.sidebar]
+backgroundColor = "#0B192A"
+secondaryBackgroundColor = "#1B304A"
+textColor = "#E5EDF8"
+primaryColor = "#4D9DFF"
+
+[theme.light]
+primaryColor = "#176BCE"
+backgroundColor = "#F1F5FA"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#142D4E"
+borderColor = "#D7E2EF"
+dataframeHeaderBackgroundColor = "#E7EFF8"
+dataframeHeaderTextColor = "#142D4E"
+chartCategoricalColors = ["#176BCE", "#0D9488", "#8258B5", "#B47713", "#C43D4A", "#526E8B"]
+
+[theme.light.sidebar]
+backgroundColor = "#E6EEF7"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#142D4E"
+primaryColor = "#176BCE"
