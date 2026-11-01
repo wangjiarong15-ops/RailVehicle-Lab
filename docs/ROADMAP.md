@@ -15,6 +15,8 @@
 
 当前边界：CSV 为离线批次数据；已具备无监督机器学习离群基线，但没有设备实时采集、真实故障标签验证或已认证的舒适性/安全评价。模型、AI 与阈值结果不能作为真实故障或铁路运营安全结论。
 
+Windows 便携版进展（2026-11-01）：根据用户转述的同学电脑人工测试，完整版启动、车辆新增及重启保留、CSV 导入、三条运行曲线、运行数据重启保留、振动分析、驾驶舱播放与暂停及 PDF 导出均获反馈通过。该电脑已安装 Python，不能将反馈视为无 Python 干净环境验收；AI 因未配置而未测试，机器学习和多车辆对比尚未得到本轮逐项确认。下一阶段完成干净 Windows 环境验收，以及经授权的 AI 配置与调用验收。详情见 [Windows 便携版验收记录](WINDOWS_PORTABLE_ACCEPTANCE.md)。
+
 V0.4 本地验证：纯 Python 时间轴测试、Streamlit 页面交互测试、临时 SQLite 导入至回放端到端测试，以及真实浏览器中对自动刷新、暂停、重置、倍速和异常提示的检查。浏览器演示使用内置虚构数据，不需要 API Key。
 
 2026-10-25 验收记录：新增 16 项测试；完整 `python -m pytest -q` 为 223 passed、142 个子测试通过，无失败和跳过。`python -m compileall -q rail_vehicle tests app.py` 与 `git diff --check` 通过。真实浏览器验证自动刷新、暂停、重置、2× 倍速和异常提示；本地 Streamlit 健康检查 HTTP 200。截图位于 `docs/screenshots/cockpit-history-replay.png`。
