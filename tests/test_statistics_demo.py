@@ -113,3 +113,21 @@ class StatisticsDemoTests(unittest.TestCase):
         self.assertEqual(state["analysis_start_time_1_2"], "private range")
         self.assertEqual(state["analysis_report_pdf"], b"PRIVATE")
         self.assertEqual(state["demo_analysis_threshold"], 1.)
+
+    def test_sampling_rule_source_invalidates_only_demo_pdf_and_exports_current_rules(self):
+        with patch.object(run_analysis, "build_analysis_report_data", wraps=run_analysis.build_analysis_report_data) as build:
+            app = self.app()
+            app.session_state["analysis_report_pdf"] = b"PRIVATE"
+            app.button(key="statistics_demo_calculate").click().run()
+            app.button(key="demo_generate_analysis_report").click().run()
+            self.assertIsNone(build.call_args.kwargs["sampling_expected_interval_seconds"])
+            self.assertEqual(build.call_args.kwargs["sampling_gap_multiplier"], 3.)
+            app.number_input(key="demo_sampling_-1_-1_expected_interval").set_value(1.).run()
+            self.assertFalse(app.exception)
+            self.assertNotIn("demo_analysis_report_pdf", app.session_state)
+            self.assertEqual(len(app.get("download_button")), 0)
+            self.assertEqual(app.session_state["analysis_report_pdf"], b"PRIVATE")
+            app.button(key="demo_generate_analysis_report").click().run()
+            self.assertFalse(app.exception)
+            self.assertEqual(build.call_args.kwargs["sampling_expected_interval_seconds"], 1.)
+            self.assertTrue(app.session_state["demo_analysis_report_pdf"].startswith(b"%PDF"))

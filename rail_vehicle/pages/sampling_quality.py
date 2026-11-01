@@ -1,11 +1,11 @@
-"""Read-only sampling review, independent from analysis and report caches."""
+"""Read-only sampling review shared with single-batch reporting."""
 
 import streamlit as st
 
 from rail_vehicle.data_quality import review_sampling_timestamps
 
 
-def render_sampling_quality(samples: list[dict], *, key: str) -> None:
+def render_sampling_quality(samples: list[dict], *, key: str) -> dict:
     st.subheader("数据质量检查")
     with st.expander("采样检查规则 · 可调整", expanded=False):
         columns = st.columns(2)
@@ -39,7 +39,7 @@ def render_sampling_quality(samples: list[dict], *, key: str) -> None:
                    f"{review['gap_cutoff_seconds']:.6g} 秒标为长间隔。"
                    "自动估计可能漏掉持续低采样率或规则性缺测，请优先使用已知采集间隔。")
     st.caption("只检查当前车辆与筛选范围。历史数据已按 UTC 排序，当前输入倒序数不能用于判断原 CSV 行序；"
-               "原 CSV 行序检查见导入预览。本检查不删除、补点或修改统计与报告。")
+               "原 CSV 行序检查见导入预览。本检查不删除、补点或修改统计；检查结果与规则将写入单批次 PDF。")
     if review["long_gaps"]:
         with st.expander("长采样间隔明细（UTC）", expanded=False):
             st.dataframe([
@@ -49,3 +49,4 @@ def render_sampling_quality(samples: list[dict], *, key: str) -> None:
             ], hide_index=True, width="stretch")
             if review["details_truncated"]:
                 st.caption(f"共 {review['long_gap_count']} 处长间隔，仅展示前 100 处；计数覆盖全部样本。")
+    return review

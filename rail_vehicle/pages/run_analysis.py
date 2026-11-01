@@ -417,7 +417,9 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
             value = sampling_summary[key]
             column.metric(label, f"{value:.3f}" if value is not None else "—")
 
-    render_sampling_quality(filtered_samples, key=f"{'demo' if demo else 'history'}_sampling_{vehicle_id}_{batch_id}")
+    sampling_review = render_sampling_quality(
+        filtered_samples, key=f"{'demo' if demo else 'history'}_sampling_{vehicle_id}_{batch_id}"
+    )
 
     st.subheader("速度统计")
     speed_columns = st.columns(3)
@@ -602,7 +604,8 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         )
 
     st.subheader("导出分析报告")
-    st.caption("PDF 报告将包含当前车辆、批次、时间范围、阈值、统计结果、异常事件和筛选后曲线。")
+    st.caption("PDF 报告包含当前车辆、批次、时间范围、统计、异常事件、采样质量检查与规则及曲线。"
+               "调整采样检查规则后需重新生成 PDF。")
     current_ai_result = None if demo else st.session_state.get("ai_single_batch_result")
     report_state_key = "demo_analysis_report_key" if demo else "analysis_report_key"
     report_pdf_key = "demo_analysis_report_pdf" if demo else "analysis_report_pdf"
@@ -612,10 +615,11 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         and current_ai_result.get("status") == "available"
         else "no-ai-result"
     )
-    report_key = (
-        f"{vehicle_id}:{batch_id}:{selected_start.isoformat()}:{selected_end.isoformat()}:"
-        f"{threshold:.12g}:{current_ai_pdf_fingerprint}"
-    )
+    report_key = selection_fingerprint({
+        "analysis": ai_payload, "selection": ai_selection,
+        "sampling_quality": sampling_review, "ai_result": current_ai_pdf_fingerprint,
+        "vehicle": selected_vehicle, "samples": result["samples"],
+    })
     if st.session_state.get(report_state_key) != report_key:
         st.session_state.pop(report_state_key, None)
         st.session_state.pop(report_pdf_key, None)
@@ -638,6 +642,11 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
                 ai_context=ai_payload,
                 ai_result=current_ai_result,
                 ai_selection_fingerprint=selection_fingerprint(ai_selection),
+                sampling_expected_interval_seconds=(
+                    sampling_review["baseline_seconds"]
+                    if sampling_review["baseline_source"] == "specified" else None
+                ),
+                sampling_gap_multiplier=sampling_review["gap_multiplier"],
             )
             pdf_bytes = generate_analysis_report_pdf(report_data)
         except Exception as exc:

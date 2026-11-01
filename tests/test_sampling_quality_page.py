@@ -38,7 +38,7 @@ class SamplingQualityPageTests(unittest.TestCase):
         self.assertEqual(list(table["提示"]), ["独立时刻不足", "独立时刻不足"])
         self.assertTrue(any("格式检查通过" in item.value for item in app.success))
 
-    def test_real_analysis_quality_rule_preserves_statistics_ai_payload_and_pdf(self):
+    def test_real_analysis_quality_rule_preserves_statistics_ai_payload_and_invalidates_pdf(self):
         from tests.test_anomaly_review import analysis_app
         from rail_vehicle.pages import run_analysis
         with patch.object(run_analysis, "_render_ai_interpretation") as ai:
@@ -57,7 +57,15 @@ class SamplingQualityPageTests(unittest.TestCase):
             self.assertEqual(metrics["数据异常点"], updated["数据异常点"])
             self.assertEqual(metrics["平均速度（km/h）"], updated["平均速度（km/h）"])
             self.assertEqual(ai.call_args.kwargs["payload"], context)
-            self.assertEqual(app.session_state["analysis_report_pdf"], pdf)
+            self.assertNotIn("analysis_report_pdf", app.session_state)
+            self.assertEqual(len(app.get("download_button")), 0)
+            app.button(key="generate_analysis_report").click().run()
+            self.assertFalse(app.exception)
+            self.assertTrue(app.session_state["analysis_report_pdf"].startswith(b"%PDF"))
+            self.assertNotEqual(app.session_state["analysis_report_pdf"], pdf)
+            app.number_input(key="history_sampling_1_1_gap_multiplier").set_value(100.).run()
+            self.assertNotIn("analysis_report_pdf", app.session_state)
+            self.assertEqual(len(app.get("download_button")), 0)
 
     def test_rule_changes_recompute_gaps_and_keep_other_results(self):
         app = AppTest.from_function(quality_app)
