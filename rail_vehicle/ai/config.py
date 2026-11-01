@@ -16,9 +16,15 @@ def _streamlit_secrets() -> Mapping[str, Any]:
     portable_home = os.environ.get("RAIL_PORTABLE_HOME")
     if portable_home:
         try:
-            import toml
+            try:
+                import tomllib
+            except ModuleNotFoundError:  # Python 3.10
+                import tomli as tomllib
             path = Path(portable_home) / ".streamlit" / "secrets.toml"
-            return toml.load(path) if path.is_file() else {}
+            if not path.is_file():
+                return {}
+            with path.open("rb") as config_file:
+                return tomllib.load(config_file)
         except Exception:
             return {}
     try:

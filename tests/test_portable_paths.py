@@ -51,6 +51,14 @@ class PortablePathTests(unittest.TestCase):
             self.assertEqual(main([]), 1)
         self.assertIn("Port 8501 is occupied", str(message.call_args))
 
+    def test_portable_config_parse_failure_does_not_read_global_secrets(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict("os.environ", {"RAIL_PORTABLE_HOME": directory}):
+            path = Path(directory) / ".streamlit" / "secrets.toml"
+            path.parent.mkdir()
+            path.write_text("invalid = [", encoding="utf-8")
+            with patch("streamlit.secrets", {"AI_MODEL": "must-not-fall-back"}):
+                self.assertEqual(_streamlit_secrets(), {})
+
     @unittest.skipUnless(__import__("sys").platform == "win32", "Windows file locking")
     def test_single_instance_lock_and_release(self):
         with tempfile.TemporaryDirectory() as directory:
