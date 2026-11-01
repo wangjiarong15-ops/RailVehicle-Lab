@@ -6,6 +6,19 @@
 
 日常双击 `start_windows.bat` 启动完整版，或双击 `start_demo_windows.bat` 启动仅使用虚构数据的演示版。服务默认仅监听本机，访问 http://127.0.0.1:8501；在启动窗口按 Ctrl+C 停止，如 Windows 询问是否终止批处理任务，输入 Y。端口占用时先关闭占用程序，或在命令行执行 `start_windows.bat --port 8502`。命令行可使用 `setup_windows.bat --check`、`start_windows.bat --check` 或 `start_demo_windows.bat --check` 仅检查环境。无需手动激活虚拟环境；启动不会自动安装依赖。脚本启动的是浏览器界面，并非免安装 EXE。
 
+### 实验性 Windows 目录式便携构建
+
+便携版仍需在没有预装 Python 的干净 Windows 系统上完成独立验收，暂不作为正式发布包。构建需要 Git、已安装完整项目依赖的项目虚拟环境，以及单独安装的 PyInstaller：
+
+```powershell
+.venv\Scripts\python.exe -m pip install --target tmp/pdfs/portable-build-tools "pyinstaller>=6,<7"
+powershell -NoProfile -ExecutionPolicy Bypass -File packaging/build_portable.ps1
+```
+
+脚本会输出新建的构建目录；整个 `dist/RailVehicleLab` 目录需要一起保留。双击其中的 `RailVehicleLab.exe` 启动完整版，双击 `Start-Demo.bat` 启动虚构数据演示版。浏览器访问 `http://127.0.0.1:8501`，保持启动窗口打开并按 Ctrl+C 退出；端口被占用时可在命令行使用 `RailVehicleLab.exe --port 8502`。同一用户只能启动一个便携实例。
+
+便携版的数据库、配置及日志存放在 `%LOCALAPPDATA%\RailVehicle-Lab\`，不会随程序目录更新覆盖。默认不使用开发机环境变量中的 AI 密钥；如需自行启用 AI，请在该用户目录下的 `.streamlit/secrets.toml` 中配置。分享程序目录前仍应确认其中没有自行放入密钥或数据。
+
 ## V0.4 首页视觉精修与双主题
 
 首页合并重复标题，将登记车辆、导入批次、样本总量和最近批次异常区段放到顶层；主要区域同步展示速度、横向/垂向加速度、既有异常点和区段跨度。快捷操作及会话记录位于右侧，导入历史在趋势下方。空数据库保持明确空状态，不填入演示指标。

@@ -1,13 +1,21 @@
 """SQLite setup and connection helpers."""
 
 from pathlib import Path
+import os
 import sqlite3
 from contextlib import contextmanager
 from collections.abc import Iterator
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DATA_DIR = PROJECT_ROOT / "data"
+def data_directory(environment=None):
+    """Keep regular installs unchanged; portable launcher opts into a user directory."""
+    environment = os.environ if environment is None else environment
+    configured = environment.get("RAIL_PORTABLE_HOME")
+    return Path(configured) / "data" if configured else PROJECT_ROOT / "data"
+
+
+DATA_DIR = data_directory()
 DB_PATH = DATA_DIR / "rail_vehicle.db"
 
 

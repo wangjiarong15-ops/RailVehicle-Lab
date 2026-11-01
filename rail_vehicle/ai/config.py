@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from dataclasses import dataclass
 from typing import Any, Mapping
 
@@ -12,6 +13,14 @@ DEEPSEEK_DEFAULT_BASE_URL = "https://api.deepseek.com"
 
 def _streamlit_secrets() -> Mapping[str, Any]:
     """Materialize Streamlit secrets safely when no secrets file is configured."""
+    portable_home = os.environ.get("RAIL_PORTABLE_HOME")
+    if portable_home:
+        try:
+            import toml
+            path = Path(portable_home) / ".streamlit" / "secrets.toml"
+            return toml.load(path) if path.is_file() else {}
+        except Exception:
+            return {}
     try:
         import streamlit as st
 
