@@ -20,6 +20,9 @@ from rail_vehicle.analysis_report import (
 from rail_vehicle.anomaly import detect_anomalies
 from rail_vehicle.batch_comparison import compare_run_batches
 from rail_vehicle.dynamics import analyze_run_data
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+from tests.pdf_checks import assert_pdf_integrity
 
 
 def sample(timestamp, speed, lateral, vertical):
@@ -159,7 +162,14 @@ class AnalysisReportAITests(unittest.TestCase):
         report = self._single_report()
         pdf, text = self._generate_and_read_story(generate_analysis_report_pdf, report)
         self.assertIn("AI 辅助解读未生成", text)
-        self.assertGreater(len(pdf), 10000)
+        assert_pdf_integrity(self, pdf)
+
+    def test_no_ai_pdf_with_cid_font_retains_fallback_message(self):
+        pdfmetrics.registerFont(UnicodeCIDFont("STSong-Light"))
+        with patch("rail_vehicle.analysis_report._font_names", return_value=("STSong-Light", "STSong-Light")):
+            pdf, text = self._generate_and_read_story(generate_analysis_report_pdf, self._single_report())
+        self.assertIn("AI 辅助解读未生成", text)
+        assert_pdf_integrity(self, pdf)
 
     def test_unavailable_and_validation_failed_results_do_not_break_pdf(self):
         for failed_result in (

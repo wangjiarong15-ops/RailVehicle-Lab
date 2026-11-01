@@ -13,9 +13,9 @@ from streamlit.testing.v1 import AppTest
 from rail_vehicle import db
 from rail_vehicle.dashboard import load_dashboard
 from rail_vehicle.demo_data import demo_csv_content
-from rail_vehicle.run_data import import_run_data, validate_run_csv
+from rail_vehicle.run_data import import_run_data, validate_run_csv, list_import_batches
 from rail_vehicle.vehicle_data import add_vehicle, update_vehicle, list_vehicles
-from rail_vehicle.pages import home, vehicles
+from rail_vehicle.pages import home, vehicles, run_analysis
 
 
 def home_app():
@@ -213,7 +213,9 @@ class FrontendTests(unittest.TestCase):
         self.assertEqual(app.session_state["dynamics_vehicle_id"], self.vid)
 
     def test_root_navigation_groups_and_import_entry_preserve_all_pages(self):
-        with patch("rail_vehicle.db.init_db"), patch.object(db, "DB_PATH", self.path):
+        with patch("rail_vehicle.db.init_db"), patch.object(db, "DB_PATH", self.path), \
+             patch.object(run_analysis, "list_vehicles", lambda: list_vehicles(self.path)), \
+             patch.object(run_analysis, "list_import_batches", lambda: list_import_batches(self.path)):
             app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"), default_timeout=15).run()
             self.assertFalse(app.exception)
             self.assertEqual(app.session_state["navigation_page"], "平台首页")

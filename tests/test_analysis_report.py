@@ -5,6 +5,9 @@ import unittest
 from unittest.mock import patch
 
 from reportlab.lib import colors
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+from tests.pdf_checks import assert_pdf_integrity
 
 from rail_vehicle.analysis_report import (
     MAX_CHART_POINTS,
@@ -118,7 +121,13 @@ class AnalysisReportTests(unittest.TestCase):
         output = generate_analysis_report_pdf(self.report)
         self.assertTrue(output.startswith(b"%PDF-"))
         self.assertIn(b"%%EOF", output[-32:])
-        self.assertGreater(len(output), 10_000)
+        assert_pdf_integrity(self, output)
+
+    def test_generates_valid_pdf_using_builtin_cid_font(self):
+        pdfmetrics.registerFont(UnicodeCIDFont("STSong-Light"))
+        with patch("rail_vehicle.analysis_report._font_names", return_value=("STSong-Light", "STSong-Light")):
+            output = generate_analysis_report_pdf(self.report)
+        assert_pdf_integrity(self, output)
 
     def test_pdf_story_explains_anomaly_duration_across_sampling_gaps(self):
         with patch(
