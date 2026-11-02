@@ -23,6 +23,6 @@ if (-not $railClean) { Write-Warning 'Source was modified during or before the b
 Copy-Item -LiteralPath 'packaging/Start-Demo.bat' -Destination (Join-Path $railBuild 'dist/RailVehicleLab/Start-Demo.bat')
 Copy-Item -LiteralPath 'packaging/PORTABLE_README.txt' -Destination (Join-Path $railBuild 'dist/RailVehicleLab/README.txt')
 $railBundle = Join-Path $railBuild 'dist/RailVehicleLab'
-$railExeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $railBundle 'RailVehicleLab.exe')).Hash.ToLowerInvariant()
-@{ source_commit = $railCommit; exe_sha256 = $railExeHash; source_clean = $railClean } | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $railBundle 'BUILD-METADATA.json')
+& $railPython 'packaging/package_portable.py' $railBundle --record-build $railCommit --source-clean ($railClean.ToString().ToLowerInvariant())
+if ($LASTEXITCODE -ne 0) { throw 'Failed to record build metadata.' }
 Write-Host "Portable directory: $(Join-Path $railBuild 'dist/RailVehicleLab')"

@@ -56,6 +56,25 @@ def bundle_files(bundle: Path) -> list[Path]:
     return sorted(files)
 
 
+def write_build_metadata(bundle: Path, commit: str, clean: bool) -> None:
+    """Record every build file before distribution; this is not a signature."""
+    bundle = Path(bundle)
+    if not re.fullmatch(r"[0-9a-f]{40,64}", commit):
+        raise ValueError("Git 提交信息无效。")
+    files = bundle_files(bundle)
+    manifest = bundle / "BUILD-METADATA.json"
+    if manifest.exists():
+        raise FileExistsError("构建版本信息已存在，不会覆盖。")
+    inventory = {path.relative_to(bundle).as_posix(): sha256_file(path) for path in files}
+    if "RailVehicleLab.exe" not in inventory:
+        raise ValueError("构建缺少启动程序。")
+    metadata = {"source_commit": commit, "source_clean": clean,
+                "exe_sha256": inventory["RailVehicleLab.exe"], "files_sha256": inventory}
+    with manifest.open("x", encoding="utf-8", newline="\n") as stream:
+        json.dump(metadata, stream, ensure_ascii=False, sort_keys=True, indent=2)
+        stream.write("\n")
+
+
 def create_archive(bundle: Path, output: Path) -> tuple[Path, str]:
     bundle = Path(bundle)
     output = Path(output)
@@ -63,17 +82,22 @@ def create_archive(bundle: Path, output: Path) -> tuple[Path, str]:
         raise ValueError("输出目录不能位于构建目录内。")
     files = bundle_files(bundle)
     try:
-        metadata = json.loads((bundle / "BUILD-METADATA.json").read_text(encoding="utf-8-sig"))
+        manifest_bytes = (bundle / "BUILD-METADATA.json").read_bytes()
+        metadata = json.loads(manifest_bytes.decode("utf-8-sig"))
         commit = metadata["source_commit"]
         expected_hash = metadata["exe_sha256"]
+        inventory = metadata["files_sha256"]
         if (metadata.get("source_clean") is not True or not isinstance(commit, str)
                 or not re.fullmatch(r"[0-9a-f]{40,64}", commit)
-                or not isinstance(expected_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_hash)):
+                or not isinstance(expected_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_hash)
+                or not isinstance(inventory, dict)):
             raise ValueError
-        if sha256_file(bundle / "RailVehicleLab.exe") != expected_hash:
+        actual = {path.relative_to(bundle).as_posix(): sha256_file(path)
+                  for path in files if path.name != "BUILD-METADATA.json" or path.parent != bundle}
+        if actual != inventory or inventory.get("RailVehicleLab.exe") != expected_hash:
             raise ValueError
     except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
-        raise ValueError("构建版本信息无效或 EXE 已改变，请重新运行构建脚本。") from exc
+        raise ValueError("构建版本信息无效或文件已改变，请重新运行构建脚本。") from exc
     output.mkdir(parents=True, exist_ok=True)
     archive = output / f"RailVehicle-Lab-v0.4-beta-test-{commit[:7]}-win64.zip"
     checksum = archive.with_name(archive.name + ".sha256")
@@ -81,15 +105,22 @@ def create_archive(bundle: Path, output: Path) -> tuple[Path, str]:
         raise FileExistsError("输出文件已存在；请选择其他输出目录。")
     version = (f"RailVehicle-Lab V0.4 beta test (experimental)\nSource commit: {commit}\n"
                f"Executable SHA-256: {expected_hash}\nClean Windows without Python: NOT VERIFIED\n"
-               "Build metadata records source revision and executable hash; it is not a digital signature.\n")
+               "Build metadata records source revision and file hashes; it is not a digital signature.\n")
     with zipfile.ZipFile(archive, "x", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as zipped:
         for path in files:
             zipped.write(path, "RailVehicleLab/" + path.relative_to(bundle).as_posix())
         zipped.writestr("VERSION.txt", version)
         zipped.writestr("使用说明.txt", INSTRUCTIONS)
     with zipfile.ZipFile(archive) as zipped:
-        if zipped.testzip() is not None:
-            raise ValueError("压缩包完整性检查失败。")
+        if zipped.read("RailVehicleLab/BUILD-METADATA.json") != manifest_bytes:
+            raise ValueError("构建信息在打包时发生变化。")
+        for name, expected in inventory.items():
+            digest = hashlib.sha256()
+            with zipped.open("RailVehicleLab/" + name) as stream:
+                for block in iter(lambda: stream.read(1024 * 1024), b""):
+                    digest.update(block)
+            if digest.hexdigest() != expected:
+                raise ValueError("构建文件在打包时发生变化。")
     digest = sha256_file(archive)
     with checksum.open("x", encoding="ascii", newline="\n") as stream:
         stream.write(f"{digest}  {archive.name}\n")
@@ -99,9 +130,18 @@ def create_archive(bundle: Path, output: Path) -> tuple[Path, str]:
 def main() -> int:
     parser = argparse.ArgumentParser(description="从已记录版本的目录式构建生成实验性测试包")
     parser.add_argument("bundle", type=Path, help="build_portable.ps1 输出的 RailVehicleLab 目录")
-    parser.add_argument("output", type=Path, help="压缩包输出目录")
+    parser.add_argument("output", type=Path, nargs="?", help="压缩包输出目录")
+    parser.add_argument("--record-build", metavar="COMMIT", help=argparse.SUPPRESS)
+    parser.add_argument("--source-clean", choices=("true", "false"), help=argparse.SUPPRESS)
     args = parser.parse_args()
     try:
+        if args.record_build:
+            if args.output is not None or args.source_clean is None:
+                parser.error("记录构建时需要 --source-clean，不能指定输出目录。")
+            write_build_metadata(args.bundle, args.record_build, args.source_clean == "true")
+            return 0
+        if args.output is None or args.source_clean is not None:
+            parser.error("打包时需要指定输出目录。")
         archive, digest = create_archive(args.bundle, args.output)
     except ValueError as exc:
         print(f"打包失败：{exc}")
