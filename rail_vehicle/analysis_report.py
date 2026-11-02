@@ -32,7 +32,7 @@ from reportlab.lib.colors import HexColor
 from rail_vehicle.ai.provider import input_fingerprint
 from rail_vehicle.ai.schemas import AIContractError, has_unverified_claim_scopes, validate_output
 from rail_vehicle.anomaly import EVENT_DURATION_NOTE
-from rail_vehicle.data_quality import analyze_sampling_times
+from rail_vehicle.data_quality import analyze_sampling_times, review_sampling_timestamps
 
 
 REPORT_TITLE = "轨道车辆运行与动力学分析报告"
@@ -235,6 +235,8 @@ def build_analysis_report_data(
     ai_context: dict[str, Any] | None = None,
     ai_result: dict[str, Any] | None = None,
     ai_selection_fingerprint: str | None = None,
+    sampling_expected_interval_seconds: float | None = None,
+    sampling_gap_multiplier: float = 3.0,
 ) -> dict[str, Any]:
     """Assemble a stable report payload from the current filtered analysis."""
     samples = analysis["samples"]
@@ -274,6 +276,11 @@ def build_analysis_report_data(
         "vertical_accel": dict(analysis["vertical_accel"]),
         "threshold": dict(analysis["threshold"]),
         "sampling_summary": analyze_sampling_times(samples),
+        "sampling_quality": review_sampling_timestamps(
+            (sample["timestamp"] for sample in samples),
+            expected_interval_seconds=sampling_expected_interval_seconds,
+            gap_multiplier=sampling_gap_multiplier,
+        ),
         "anomaly_events": [dict(event) for event in anomalies["events"]],
         "samples": [dict(sample) for sample in samples],
         "ai_section": _validated_ai_section(
@@ -631,7 +638,7 @@ def generate_analysis_report_pdf(report: dict[str, Any]) -> bytes:
             value = sampling[key]
             return f"{value:.3f}" if value is not None else "—"
 
-        story.append(_paragraph("五、采样时间概览", heading_style))
+        story.append(_paragraph("五、采样时间概览与数据质量检查", heading_style))
         story.append(
             _table(
                 [
@@ -653,10 +660,53 @@ def generate_analysis_report_pdf(report: dict[str, Any]) -> bytes:
             )
         )
 
-        story.append(_paragraph("六、运行曲线", heading_style))
+        quality = report.get("sampling_quality")
+        if quality is not None:
+            baseline = quality["baseline_seconds"]
+            cutoff = quality["gap_cutoff_seconds"]
+            source = "手动指定" if quality["baseline_source"] == "specified" else "当前范围去重间隔中位数自动估计"
+            quality_rows = [
+                ["质量检查项目", "结果 / 规则"],
+                ["基准来源", source],
+                ["采样间隔基准（秒）", f"{baseline:.6g}" if baseline is not None else "独立时刻不足，无法估计"],
+                ["长间隔判定倍数", f"{quality['gap_multiplier']:.6g}"],
+                ["判定界限（秒，严格大于）", f"{cutoff:.6g}" if cutoff is not None else "无法计算"],
+                ["重复时刻额外记录", quality["duplicate_timestamp_rows"]],
+                ["当前输入时间倒序", quality["out_of_order_pairs"]],
+                ["长采样间隔总数", quality["long_gap_count"]],
+            ]
+            story.append(_table(quality_rows, [content_width * .48, content_width * .52], body_style, header_style))
+            status_text = {
+                "needs_review": "发现采样时间问题，请回查采集记录。",
+                "insufficient": "不足两个独立时刻，无法评估采样间隔。",
+                "no_flags": "按当前规则未发现重复时刻、倒序或长间隔；这不代表数据完整或质量合格。",
+            }[quality["status"]]
+            story.append(_paragraph(status_text, body_style))
+            story.append(_paragraph(
+                "检查仅覆盖当前车辆、批次及筛选范围。重复记录仍参与按行统计，不自动删除或补点。"
+                "历史数据已按 UTC 排序，当前输入倒序数不能代表原 CSV 行序；原始倒序须在导入预览核查。"
+                "自动估计可能漏掉持续低采样率或规则性缺测，请优先填写已知采集间隔。"
+                "长间隔只表示相邻样本之间的时间差，不证明期间连续观测或确定丢失样本数。",
+                small_style,
+            ))
+            if quality["long_gaps"]:
+                gaps = quality["long_gaps"][:20]
+                story.append(_paragraph("长采样间隔明细（UTC）", heading_style))
+                rows = [["开始时刻（UTC）", "结束时刻（UTC）", "间隔（秒）"]]
+                rows.extend([
+                    [_timestamp_text(gap["start_timestamp"]), _timestamp_text(gap["end_timestamp"]),
+                     f"{gap['interval_seconds']:.6g}"] for gap in gaps
+                ])
+                story.append(_table(rows, [content_width * .41, content_width * .41, content_width * .18], small_style, header_style))
+                story.append(_paragraph(
+                    f"本报告展示 {len(gaps)} / {quality['long_gap_count']} 处长间隔（最多 20 处）；总数覆盖全部筛选样本。",
+                    small_style,
+                ))
+
+        chart_intro = [_paragraph("六、运行曲线", heading_style)]
         samples = report["samples"]
         if len(samples) > MAX_CHART_POINTS:
-            story.append(
+            chart_intro.append(
                 _paragraph(
                     f"每张曲线最多等距显示 {MAX_CHART_POINTS} 个点以保持 PDF 清晰度；统计结果仍使用全部 {len(samples)} 条筛选后数据。",
                     small_style,
@@ -667,30 +717,20 @@ def generate_analysis_report_pdf(report: dict[str, Any]) -> bytes:
             ("lateral_accel", "横向加速度 - 时间曲线", "横向加速度（m/s^2）"),
             ("vertical_accel", "垂向加速度 - 时间曲线", "垂向加速度（m/s^2）"),
         )
-        for field, title, y_label in chart_specs:
+        for index, (field, title, y_label) in enumerate(chart_specs):
             chart = _chart_drawing(
                 samples, field, y_label, [colors.HexColor("#1779A8")], regular_font
             )
-            story.append(
-                KeepTogether(
-                    [
-                        _paragraph(title, label_style),
-                        chart,
-                    ]
-                )
-            )
+            chart_items = (chart_intro if index == 0 else []) + [_paragraph(title, label_style), chart]
+            if index == len(chart_specs) - 1 and report.get("ai_section") is None:
+                _append_ai_section(chart_items, None, heading_style, body_style,
+                                   small_style, header_style, content_width, "七")
+            story.append(KeepTogether(chart_items))
             story.append(Spacer(1, 2 * mm))
 
-        _append_ai_section(
-            story,
-            report.get("ai_section"),
-            heading_style,
-            body_style,
-            small_style,
-            header_style,
-            content_width,
-            "七",
-        )
+        if report.get("ai_section") is not None:
+            _append_ai_section(story, report["ai_section"], heading_style, body_style,
+                               small_style, header_style, content_width, "七")
 
         def footer(canvas: Any, doc: Any) -> None:
             canvas.saveState()
@@ -699,7 +739,7 @@ def generate_analysis_report_pdf(report: dict[str, Any]) -> bytes:
             canvas.line(doc.leftMargin, 13 * mm, page_width - doc.rightMargin, 13 * mm)
             canvas.setFont(regular_font, 8)
             canvas.setFillColor(colors.HexColor("#607080"))
-            canvas.drawString(doc.leftMargin, 8 * mm, "RailVehicle-Lab · 分析报告")
+            canvas.drawString(doc.leftMargin, 8 * mm, "RailVehicle-Lab | 分析报告")
             canvas.drawRightString(page_width - doc.rightMargin, 8 * mm, f"第 {doc.page} 页")
             canvas.restoreState()
 

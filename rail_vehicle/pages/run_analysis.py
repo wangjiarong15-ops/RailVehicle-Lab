@@ -35,6 +35,7 @@ from rail_vehicle.timestamp_utils import parse_iso_timestamp
 from rail_vehicle.dynamics import analyze_run_data
 from rail_vehicle.anomaly import EVENT_DURATION_NOTE, detect_anomalies
 from rail_vehicle.pages.anomaly_review import render_event_review
+from rail_vehicle.pages.sampling_quality import render_sampling_quality
 from rail_vehicle.ui import plot_chart, record_analysis
 from rail_vehicle.time_filter import filter_samples_by_time_range
 from rail_vehicle.run_data import (
@@ -171,9 +172,27 @@ def _render_import() -> None:
                 "时间范围",
                 f"{validation.minimum_timestamp} — {validation.maximum_timestamp}",
             )
-            sampling_summary = validation.sampling_summary
+            if validation.sampling_by_vehicle:
+                st.subheader("按车辆检查采样质量（待导入）")
+                st.caption("各车分别按原 CSV 行序检查倒序；重复与间隔按 UTC 判断，避免不同车辆同一时刻被误报。"
+                           "长间隔严格大于该车去重后间隔中位数的 3 倍；自动估计可能漏掉规则性缺测。"
+                           "下方分析页可填写已知采样间隔。提示不阻止格式正确的数据导入，不自动删除或补点。")
+                st.dataframe([
+                    {"车辆编号": code, "样本数": review["sample_count"],
+                     "重复时刻额外记录": review["duplicate_timestamp_rows"],
+                     "原 CSV 时间倒序": review["out_of_order_pairs"],
+                     "长采样间隔": review["long_gap_count"],
+                     "间隔基准（秒）": review["baseline_seconds"],
+                     "提示": "请回查" if review["status"] == "needs_review" else (
+                         "独立时刻不足" if review["status"] == "insufficient" else "当前规则未发现问题")}
+                    for code, review in validation.sampling_by_vehicle.items()
+                ], hide_index=True, width="stretch")
+                if any(review["status"] == "needs_review" for review in validation.sampling_by_vehicle.values()):
+                    st.warning("部分车辆存在采样时间问题，建议核对原始采集记录；通过格式校验仍可导入。")
+            sampling_summary = validation.sampling_summary if validation.distinct_vehicle_count == 1 else None
             if sampling_summary is None:
-                st.info("当前文件的时间采样概览暂不可用，不影响 CSV 导入。")
+                st.caption("多车辆文件请以上方逐车检查为准。" if validation.distinct_vehicle_count > 1
+                           else "当前文件的时间采样概览暂不可用，不影响 CSV 导入。")
             else:
                 st.subheader("采样时间概览（待导入数据）")
                 st.caption(
@@ -417,6 +436,10 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
             value = sampling_summary[key]
             column.metric(label, f"{value:.3f}" if value is not None else "—")
 
+    sampling_review = render_sampling_quality(
+        filtered_samples, key=f"{'demo' if demo else 'history'}_sampling_{vehicle_id}_{batch_id}"
+    )
+
     st.subheader("速度统计")
     speed_columns = st.columns(3)
     speed_columns[0].metric("最大速度（km/h）", f"{result['speed']['maximum']:.3f}", border=True)
@@ -600,7 +623,8 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         )
 
     st.subheader("导出分析报告")
-    st.caption("PDF 报告将包含当前车辆、批次、时间范围、阈值、统计结果、异常事件和筛选后曲线。")
+    st.caption("PDF 报告包含当前车辆、批次、时间范围、统计、异常事件、采样质量检查与规则及曲线。"
+               "调整采样检查规则后需重新生成 PDF。")
     current_ai_result = None if demo else st.session_state.get("ai_single_batch_result")
     report_state_key = "demo_analysis_report_key" if demo else "analysis_report_key"
     report_pdf_key = "demo_analysis_report_pdf" if demo else "analysis_report_pdf"
@@ -610,10 +634,11 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         and current_ai_result.get("status") == "available"
         else "no-ai-result"
     )
-    report_key = (
-        f"{vehicle_id}:{batch_id}:{selected_start.isoformat()}:{selected_end.isoformat()}:"
-        f"{threshold:.12g}:{current_ai_pdf_fingerprint}"
-    )
+    report_key = selection_fingerprint({
+        "analysis": ai_payload, "selection": ai_selection,
+        "sampling_quality": sampling_review, "ai_result": current_ai_pdf_fingerprint,
+        "vehicle": selected_vehicle, "samples": result["samples"],
+    })
     if st.session_state.get(report_state_key) != report_key:
         st.session_state.pop(report_state_key, None)
         st.session_state.pop(report_pdf_key, None)
@@ -636,6 +661,11 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
                 ai_context=ai_payload,
                 ai_result=current_ai_result,
                 ai_selection_fingerprint=selection_fingerprint(ai_selection),
+                sampling_expected_interval_seconds=(
+                    sampling_review["baseline_seconds"]
+                    if sampling_review["baseline_source"] == "specified" else None
+                ),
+                sampling_gap_multiplier=sampling_review["gap_multiplier"],
             )
             pdf_bytes = generate_analysis_report_pdf(report_data)
         except Exception as exc:

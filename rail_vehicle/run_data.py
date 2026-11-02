@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from rail_vehicle.data_quality import summarize_timestamps
+from rail_vehicle.data_quality import review_sampling_timestamps, summarize_timestamps
 from rail_vehicle.db import DB_PATH, get_connection
 
 
@@ -42,6 +42,7 @@ class CsvValidationResult:
     sampling_summary: dict[str, Any] | None = None
     _source_content: bytes | str | None = field(default=None, repr=False)
     _vehicle_ids: dict[str, int] = field(default_factory=dict, repr=False)
+    sampling_by_vehicle: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     @property
     def is_valid(self) -> bool:
@@ -218,6 +219,8 @@ def validate_run_csv(
     minimum_timestamp_order: datetime | None = None
     maximum_timestamp_order: datetime | None = None
     sampling_timestamps: list[datetime] = []
+    vehicle_timestamps: dict[str, list[datetime]] = {}
+    vehicle_codes = {value: code for code, value in vehicle_ids.items()}
     error_details_truncated = False
     try:
         reader = _make_csv_reader(content)
@@ -259,6 +262,8 @@ def validate_run_csv(
                     timestamp_order = timestamp_order.replace(tzinfo=timezone.utc)
                 timestamp_order = timestamp_order.astimezone(timezone.utc)
                 sampling_timestamps.append(timestamp_order)
+                vehicle_code = vehicle_codes[normalized_row["vehicle_id"]]
+                vehicle_timestamps.setdefault(vehicle_code, []).append(timestamp_order)
                 if (
                     minimum_timestamp_order is None
                     or timestamp_order < minimum_timestamp_order
@@ -294,6 +299,10 @@ def validate_run_csv(
         ),
         _source_content=content,
         _vehicle_ids=vehicle_ids,
+        sampling_by_vehicle=(
+            {code: review_sampling_timestamps(timestamps)
+             for code, timestamps in vehicle_timestamps.items()} if not errors else {}
+        ),
     )
 
 
