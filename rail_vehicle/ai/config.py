@@ -4,29 +4,39 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Mapping
 
 
 DEEPSEEK_DEFAULT_BASE_URL = "https://api.deepseek.com"
 
 
+def _portable_secrets(portable_home: str) -> tuple[Mapping[str, Any], str | None]:
+    """Return fixed diagnostic codes, never configuration content or errors."""
+    try:
+        try:
+            import tomllib
+        except ModuleNotFoundError:  # Python 3.10
+            import tomli as tomllib
+        path = Path(portable_home) / ".streamlit" / "secrets.toml"
+        try:
+            with path.open("rb") as config_file:
+                return tomllib.load(config_file), None
+        except FileNotFoundError:
+            return {}, None
+        except (tomllib.TOMLDecodeError, UnicodeError):
+            return {}, "config_invalid"
+        except OSError:
+            return {}, "config_unreadable"
+    except Exception:
+        return {}, "config_unreadable"
+
+
 def _streamlit_secrets() -> Mapping[str, Any]:
     """Materialize Streamlit secrets safely when no secrets file is configured."""
     portable_home = os.environ.get("RAIL_PORTABLE_HOME")
     if portable_home:
-        try:
-            try:
-                import tomllib
-            except ModuleNotFoundError:  # Python 3.10
-                import tomli as tomllib
-            path = Path(portable_home) / ".streamlit" / "secrets.toml"
-            if not path.is_file():
-                return {}
-            with path.open("rb") as config_file:
-                return tomllib.load(config_file)
-        except Exception:
-            return {}
+        return _portable_secrets(portable_home)[0]
     try:
         import streamlit as st
 
@@ -82,8 +92,9 @@ class AIConfig:
     model: str = ""
     enabled: bool = False
     timeout: float = 30.0
-    api_key: str | None = None
+    api_key: str | None = field(default=None, repr=False)
     base_url: str | None = None
+    configuration_error: str | None = None
 
     @classmethod
     def from_sources(
@@ -91,7 +102,12 @@ class AIConfig:
         secrets: Mapping[str, Any] | None = None,
         environ: Mapping[str, str] | None = None,
     ) -> "AIConfig":
-        secret_values = _streamlit_secrets() if secrets is None else secrets
+        configuration_error = None
+        portable_home = os.environ.get("RAIL_PORTABLE_HOME")
+        if secrets is None and portable_home:
+            secret_values, configuration_error = _portable_secrets(portable_home)
+        else:
+            secret_values = _streamlit_secrets() if secrets is None else secrets
         env_values = os.environ if environ is None else environ
         provider = str(_lookup(secret_values, env_values, "AI_PROVIDER", "openai")).strip().lower()
         try:
@@ -130,4 +146,5 @@ class AIConfig:
             timeout=timeout,
             api_key=_secret_api_key(provider, secret_values, env_values),
             base_url=deepseek_base_url,
+            configuration_error=configuration_error,
         )

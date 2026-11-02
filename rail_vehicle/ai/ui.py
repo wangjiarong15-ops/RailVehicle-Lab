@@ -53,6 +53,10 @@ def clear_result(session_state: Any, state_key: str) -> None:
 
 
 def ai_configuration_message(config: AIConfig) -> str | None:
+    if config.configuration_error == "config_invalid":
+        return "本机 AI 配置文件格式无效，请检查 secrets.toml 的 TOML 格式。"
+    if config.configuration_error:
+        return "本机 AI 配置文件暂时无法读取，请检查文件和目录权限。"
     if not config.enabled:
         return "AI 辅助解读当前未启用，请配置 AI_ENABLED 和 API Key。"
     if config.provider not in {"openai", "deepseek"}:
@@ -80,7 +84,9 @@ def request_ai_analysis(
         return {"status": "unavailable", "code": "no_data", "message": "当前分析没有数据，无法生成 AI 解读。"}
     message = ai_configuration_message(config)
     if message:
-        code = "disabled" if not config.enabled else "missing_api_key" if not config.api_key else "not_configured"
+        code = (config.configuration_error if config.configuration_error in {"config_invalid", "config_unreadable"}
+                else "not_configured" if config.configuration_error
+                else "disabled" if not config.enabled else "missing_api_key" if not config.api_key else "not_configured")
         return {"status": "unavailable", "code": code, "message": message}
     try:
         result = AIAnalysisService(provider_factory(config)).analyze(payload)
@@ -110,6 +116,8 @@ def status_message(result: dict[str, Any]) -> str:
         }
         return code_messages.get(result.get("code"), "AI 返回内容未通过结构与证据校验，已阻止展示。")
     messages = {
+        "config_invalid": "本机 AI 配置文件格式无效，请检查 secrets.toml 的 TOML 格式。",
+        "config_unreadable": "本机 AI 配置文件暂时无法读取，请检查文件和目录权限。",
         "public_demo": "公开演示模式不调用 AI 服务。",
         "disabled": "AI 辅助解读当前未启用，请配置 AI_ENABLED 和 API Key。",
         "missing_api_key": "AI 服务未配置 API Key。",

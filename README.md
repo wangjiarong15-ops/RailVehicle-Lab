@@ -46,6 +46,17 @@ powershell -NoProfile -ExecutionPolicy Bypass -File packaging/build_portable.ps1
 
 便携版的数据库、配置及日志存放在 `%LOCALAPPDATA%\RailVehicle-Lab\`，不会随程序目录更新覆盖。默认不使用开发机环境变量中的 AI 密钥；如需自行启用 AI，请在该用户目录下的 `.streamlit/secrets.toml` 中配置。分享程序目录前仍应确认其中没有自行放入密钥或数据。
 
+便携版可选 AI 配置：先启动一次程序并关闭，在资源管理器地址栏输入 `%LOCALAPPDATA%\RailVehicle-Lab\.streamlit`，在该目录中自行创建或编辑 `secrets.toml`。例如使用 DeepSeek 时，文件格式如下，将占位文字替换为自己的密钥：
+
+```toml
+AI_ENABLED = true
+AI_PROVIDER = "deepseek"
+AI_MODEL = "deepseek-flash"
+DEEPSEEK_API_KEY = "在此填写自己的密钥"
+```
+
+保存后重启便携程序。该文件只保存在本机用户目录，切勿随程序分享；不要把密钥粘贴到截图或提交到 Git。配置格式错误或不可读时，AI 区域会显示不含文件内容的提示，本地统计和 PDF 仍可使用。公开演示版不提供 AI 调用；在完整版中调用 AI 必须主动点击按钮，可能产生服务费用。
+
 首次使用可按首页引导登记车辆、导入 CSV 并打开运行分析。CSV 导入页提供 120 条虚构记录的下载，导入前需先登记车辆编号 `DEMO-001`；下载不会自动写入数据库。运行分析会在当前筛选范围内显示无需 AI 密钥的统计说明和阈值结果，统计异常不代表车辆故障或运营安全结论。
 
 ## V0.4 首页视觉精修与双主题
