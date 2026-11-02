@@ -19,6 +19,8 @@ Windows 便携版进展（2026-11-01）：根据用户转述的同学电脑人�
 
 V0.4 公测准备（2026-11-02）：补充首次使用引导、虚构 CSV 下载、无需 AI 的筛选结果说明与导入失败提示。本机完整测试 407 项、253 个子测试通过，并在隔离用户目录运行重新构建的便携程序；干净 Windows 环境和 AI 配置与调用仍待独立验收。详见 [Windows 便携版验收记录](WINDOWS_PORTABLE_ACCEPTANCE.md)。
 
+后续本机端到端验证：便携程序使用虚构车辆与示例 CSV 完成导入、运行分析、PDF 导出和重启持久化；控制台退出时曾出现一次连接关闭提示，仍需复核。`origin/codex/sampling-quality` 的采样质量检查、PDF 明细及便携 AI 配置修复尚未整合，后续合并时须保留这些改进；本记录不代表无 Python 干净环境已验收。
+
 V0.4 本地验证：纯 Python 时间轴测试、Streamlit 页面交互测试、临时 SQLite 导入至回放端到端测试，以及真实浏览器中对自动刷新、暂停、重置、倍速和异常提示的检查。浏览器演示使用内置虚构数据，不需要 API Key。
 
 2026-10-25 验收记录：新增 16 项测试；完整 `python -m pytest -q` 为 223 passed、142 个子测试通过，无失败和跳过。`python -m compileall -q rail_vehicle tests app.py` 与 `git diff --check` 通过。真实浏览器验证自动刷新、暂停、重置、2× 倍速和异常提示；本地 Streamlit 健康检查 HTTP 200。截图位于 `docs/screenshots/cockpit-history-replay.png`。
