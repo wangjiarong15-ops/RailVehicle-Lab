@@ -83,6 +83,8 @@ V0.4 公测准备（2026-11-02）：补充首次使用引导、虚构 CSV 下载
 
 便携 AI 配置诊断（2026-11-02）：区分缺少配置、TOML 格式错误和读取失败，不暴露配置内容，补充用户配置说明；隔离虚构配置下的浏览器流程验证错误提示、基础分析和 PDF。完整测试 445 项、287 个子测试通过；真实 AI、更新后的便携构建及干净 Windows 仍待验收。
 
+便携 AI 诊断后续：已重新构建便携程序及实验性 ZIP，并在开发机隔离用户目录验证无效虚构配置提示及导入、分析、PDF；真实 AI 与无 Python 干净 Windows 仍待验收。旧测试包不包含此修复。
+
 V0.4 本地验证：纯 Python 时间轴测试、Streamlit 页面交互测试、临时 SQLite 导入至回放端到端测试，以及真实浏览器中对自动刷新、暂停、重置、倍速和异常提示的检查。浏览器演示使用内置虚构数据，不需要 API Key。
 
 2026-10-25 验收记录：新增 16 项测试；完整 `python -m pytest -q` 为 223 passed、142 个子测试通过，无失败和跳过。`python -m compileall -q rail_vehicle tests app.py` 与 `git diff --check` 通过。真实浏览器验证自动刷新、暂停、重置、2× 倍速和异常提示；本地 Streamlit 健康检查 HTTP 200。截图位于 `docs/screenshots/cockpit-history-replay.png`。
