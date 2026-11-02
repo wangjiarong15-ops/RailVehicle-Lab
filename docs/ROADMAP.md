@@ -73,6 +73,8 @@ V0.4 公测准备（2026-11-02）：补充首次使用引导、虚构 CSV 下载
 
 采样质量整合（2026-11-02）：上述改进已在独立分支 `codex/v04-sampling-integration` 整合，保留公测分支的首次使用和离线说明。完整测试 429 项、275 个子测试通过；虚构数据浏览器流程验证导入、质量检查和 PDF 下载。重新构建的便携程序在开发机验证了导入、质量检查、分析及生成 PDF 下载入口，但此次未重新下载 PDF；干净 Windows 和真实 AI 验收仍未完成，上述旧测试压缩包不含整合改动。
 
+整合版后续验证：便携程序重启后确认虚构车辆与批次保留，采样检查可用，PDF 已重新生成并下载。已生成含版本和 SHA-256 的本地实验性测试压缩包；干净 Windows 与真实 AI 仍需单独验收。详情见 [Windows 便携版验收记录](WINDOWS_PORTABLE_ACCEPTANCE.md)。
+
 V0.4 本地验证：纯 Python 时间轴测试、Streamlit 页面交互测试、临时 SQLite 导入至回放端到端测试，以及真实浏览器中对自动刷新、暂停、重置、倍速和异常提示的检查。浏览器演示使用内置虚构数据，不需要 API Key。
 
 2026-10-25 验收记录：新增 16 项测试；完整 `python -m pytest -q` 为 223 passed、142 个子测试通过，无失败和跳过。`python -m compileall -q rail_vehicle tests app.py` 与 `git diff --check` 通过。真实浏览器验证自动刷新、暂停、重置、2× 倍速和异常提示；本地 Streamlit 健康检查 HTTP 200。截图位于 `docs/screenshots/cockpit-history-replay.png`。
