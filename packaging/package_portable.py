@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import re
+import stat
 import zipfile
 
 
@@ -22,6 +23,12 @@ BLOCKED_SUFFIXES = {".csv", ".db", ".sqlite", ".sqlite3", ".log"}
 BLOCKED_DIRS = {".venv", "__pycache__", ".git"}
 
 
+def is_link_or_reparse(path: Path) -> bool:
+    """Reject Windows junctions as well as ordinary symbolic links."""
+    attributes = getattr(path.lstat(), "st_file_attributes", 0)
+    return path.is_symlink() or bool(attributes & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400))
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -32,14 +39,17 @@ def sha256_file(path: Path) -> str:
 
 def bundle_files(bundle: Path) -> list[Path]:
     """Refuse sensitive-looking paths and links rather than silently omit them."""
-    if bundle.is_symlink() or not bundle.is_dir():
+    if not bundle.is_dir() or is_link_or_reparse(bundle):
         raise ValueError("构建目录不存在或是链接。")
     files = []
-    for root, dirs, names in os.walk(bundle, followlinks=False):
+    def fail_on_walk_error(error):
+        raise error
+
+    for root, dirs, names in os.walk(bundle, followlinks=False, onerror=fail_on_walk_error):
         for name in dirs + names:
             path = Path(root) / name
             lower = name.casefold()
-            if (path.is_symlink() or lower in BLOCKED_DIRS or lower in {"secrets.toml", ".env"}
+            if (is_link_or_reparse(path) or lower in BLOCKED_DIRS or lower in {"secrets.toml", ".env"}
                     or lower.startswith(".env.") or path.suffix.casefold() in BLOCKED_SUFFIXES):
                 raise ValueError("构建目录包含不允许打包的文件、目录或链接。")
         files.extend(Path(root) / name for name in names)

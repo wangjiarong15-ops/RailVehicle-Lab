@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import Mock, patch
 import zipfile
 
 
@@ -76,6 +77,27 @@ class PortableArchiveTests(unittest.TestCase):
         self.assertEqual(archive.read_bytes(), original)
         with self.assertRaises(ValueError):
             archive_tool.create_archive(self.bundle, self.bundle / "output")
+
+    def test_windows_reparse_point_is_rejected(self):
+        path = Mock()
+        path.is_symlink.return_value = False
+        path.lstat.return_value.st_file_attributes = 0x400
+        self.assertTrue(archive_tool.is_link_or_reparse(path))
+        nested = self.bundle / "junction"
+        nested.mkdir()
+        original = archive_tool.is_link_or_reparse
+        with patch.object(archive_tool, "is_link_or_reparse", side_effect=lambda item: item == nested or original(item)):
+            with self.assertRaises(ValueError):
+                archive_tool.create_archive(self.bundle, self.output)
+
+    def test_inaccessible_directory_aborts_instead_of_creating_partial_zip(self):
+        def failing_walk(_bundle, *, followlinks, onerror):
+            onerror(PermissionError("private fixture"))
+            yield
+        with patch.object(archive_tool.os, "walk", side_effect=failing_walk):
+            with self.assertRaises(PermissionError):
+                archive_tool.create_archive(self.bundle, self.output)
+        self.assertFalse(self.output.exists())
 
 
 if __name__ == "__main__":
