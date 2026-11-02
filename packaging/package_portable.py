@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 import stat
+import tempfile
 import zipfile
 
 
@@ -75,6 +76,17 @@ def write_build_metadata(bundle: Path, commit: str, clean: bool) -> None:
         stream.write("\n")
 
 
+def publish_without_overwrite(temporary: Path, destination: Path) -> None:
+    """Publish a completed file atomically without replacing an existing target."""
+    if os.name == "nt":
+        # Windows rename fails if the destination already exists.
+        os.rename(temporary, destination)
+    else:
+        # POSIX rename can replace an existing file; hard-link creation cannot.
+        os.link(temporary, destination)
+        temporary.unlink()
+
+
 def create_archive(bundle: Path, output: Path) -> tuple[Path, str]:
     bundle = Path(bundle)
     output = Path(output)
@@ -106,22 +118,30 @@ def create_archive(bundle: Path, output: Path) -> tuple[Path, str]:
     version = (f"RailVehicle-Lab V0.4 beta test (experimental)\nSource commit: {commit}\n"
                f"Executable SHA-256: {expected_hash}\nClean Windows without Python: NOT VERIFIED\n"
                "Build metadata records source revision and file hashes; it is not a digital signature.\n")
-    with zipfile.ZipFile(archive, "x", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as zipped:
-        for path in files:
-            zipped.write(path, "RailVehicleLab/" + path.relative_to(bundle).as_posix())
-        zipped.writestr("VERSION.txt", version)
-        zipped.writestr("使用说明.txt", INSTRUCTIONS)
-    with zipfile.ZipFile(archive) as zipped:
-        if zipped.read("RailVehicleLab/BUILD-METADATA.json") != manifest_bytes:
-            raise ValueError("构建信息在打包时发生变化。")
-        for name, expected in inventory.items():
-            digest = hashlib.sha256()
-            with zipped.open("RailVehicleLab/" + name) as stream:
-                for block in iter(lambda: stream.read(1024 * 1024), b""):
-                    digest.update(block)
-            if digest.hexdigest() != expected:
-                raise ValueError("构建文件在打包时发生变化。")
-    digest = sha256_file(archive)
+    fd, temporary_name = tempfile.mkstemp(prefix=f".{archive.name}.", suffix=".partial", dir=output)
+    os.close(fd)
+    temporary = Path(temporary_name)
+    try:
+        with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as zipped:
+            for path in files:
+                zipped.write(path, "RailVehicleLab/" + path.relative_to(bundle).as_posix())
+            zipped.writestr("VERSION.txt", version)
+            zipped.writestr("使用说明.txt", INSTRUCTIONS)
+        with zipfile.ZipFile(temporary) as zipped:
+            if zipped.read("RailVehicleLab/BUILD-METADATA.json") != manifest_bytes:
+                raise ValueError("构建信息在打包时发生变化。")
+            for name, expected in inventory.items():
+                digest = hashlib.sha256()
+                with zipped.open("RailVehicleLab/" + name) as stream:
+                    for block in iter(lambda: stream.read(1024 * 1024), b""):
+                        digest.update(block)
+                if digest.hexdigest() != expected:
+                    raise ValueError("构建文件在打包时发生变化。")
+        digest = sha256_file(temporary)
+        publish_without_overwrite(temporary, archive)
+    finally:
+        # Only the uniquely created temporary file is removed on failure.
+        temporary.unlink(missing_ok=True)
     with checksum.open("x", encoding="ascii", newline="\n") as stream:
         stream.write(f"{digest}  {archive.name}\n")
     return archive, digest

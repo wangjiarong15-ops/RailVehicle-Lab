@@ -95,6 +95,24 @@ class PortableArchiveTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 archive_tool.create_archive(self.bundle, self.output)
         self.assertEqual(list(self.output.glob("*.sha256")), [])
+        self.assertEqual(list(self.output.glob("*.zip")), [])
+        self.assertEqual(list(self.output.glob("*.partial")), [])
+
+    def test_publish_never_replaces_existing_file(self):
+        source = self.root / "temporary.partial"
+        destination = self.root / "existing.zip"
+        source.write_bytes(b"new")
+        destination.write_bytes(b"existing")
+        with self.assertRaises(FileExistsError):
+            archive_tool.publish_without_overwrite(source, destination)
+        self.assertEqual(destination.read_bytes(), b"existing")
+        self.assertEqual(source.read_bytes(), b"new")
+
+    def test_write_failure_leaves_no_final_zip_or_checksum(self):
+        with patch.object(zipfile.ZipFile, "write", side_effect=OSError("private fixture")):
+            with self.assertRaises(OSError):
+                archive_tool.create_archive(self.bundle, self.output)
+        self.assertEqual(list(self.output.iterdir()), [])
 
     def test_rejects_local_data_and_secrets_without_exposing_content(self):
         for name in ("secrets.toml", ".env.local", "samples.csv", "state.sqlite3", "launcher.log"):
