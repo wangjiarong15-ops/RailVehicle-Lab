@@ -1,6 +1,7 @@
 """Running-data import and basic dynamics analysis page."""
 
 from datetime import datetime, timedelta, timezone
+import sqlite3
 
 import plotly.graph_objects as go
 import streamlit as st
@@ -114,6 +115,12 @@ def _render_import() -> None:
     st.caption("上传 CSV 后先检查数据；只有整份文件通过校验后才能写入数据库。")
     st.caption(f"单个 CSV 文件大小上限：{MAX_CSV_SIZE_MB} MB。")
 
+    from rail_vehicle.demo_data import DEMO_VEHICLE_CODE, demo_csv_content
+    with st.expander("下载虚构演示 CSV", expanded=False):
+        st.caption(f"仅供练习，包含 120 条虚构记录。导入前请在车辆参数中登记车辆编号 {DEMO_VEHICLE_CODE}；不会自动创建车辆或导入数据库。")
+        st.download_button("下载虚构演示 CSV", demo_csv_content(0).encode("utf-8"),
+                           file_name="fictional_run.csv", mime="text/csv", key="download_fictional_csv")
+
     with st.expander("CSV 格式要求", expanded=False):
         st.markdown(
             """必需字段：`timestamp`、`vehicle_id`、`speed_kmh`、`lateral_accel`、
@@ -193,6 +200,8 @@ def _render_import() -> None:
                     batch_id = import_run_data(uploaded_file.name, validation)
                 except ValueError as exc:
                     st.error(str(exc))
+                except (sqlite3.Error, OSError):
+                    st.error("导入未完成，请先检查历史导入记录，再检查数据库目录的可写权限及磁盘空间。")
                 else:
                     st.success(
                         f"导入成功：批次 #{batch_id}，共保存 {validation.source_row_count:,} 行。"
@@ -375,6 +384,16 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         return
 
     st.markdown(f"**分析样本数：** {result['sample_count']:,} 条")
+    with st.container(border=True):
+        st.subheader("基础结果说明（无需 AI）")
+        st.write(f"当前范围内平均速度 {result['speed']['mean']:.3f} km/h；"
+                 f"横向和垂向加速度 RMS 分别为 {result['lateral_accel']['rms']:.4f}、"
+                 f"{result['vertical_accel']['rms']:.4f} m/s²。")
+        either = result["threshold"]["either"]
+        st.write(f"在当前阈值 |a| > {threshold:.3f} m/s² 下，至少一个方向超阈值的样本"
+                 f"为 {either['count']} 条（{either['percentage']:.2f}%）；"
+                 f"共识别 {len(anomaly_result['events'])} 个按方向合并的异常区段。")
+        st.caption("以上由当前筛选样本直接计算，不调用 AI。阈值由用户设置；统计异常和未超阈值均不构成故障、运行安全或法规结论。")
     st.markdown(
         "**计算口径：** 最大值/最小值为样本极值；平均值为算术平均；"
         "RMS = √(Σx² / n)。加速度峰值取绝对值最大点，同时显示该点的有符号原始值和时间。"

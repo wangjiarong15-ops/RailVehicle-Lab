@@ -4,6 +4,7 @@ from contextlib import ExitStack
 from copy import deepcopy
 from pathlib import Path
 import os
+import sqlite3
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -29,6 +30,11 @@ def home_app():
 def vehicle_app():
     from rail_vehicle.pages.vehicles import render
     render()
+
+
+def import_app():
+    from rail_vehicle.pages.run_analysis import _render_import
+    _render_import()
 
 
 def records_app():
@@ -90,6 +96,26 @@ class FrontendTests(unittest.TestCase):
         app = self.home(empty)
         self.assertFalse(app.exception)
         self.assertTrue(any("暂无可预览" in item.value for item in app.info))
+        self.assertTrue(any("首次使用" in item.value for item in app.subheader))
+
+    def test_fictional_csv_can_be_validated_without_database_side_effects(self):
+        before = self.path.read_bytes()
+        validation = validate_run_csv(demo_csv_content(0).encode("utf-8"), list_vehicles(self.path))
+        self.assertTrue(validation.is_valid)
+        self.assertEqual(validation.source_row_count, 120)
+        self.assertEqual(before, self.path.read_bytes())
+
+    def test_import_download_and_database_failure_show_safe_guidance(self):
+        with patch.object(run_analysis, "list_vehicles", lambda: list_vehicles(self.path)), \
+             patch.object(run_analysis, "list_import_batches", return_value=[]), \
+             patch.object(run_analysis, "import_run_data", side_effect=sqlite3.OperationalError("PRIVATE_DETAIL")):
+            app = AppTest.from_function(import_app, default_timeout=15).run()
+            self.assertEqual(len(app.get("download_button")), 1)
+            app.file_uploader[0].upload("fictional.csv", demo_csv_content(0).encode(), "text/csv").run()
+            next(button for button in app.button if button.label == "导入到 SQLite").click().run()
+            self.assertFalse(app.exception)
+            self.assertTrue(any("导入未完成" in error.value for error in app.error))
+            self.assertNotIn("PRIVATE_DETAIL", " ".join(error.value for error in app.error))
 
     def home(self, fixture=None):
         app = AppTest.from_function(home_app, default_timeout=15)

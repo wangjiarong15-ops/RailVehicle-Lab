@@ -34,6 +34,13 @@ def render():
         with st.popover("预览设置", width="stretch"):
             threshold = st.number_input("预览加速度阈值（m/s²）", min_value=0., value=1., step=.1, key="home_threshold")
             st.caption("仅影响最近车辆/批次预览；不改变原始数据。")
+    if not public and data is not None and data["vehicle_count"] == 0:
+        with st.container(border=True):
+            st.subheader("首次使用：三步完成一次分析")
+            st.markdown("1. 在 **车辆参数** 中登记车辆，或先体验演示中心的虚构数据。\n"
+                        "2. 在 **CSV 数据导入** 中下载虚构示例并按提示登记对应车辆，上传并确认导入。\n"
+                        "3. 在 **运行分析** 中选择车辆和批次，查看曲线、统计与 PDF 报告。")
+            st.caption("基础统计、异常检测和 PDF 不需要 AI 或 API 密钥；演示数据不代表实际车辆。")
     preview = data.get("preview") if data else None
     analysis, anomalies = None, None
     invalid = False
