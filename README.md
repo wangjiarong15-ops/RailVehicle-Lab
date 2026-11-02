@@ -32,6 +32,14 @@ CSV 导入预览按车辆分别检查重复 UTC 时刻、原 CSV 行序中的时
 powershell -NoProfile -ExecutionPolicy Bypass -File packaging/build_portable.ps1
 ```
 
+构建脚本会记录 Git 提交及 EXE 哈希。需要生成带版本说明和 SHA-256 文件的实验性 ZIP 时，先确保 Git 已跟踪文件没有未提交修改，然后将脚本打印出的构建目录传给：
+
+```powershell
+.venv\Scripts\python.exe packaging/package_portable.py "<构建输出的 RailVehicleLab 目录>" "tmp/pdfs/portable-test-package"
+```
+
+工具拒绝缺少有效构建信息、源码有未提交修改、EXE 已改变、包含数据库/CSV/密钥配置或目标文件已存在的构建。旧构建若没有 `BUILD-METADATA.json`，请重新构建。文件名检查不能替代对发布内容的人工审查；哈希用于核对文件一致性，不是数字签名。
+
 脚本会输出新建的构建目录；整个 `dist/RailVehicleLab` 目录需要一起保留。双击其中的 `RailVehicleLab.exe` 启动完整版，双击 `Start-Demo.bat` 启动虚构数据演示版。浏览器访问 `http://127.0.0.1:8501`，保持启动窗口打开并按 Ctrl+C 退出；端口被占用时可在命令行使用 `RailVehicleLab.exe --port 8502`。同一用户只能启动一个便携实例。
 
 便携版的数据库、配置及日志存放在 `%LOCALAPPDATA%\RailVehicle-Lab\`，不会随程序目录更新覆盖。默认不使用开发机环境变量中的 AI 密钥；如需自行启用 AI，请在该用户目录下的 `.streamlit/secrets.toml` 中配置。分享程序目录前仍应确认其中没有自行放入密钥或数据。
