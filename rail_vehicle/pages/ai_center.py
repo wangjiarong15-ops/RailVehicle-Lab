@@ -96,8 +96,16 @@ def render():
             st.json(selection)
         try:
             details = evidence_detail_catalog(payload)
-            rows = [row for values in details.values() for row in values]
             st.caption(f"当前可引用 {len(details)} 个证据 ID。")
-            st.dataframe(rows, hide_index=True, width="stretch")
+            if details:
+                st.caption("离线结果说明：选择证据后查看 Python 已计算的值及口径，无需 API。")
+                evidence_id = st.selectbox("核查证据", list(details), key=f"ai_center_evidence_{kind}")
+                rows = details[evidence_id]
+                st.dataframe([{field: row[field] for field in ("指标", "值", "单位")} for row in rows],
+                             hide_index=True, width="stretch")
+                st.caption(f"类别：{rows[0]['类别']}；轴向：{rows[0]['轴向']}；批次：{rows[0]['批次范围']}")
+                st.caption(f"计算口径：{rows[0]['口径']}")
+            else:
+                st.info("当前分析没有可展示的证据。")
         except (ValueError, TypeError, KeyError):
             st.warning("当前证据目录无法读取，请返回分析页面重新计算。")

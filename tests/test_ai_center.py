@@ -114,6 +114,18 @@ def test_configuration_exception_is_safe():
         assert all("private detail" not in item.value for item in app.warning)
 
 
+def test_offline_evidence_inspection_uses_existing_facts_without_provider():
+    with patch.object(ai_center.AIConfig, "from_sources", return_value=AIConfig(enabled=False)), \
+         patch.object(ai_center, "create_configured_provider") as factory:
+        app = AppTest.from_function(center_app).run()
+        app.selectbox(key="ai_center_evidence_single").set_value("metric.speed.mean").run()
+        assert not app.exception
+        assert any("计算口径" in item.value for item in app.caption)
+        assert len(app.dataframe) == 1
+        assert "km/h" in str(app.dataframe[0].value)
+        factory.assert_not_called()
+
+
 def test_source_link_opens_center_without_calling_provider():
     with patch.object(ai_center.AIConfig, "from_sources", return_value=AIConfig(enabled=False)), \
          patch.object(ai_center, "create_configured_provider") as factory:
