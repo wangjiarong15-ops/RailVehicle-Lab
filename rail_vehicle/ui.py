@@ -26,14 +26,42 @@ def plot_chart(figure, **kwargs):
 def apply_design():
     # Two stable layout test IDs for density; all other rules target our own classes.
     st.html("""<style>
-    [data-testid="stMainBlockContainer"] {padding-top:3.8rem;padding-bottom:1.4rem;}
-    [data-testid="stSidebarUserContent"] {padding-top:1.2rem;}
-    .rv-status {display:inline-block;padding:.2rem .6rem;border:1px solid var(--rv-accent);
-      border-radius:6px;color:inherit;font-size:.8rem;}
-    .rv-themes {display:flex;gap:.5rem;}
-    .rv-themes a {padding:.35rem .7rem;border:1px solid var(--rv-accent);border-radius:6px;
-      color:inherit;text-decoration:none;}
-    [class*="st-key-rv-kpi-"], [class*="st-key-rv-panel-"] {background:var(--rv-surface);}
+    /* Presentation-only visual refresh: native Streamlit behavior unchanged. */
+    [data-testid="stMainBlockContainer"] {padding-top:3.2rem;padding-bottom:2rem;max-width:1600px;}
+    [data-testid="stSidebarUserContent"] {padding-top:1.0rem;}
+    .rv-brand {display:flex;align-items:center;gap:.8rem;padding:.85rem .9rem;
+      border:1px solid rgba(115,169,229,.28);border-radius:14px;
+      background:linear-gradient(125deg,rgba(34,113,205,.24),rgba(30,49,86,.08));
+      margin-bottom:.7rem;}
+    .rv-brand-icon {width:42px;height:42px;min-width:42px;display:flex;align-items:center;justify-content:center;
+      border-radius:12px;background:linear-gradient(145deg,#277EE1,#123D83);
+      color:#FFFFFF;font-size:1.25rem;box-shadow:0 5px 16px rgba(15,75,155,.25);}
+    .rv-brand-name {font-size:1.04rem;font-weight:750;letter-spacing:.01em;line-height:1.25;}
+    .rv-brand-subtitle {font-size:.73rem;opacity:.72;line-height:1.4;margin-top:.18rem;}
+    .rv-status {display:inline-flex;align-items:center;padding:.24rem .65rem;
+      border:1px solid var(--rv-accent,#4D9DFF);border-radius:999px;
+      color:inherit;font-size:.76rem;font-weight:600;}
+    .rv-themes {display:flex;gap:.5rem;flex-wrap:wrap;}
+    .rv-themes a {padding:.38rem .75rem;border:1px solid var(--rv-accent,#4D9DFF);
+      border-radius:10px;color:inherit;text-decoration:none;font-size:.83rem;
+      transition:background-color .18s ease;}
+    .rv-themes a:hover {background:rgba(80,146,220,.13);}
+    .rv-themes a:focus-visible {outline:2px solid var(--rv-accent,#4D9DFF);outline-offset:3px;}
+    [class*="st-key-nav_"] button {border-radius:10px;text-align:left;min-height:2.35rem;
+      transition:background-color .16s ease,transform .16s ease;}
+    [class*="st-key-nav_"] button:hover {transform:translateX(2px);}
+    [class*="st-key-rv-kpi-"] {background:var(--rv-surface,#132338);border-radius:15px;
+      border:1px solid rgba(119,164,219,.20);box-shadow:0 3px 14px rgba(4,18,38,.07);
+      transition:border-color .18s ease,box-shadow .18s ease;}
+    [class*="st-key-rv-kpi-"]:hover {border-color:rgba(88,154,238,.42);
+      box-shadow:0 6px 22px rgba(8,44,94,.12);}
+    [class*="st-key-rv-panel-"] {background:var(--rv-surface,#132338);border-radius:16px;
+      border:1px solid rgba(119,164,219,.18);box-shadow:0 4px 18px rgba(4,18,38,.06);}
+    @media (max-width:960px) {[data-testid="stMainBlockContainer"] {padding-top:2rem;}
+      .rv-brand {padding:.65rem;}}
+    @media (prefers-reduced-motion:reduce) {
+      .rv-themes a,[class*="st-key-nav_"] button,[class*="st-key-rv-kpi-"] {
+        transition:none!important;transform:none!important;}}
     </style>""")
 
 
@@ -126,8 +154,9 @@ def render_navigation(public):
         st.session_state["navigation_page"] = linked if linked in allowed else "演示中心" if public else "平台首页"
     selected = st.session_state["navigation_page"]
     with st.sidebar:
-        st.markdown("### 🚆 RailVehicle Lab")
-        st.caption("运行与动力学分析工作台")
+        st.html('<div class="rv-brand"><div class="rv-brand-icon" aria-hidden="true">🚆</div>'
+                '<div><div class="rv-brand-name">RailVehicle-Lab</div>'
+                '<div class="rv-brand-subtitle">轨道车辆运行与动力学分析</div></div></div>')
         st.divider()
         for group, entries in GROUPS:
             visible = [(name, icon) for name, icon in entries if name in allowed]
