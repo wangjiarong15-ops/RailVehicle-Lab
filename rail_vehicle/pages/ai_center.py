@@ -51,7 +51,14 @@ def render():
             st.warning("AI 配置读取失败，请检查本地配置；离线分析和报告仍可使用。")
             config = AIConfig(enabled=False)
         st.caption(f"Provider：{config.provider}；密钥仅从本机配置读取，不在页面显示。")
-        model = st.text_input("模型名称", value=config.model, key=f"ai_center_model_{config.provider}")
+        model_key = f"ai_center_model_{config.provider}"
+        source_key = f"ai_center_config_model_{config.provider}"
+        # Keep manual edits on rerun, but do not keep using a stale model after
+        # the underlying configuration changes during the same session.
+        if model_key not in st.session_state or (source_key in st.session_state and st.session_state[source_key] != config.model):
+            st.session_state[model_key] = config.model
+        st.session_state[source_key] = config.model
+        model = st.text_input("模型名称", key=model_key)
         timeout = st.number_input("超时（秒）", min_value=1, max_value=300,
                                   value=int(config.timeout), key="ai_center_timeout")
         config = replace(config, model=model.strip(), timeout=float(timeout))
@@ -64,6 +71,11 @@ def render():
     with middle:
         st.subheader("辅助解读")
         st.info("仅发送已计算的聚合指标与异常事件，不发送原始 CSV、样本、备注或 PDF。")
+        failure_key = "ai_center_last_failure"
+        failure_identity = (kind, item["input_fingerprint"], item["selection_fingerprint"], config.provider, config.model, config.timeout)
+        previous_failure = st.session_state.get(failure_key)
+        if unavailable or not isinstance(previous_failure, dict) or previous_failure.get("identity") != failure_identity:
+            st.session_state.pop(failure_key, None)
         invalidate_stale_result(st.session_state, key, payload, selection)
         previous = st.session_state.get(key)
         metadata = previous.get("ai_metadata", {}) if isinstance(previous, dict) else {}
@@ -71,6 +83,7 @@ def render():
             clear_result(st.session_state, key)
         if st.button("生成 AI 辅助解读", key="ai_center_generate", type="primary", disabled=bool(unavailable)):
             clear_result(st.session_state, key)
+            st.session_state.pop(failure_key, None)
             with st.spinner("正在解读已计算结果……"):
                 result = request_ai_analysis(payload, config, has_data=True, provider_factory=create_configured_provider)
             if result.get("status") == "available" and result.get("scope_validation") == "verified":
@@ -79,7 +92,14 @@ def render():
                                              generated_at=datetime.now(timezone.utc).isoformat(), status="success")
                 st.session_state[key] = result
             else:
-                st.warning(status_message(result))
+                message = status_message(result)
+                if result.get("code") == "incomplete_response" and not isinstance(result.get("diagnostics"), dict):
+                    message += "\n服务未提供安全诊断，请确认已刷新到最新页面后重试。"
+                # Only retain a fixed, sanitized UI message, never the raw result.
+                st.session_state[failure_key] = {"identity": failure_identity, "message": message}
+        failure = st.session_state.get(failure_key)
+        if isinstance(failure, dict):
+            st.warning(failure["message"])
         saved = st.session_state.get(key)
         if saved is not None:
             if saved.get("status") != "available" or saved.get("scope_validation") != "verified":

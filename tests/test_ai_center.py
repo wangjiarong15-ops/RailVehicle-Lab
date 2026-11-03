@@ -7,7 +7,7 @@ from streamlit.testing.v1 import AppTest
 from rail_vehicle.ai.center_state import current_context, register_context
 from rail_vehicle.ai.config import AIConfig
 from rail_vehicle.ai.context import build_single_batch_payload
-from rail_vehicle.ai.provider import FakeProvider
+from rail_vehicle.ai.provider import AIProviderUnavailable, FakeProvider
 from rail_vehicle.ai.schemas import collect_evidence_metadata
 from rail_vehicle.anomaly import detect_anomalies
 from rail_vehicle.dynamics import analyze_run_data
@@ -114,6 +114,19 @@ def test_configuration_exception_is_safe():
         assert all("private detail" not in item.value for item in app.warning)
 
 
+def test_model_configuration_change_refreshes_stale_widget_but_manual_edit_survives_rerun():
+    first = AIConfig(enabled=True, provider="deepseek", model="model-one", api_key="placeholder")
+    second = AIConfig(enabled=True, provider="deepseek", model="model-two", api_key="placeholder")
+    with patch.object(ai_center.AIConfig, "from_sources", return_value=first) as load:
+        app = AppTest.from_function(center_app).run()
+        app.text_input(key="ai_center_model_deepseek").set_value("manual-model").run()
+        assert app.text_input(key="ai_center_model_deepseek").value == "manual-model"
+        load.return_value = second
+        app.run()
+        assert not app.exception
+        assert app.text_input(key="ai_center_model_deepseek").value == "model-two"
+
+
 def test_offline_evidence_inspection_uses_existing_facts_without_provider():
     with patch.object(ai_center.AIConfig, "from_sources", return_value=AIConfig(enabled=False)), \
          patch.object(ai_center, "create_configured_provider") as factory:
@@ -150,3 +163,48 @@ def test_invalid_evidence_is_not_displayed_or_cached():
         assert "ai_single_batch_result" not in app.session_state
         assert any("未知证据" in item.value for item in app.warning)
         assert all("PRIVATE_OUTPUT" not in item.value for item in app.text)
+
+
+def test_incomplete_response_diagnostics_reach_center_without_partial_output():
+    class IncompleteProvider:
+        def analyze(self, payload):
+            raise AIProviderUnavailable("incomplete_response", "incomplete", diagnostics={
+                "status": "incomplete", "incomplete_reason": "max_output_tokens",
+                "has_message": True, "has_output_text": True, "output_text_length": 42,
+                "has_refusal": False, "max_output_tokens_limit": 3000, "usage_output_tokens": 3000,
+                "reasoning_tokens": 0, "untrusted_body": "PRIVATE_PARTIAL_OUTPUT"})
+    config = AIConfig(enabled=True, provider="deepseek", model="mock", api_key="placeholder")
+    with patch.object(ai_center.AIConfig, "from_sources", return_value=config), \
+         patch.object(ai_center, "create_configured_provider", return_value=IncompleteProvider()):
+        app = AppTest.from_function(center_app).run()
+        app.button(key="ai_center_generate").click().run()
+        assert not app.exception
+        warnings = " ".join(item.value for item in app.warning)
+        assert "incomplete_details.reason=max_output_tokens" in warnings
+        assert "PRIVATE_PARTIAL_OUTPUT" not in warnings
+        assert "ai_single_batch_result" not in app.session_state
+        app.selectbox(key="ai_center_evidence_single").set_value("metric.speed.mean").run()
+        assert any("incomplete_details.reason=max_output_tokens" in item.value for item in app.warning)
+        app.text_input(key="ai_center_model_deepseek").set_value("another-model").run()
+        assert not any("incomplete_details.reason=max_output_tokens" in item.value for item in app.warning)
+        assert "ai_center_last_failure" not in app.session_state
+
+
+def test_timeout_change_clears_previous_failure_without_retrying():
+    class TimeoutProvider:
+        def analyze(self, payload):
+            raise AIProviderUnavailable("timeout", "timeout")
+
+    config = AIConfig(enabled=True, provider="deepseek", model="mock", api_key="placeholder", timeout=30)
+    with patch.object(ai_center.AIConfig, "from_sources", return_value=config), \
+         patch.object(ai_center, "create_configured_provider", return_value=TimeoutProvider()) as factory:
+        app = AppTest.from_function(center_app).run()
+        app.button(key="ai_center_generate").click().run()
+        assert any("请求超时" in item.value for item in app.warning)
+        assert "ai_center_last_failure" in app.session_state
+        app.number_input(key="ai_center_timeout").set_value(60).run()
+        assert not app.exception
+        assert "ai_center_last_failure" not in app.session_state
+        assert not any("请求超时" in item.value for item in app.warning)
+        assert "ai_single_batch_result" not in app.session_state
+        factory.assert_called_once()
