@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
 from rail_vehicle.ui import page_title
-from rail_vehicle.ui import plot_chart, record_analysis
+from rail_vehicle.ui import plot_chart, record_analysis, source_caption
 from rail_vehicle.deployment import demo_source_options
 
 from rail_vehicle.demo_data import ml_demo_samples
@@ -65,6 +65,7 @@ def render():
         st.code('.venv\\Scripts\\python.exe -m pip install -e ".[ml]"', language="powershell")
         return
     source = st.radio("检测数据来源", demo_source_options("历史运行批次", "内置虚构实验"), horizontal=True, key="ml_source")
+    source_caption(fictional=source == "内置虚构实验")
     try:
         if source == "内置虚构实验":
             reference, target = ml_demo_samples()

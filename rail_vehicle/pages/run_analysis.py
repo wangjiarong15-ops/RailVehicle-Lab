@@ -36,7 +36,7 @@ from rail_vehicle.dynamics import analyze_run_data
 from rail_vehicle.anomaly import EVENT_DURATION_NOTE, detect_anomalies
 from rail_vehicle.pages.anomaly_review import render_event_review
 from rail_vehicle.pages.sampling_quality import render_sampling_quality
-from rail_vehicle.ui import plot_chart, record_analysis
+from rail_vehicle.ui import plot_chart, record_analysis, source_caption, workflow_caption
 from rail_vehicle.time_filter import filter_samples_by_time_range
 from rail_vehicle.run_data import (
     MAX_CSV_SIZE_MB,
@@ -260,6 +260,8 @@ def _format_stats_table(metrics: dict, acceleration: bool = False) -> list[dict]
 
 def _render_dynamics_analysis(*, demo: bool = False) -> None:
     ai_state_key = "demo_single_batch_result" if demo else "ai_single_batch_result"
+    source_caption(fictional=demo)
+    workflow_caption("① 选择车辆与批次　→　② 调整时间和阈值　→　③ 查看分析、异常与报告")
     st.caption(
         "基础动力学统计分析 · 描述性统计结果不代表法规合规或安全结论。"
     )
@@ -402,9 +404,8 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         st.error(str(exc))
         return
 
-    st.markdown(f"**分析样本数：** {result['sample_count']:,} 条")
-    with st.container(border=True):
-        st.subheader("基础结果说明（无需 AI）")
+    st.markdown(f"**分析样本数：** {result['sample_count']:,} 条　 ·　 **异常区段（按方向）：** {len(anomaly_result['events'])} 个")
+    with st.expander("基础结果说明（无需 AI）", expanded=False):
         st.write(f"当前范围内平均速度 {result['speed']['mean']:.3f} km/h；"
                  f"横向和垂向加速度 RMS 分别为 {result['lateral_accel']['rms']:.4f}、"
                  f"{result['vertical_accel']['rms']:.4f} m/s²。")
@@ -413,185 +414,192 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
                  f"为 {either['count']} 条（{either['percentage']:.2f}%）；"
                  f"共识别 {len(anomaly_result['events'])} 个按方向合并的异常区段。")
         st.caption("以上由当前筛选样本直接计算，不调用 AI。阈值由用户设置；统计异常和未超阈值均不构成故障、运行安全或法规结论。")
-    st.markdown(
-        "**计算口径：** 最大值/最小值为样本极值；平均值为算术平均；"
-        "RMS = √(Σx² / n)。加速度峰值取绝对值最大点，同时显示该点的有符号原始值和时间。"
+        st.markdown(
+            "**计算口径：** 最大值/最小值为样本极值；平均值为算术平均；"
+            "RMS = √(Σx² / n)。加速度峰值取绝对值最大点，同时显示该点的有符号原始值和时间。"
+        )
+
+    overview_tab, quality_tab, events_tab, report_tab = st.tabs(
+        ["运行概览", "采样质量", "异常事件", "AI 与报告"]
     )
 
-    with st.expander("采样分布与数据口径", expanded=False):
-        st.subheader("采样时间概览")
-        st.caption(
-            "以下统计仅描述当前时间筛选范围内的采样分布。重复数表示共享同一 UTC 时刻的额外记录；"
-            "间隔按排序并去重后的相邻时间计算，不据此判断数据合格与否。"
-        )
-        sampling_columns = st.columns(4)
-        sampling_columns[0].metric(
-            "重复时间戳记录", f"{sampling_summary['duplicate_timestamp_rows']:,}"
-        )
-        for column, label, key in (
-            (sampling_columns[1], "最小间隔（秒）", "interval_min_seconds"),
-            (sampling_columns[2], "中位间隔（秒）", "interval_median_seconds"),
-            (sampling_columns[3], "最大间隔（秒）", "interval_max_seconds"),
-        ):
-            value = sampling_summary[key]
-            column.metric(label, f"{value:.3f}" if value is not None else "—")
+    with quality_tab:
+        with st.expander("采样分布与数据口径", expanded=False):
+            st.subheader("采样时间概览")
+            st.caption(
+                "以下统计仅描述当前时间筛选范围内的采样分布。重复数表示共享同一 UTC 时刻的额外记录；"
+                "间隔按排序并去重后的相邻时间计算，不据此判断数据合格与否。"
+            )
+            sampling_columns = st.columns(4)
+            sampling_columns[0].metric(
+                "重复时间戳记录", f"{sampling_summary['duplicate_timestamp_rows']:,}"
+            )
+            for column, label, key in (
+                (sampling_columns[1], "最小间隔（秒）", "interval_min_seconds"),
+                (sampling_columns[2], "中位间隔（秒）", "interval_median_seconds"),
+                (sampling_columns[3], "最大间隔（秒）", "interval_max_seconds"),
+            ):
+                value = sampling_summary[key]
+                column.metric(label, f"{value:.3f}" if value is not None else "—")
 
-    sampling_review = render_sampling_quality(
-        filtered_samples, key=f"{'demo' if demo else 'history'}_sampling_{vehicle_id}_{batch_id}"
-    )
-
-    st.subheader("速度统计")
-    speed_columns = st.columns(3)
-    speed_columns[0].metric("最大速度（km/h）", f"{result['speed']['maximum']:.3f}", border=True)
-    speed_columns[1].metric("最小速度（km/h）", f"{result['speed']['minimum']:.3f}", border=True)
-    speed_columns[2].metric("平均速度（km/h）", f"{result['speed']['mean']:.3f}", border=True)
-
-    st.subheader("运行曲线")
-    chart_specs = (
-        ("speed_kmh", "速度—时间", "速度（km/h）"),
-        ("lateral_accel", "横向加速度—时间", "横向加速度（m/s²）"),
-        ("vertical_accel", "垂向加速度—时间", "垂向加速度（m/s²）"),
-    )
-    ordered_samples = result["samples"]
-    curve_tabs = st.tabs([spec[1] for spec in chart_specs])
-    for curve_tab, (field, title, y_title) in zip(curve_tabs, chart_specs):
-        figure = go.Figure(
-            data=[
-                go.Scatter(
-                    x=[sample["timestamp"] for sample in ordered_samples],
-                    y=[sample[field] for sample in ordered_samples],
-                    mode="lines",
-                    name=y_title,
-                    hovertemplate="%{x}<br>%{y:.4f}<extra></extra>",
-                )
-            ]
+        sampling_review = render_sampling_quality(
+            filtered_samples, key=f"{'demo' if demo else 'history'}_sampling_{vehicle_id}_{batch_id}"
         )
-        figure.update_layout(
-            title=title,
-            xaxis_title="时间",
-            yaxis_title=y_title,
-            margin={"l": 20, "r": 20, "t": 50, "b": 20},
+
+    with overview_tab:
+        st.subheader("速度统计")
+        speed_columns = st.columns(3)
+        speed_columns[0].metric("最大速度（km/h）", f"{result['speed']['maximum']:.3f}", border=True)
+        speed_columns[1].metric("最小速度（km/h）", f"{result['speed']['minimum']:.3f}", border=True)
+        speed_columns[2].metric("平均速度（km/h）", f"{result['speed']['mean']:.3f}", border=True)
+
+        st.subheader("运行曲线")
+        chart_specs = (
+            ("speed_kmh", "速度—时间", "速度（km/h）"),
+            ("lateral_accel", "横向加速度—时间", "横向加速度（m/s²）"),
+            ("vertical_accel", "垂向加速度—时间", "垂向加速度（m/s²）"),
         )
-        if field in ("lateral_accel", "vertical_accel"):
-            axis_points = [
-                point
-                for point in anomaly_result["points"]
-                if point["field"] == field
-            ]
-            if axis_points:
-                figure.add_trace(
+        ordered_samples = result["samples"]
+        curve_tabs = st.tabs([spec[1] for spec in chart_specs])
+        for curve_tab, (field, title, y_title) in zip(curve_tabs, chart_specs):
+            figure = go.Figure(
+                data=[
                     go.Scatter(
-                        x=[point["timestamp"] for point in axis_points],
-                        y=[point["value"] for point in axis_points],
-                        mode="markers",
-                        name="统计异常点",
-                        marker={"color": "#d62728", "size": 10, "symbol": "diamond"},
-                        customdata=[point["type"] for point in axis_points],
-                        hovertemplate="%{x}<br>%{customdata}<br>%{y:.4f} m/s²<extra></extra>",
+                        x=[sample["timestamp"] for sample in ordered_samples],
+                        y=[sample[field] for sample in ordered_samples],
+                        mode="lines",
+                        name=y_title,
+                        hovertemplate="%{x}<br>%{y:.4f}<extra></extra>",
                     )
+                ]
+            )
+            figure.update_layout(
+                title=title,
+                xaxis_title="时间",
+                yaxis_title=y_title,
+                margin={"l": 20, "r": 20, "t": 50, "b": 20},
+            )
+            if field in ("lateral_accel", "vertical_accel"):
+                axis_points = [
+                    point
+                    for point in anomaly_result["points"]
+                    if point["field"] == field
+                ]
+                if axis_points:
+                    figure.add_trace(
+                        go.Scatter(
+                            x=[point["timestamp"] for point in axis_points],
+                            y=[point["value"] for point in axis_points],
+                            mode="markers",
+                            name="统计异常点",
+                            marker={"color": "#d62728", "size": 10, "symbol": "diamond"},
+                            customdata=[point["type"] for point in axis_points],
+                            hovertemplate="%{x}<br>%{customdata}<br>%{y:.4f} m/s²<extra></extra>",
+                        )
+                    )
+                figure.add_hline(
+                    y=threshold,
+                    line_dash="dash",
+                    line_color="#d62728",
+                    annotation_text="+阈值",
                 )
-            figure.add_hline(
-                y=threshold,
-                line_dash="dash",
-                line_color="#d62728",
-                annotation_text="+阈值",
+                figure.add_hline(
+                    y=-threshold,
+                    line_dash="dash",
+                    line_color="#d62728",
+                    annotation_text="−阈值",
+                )
+            with curve_tab:
+                plot_chart(figure, width="stretch", key=f"chart_{field}")
+
+        st.subheader("加速度统计")
+        lateral_col, vertical_col = st.columns(2)
+        with lateral_col:
+            st.markdown("**横向加速度（m/s²）**")
+            st.dataframe(
+                _format_stats_table(result["lateral_accel"], acceleration=True),
+                hide_index=True,
+                width="stretch",
             )
-            figure.add_hline(
-                y=-threshold,
-                line_dash="dash",
-                line_color="#d62728",
-                annotation_text="−阈值",
+        with vertical_col:
+            st.markdown("**垂向加速度（m/s²）**")
+            st.dataframe(
+                _format_stats_table(result["vertical_accel"], acceleration=True),
+                hide_index=True,
+                width="stretch",
             )
-        with curve_tab:
-            plot_chart(figure, width="stretch", key=f"chart_{field}")
 
-    st.subheader("加速度统计")
-    lateral_col, vertical_col = st.columns(2)
-    with lateral_col:
-        st.markdown("**横向加速度（m/s²）**")
-        st.dataframe(
-            _format_stats_table(result["lateral_accel"], acceleration=True),
-            hide_index=True,
-            width="stretch",
-        )
-    with vertical_col:
-        st.markdown("**垂向加速度（m/s²）**")
-        st.dataframe(
-            _format_stats_table(result["vertical_accel"], acceleration=True),
-            hide_index=True,
-            width="stretch",
-        )
-
-    peak_columns = st.columns(2)
-    for column, label, stats in (
-        (peak_columns[0], "横向", result["lateral_accel"]),
-        (peak_columns[1], "垂向", result["vertical_accel"]),
-    ):
-        column.info(
-            f"{label}加速度绝对峰值：{stats['peak_absolute']:.4f} m/s²\n\n"
-            f"该点有符号值：{stats['peak_signed']:.4f} m/s²\n\n"
-            f"对应时间：{stats['peak_timestamp']}"
-        )
-
-    st.subheader("加速度阈值统计")
-    st.caption(
-        f"阈值：|加速度| > {result['threshold']['value']:.3f} m/s²；"
-        "横向和垂向分别以样本行数为分母，合计按至少一个方向超过阈值的样本行去重。"
-    )
-    exceedance = result["threshold"]
-    st.dataframe(
-        [
-            {
-                "统计范围": label,
-                "超过阈值样本数": values["count"],
-                "样本占比": f"{values['percentage']:.2f}%",
-            }
-            for label, values in (
-                ("横向加速度", exceedance["lateral"]),
-                ("垂向加速度", exceedance["vertical"]),
-                ("任一方向（去重）", exceedance["either"]),
+        peak_columns = st.columns(2)
+        for column, label, stats in (
+            (peak_columns[0], "横向", result["lateral_accel"]),
+            (peak_columns[1], "垂向", result["vertical_accel"]),
+        ):
+            column.info(
+                f"{label}加速度绝对峰值：{stats['peak_absolute']:.4f} m/s²\n\n"
+                f"该点有符号值：{stats['peak_signed']:.4f} m/s²\n\n"
+                f"对应时间：{stats['peak_timestamp']}"
             )
-        ],
-        hide_index=True,
-        width="stretch",
-    )
 
-    st.subheader("数据异常检测")
-    st.caption(
-        f"规则：横向或垂向加速度绝对值严格大于 {threshold:.3f} m/s² 时标记为统计异常点。"
-        "同一方向相邻异常样本合并为一个区段，遇到正常样本则分段。"
-        "异常区段仅描述数据/统计异常，不用于判断车辆故障或安全事故。"
-    )
-    st.caption(EVENT_DURATION_NOTE)
-    anomaly_columns = st.columns(2)
-    anomaly_columns[0].metric("数据异常点", len(anomaly_result["points"]), border=True)
-    anomaly_columns[1].metric("统计异常区段", len(anomaly_result["events"]), border=True)
-    st.markdown("**异常事件列表**")
-    if anomaly_result["events"]:
+        st.subheader("加速度阈值统计")
+        st.caption(
+            f"阈值：|加速度| > {result['threshold']['value']:.3f} m/s²；"
+            "横向和垂向分别以样本行数为分母，合计按至少一个方向超过阈值的样本行去重。"
+        )
+        exceedance = result["threshold"]
         st.dataframe(
             [
                 {
-                    "异常类型": event["type"],
-                    "开始时间": event["start_timestamp"],
-                    "结束时间": event["end_timestamp"],
-                    "首末样本间隔（秒）": f"{event['duration_seconds']:.3f}",
-                    "区段最大绝对值（m/s²）": f"{event['maximum_absolute_value']:.4f}",
-                    "对应有符号值（m/s²）": f"{event['maximum_signed_value']:.4f}",
-                    "峰值时间": event["maximum_timestamp"],
-                    "异常样本数": event["sample_count"],
+                    "统计范围": label,
+                    "超过阈值样本数": values["count"],
+                    "样本占比": f"{values['percentage']:.2f}%",
                 }
-                for event in anomaly_result["events"]
+                for label, values in (
+                    ("横向加速度", exceedance["lateral"]),
+                    ("垂向加速度", exceedance["vertical"]),
+                    ("任一方向（去重）", exceedance["either"]),
+                )
             ],
             hide_index=True,
             width="stretch",
         )
-    else:
-        st.info("当前批次未发现超过所设阈值的数据异常点。")
 
-    render_event_review(result["samples"], anomaly_result, {
-        "vehicle_id": vehicle_id, "batch_id": batch_id,
-        "start": selected_start.isoformat(), "end": selected_end.isoformat(),
-    })
+    with events_tab:
+        st.subheader("数据异常检测")
+        st.caption(
+            f"规则：横向或垂向加速度绝对值严格大于 {threshold:.3f} m/s² 时标记为统计异常点。"
+            "同一方向相邻异常样本合并为一个区段，遇到正常样本则分段。"
+            "异常区段仅描述数据/统计异常，不用于判断车辆故障或安全事故。"
+        )
+        st.caption(EVENT_DURATION_NOTE)
+        anomaly_columns = st.columns(2)
+        anomaly_columns[0].metric("数据异常点", len(anomaly_result["points"]), border=True)
+        anomaly_columns[1].metric("统计异常区段", len(anomaly_result["events"]), border=True)
+        st.markdown("**异常事件列表**")
+        if anomaly_result["events"]:
+            st.dataframe(
+                [
+                    {
+                        "异常类型": event["type"],
+                        "开始时间": event["start_timestamp"],
+                        "结束时间": event["end_timestamp"],
+                        "首末样本间隔（秒）": f"{event['duration_seconds']:.3f}",
+                        "区段最大绝对值（m/s²）": f"{event['maximum_absolute_value']:.4f}",
+                        "对应有符号值（m/s²）": f"{event['maximum_signed_value']:.4f}",
+                        "峰值时间": event["maximum_timestamp"],
+                        "异常样本数": event["sample_count"],
+                    }
+                    for event in anomaly_result["events"]
+                ],
+                hide_index=True,
+                width="stretch",
+            )
+        else:
+            st.info("当前批次未发现超过所设阈值的数据异常点。")
+
+        render_event_review(result["samples"], anomaly_result, {
+            "vehicle_id": vehicle_id, "batch_id": batch_id,
+            "start": selected_start.isoformat(), "end": selected_end.isoformat(),
+        })
 
     selected_vehicle = next(
         vehicle for vehicle in vehicles if vehicle["id"] == vehicle_id
@@ -613,88 +621,89 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
     }
     record_analysis("单批次统计分析", {"selection": ai_selection, "facts": ai_payload},
                     result["sample_count"], fictional=demo)
-    if demo:
-        st.info("虚构数据演示不调用 AI；统计、异常回查与 PDF 可离线使用。")
-    else:
-        _render_ai_interpretation(
-            payload=ai_payload,
-            selection=ai_selection,
-            state_key="ai_single_batch_result",
-        )
-
-    st.subheader("导出分析报告")
-    st.caption("PDF 报告包含当前车辆、批次、时间范围、统计、异常事件、采样质量检查与规则及曲线。"
-               "调整采样检查规则后需重新生成 PDF。")
-    current_ai_result = None if demo else st.session_state.get("ai_single_batch_result")
-    report_state_key = "demo_analysis_report_key" if demo else "analysis_report_key"
-    report_pdf_key = "demo_analysis_report_pdf" if demo else "analysis_report_pdf"
-    current_ai_pdf_fingerprint = (
-        current_ai_result.get("input_fingerprint", "")
-        if isinstance(current_ai_result, dict)
-        and current_ai_result.get("status") == "available"
-        else "no-ai-result"
-    )
-    report_key = selection_fingerprint({
-        "analysis": ai_payload, "selection": ai_selection,
-        "sampling_quality": sampling_review, "ai_result": current_ai_pdf_fingerprint,
-        "vehicle": selected_vehicle, "samples": result["samples"],
-    })
-    if st.session_state.get(report_state_key) != report_key:
-        st.session_state.pop(report_state_key, None)
-        st.session_state.pop(report_pdf_key, None)
-
-    if st.button("生成 PDF 分析报告", type="primary", key="demo_generate_analysis_report" if demo else "generate_analysis_report"):
-        try:
-            selected_vehicle = demo_vehicle if demo else get_vehicle(vehicle_id)
-            if selected_vehicle is None:
-                raise ValueError("找不到所选车辆，请刷新页面后重试。")
-            selected_batch = next(
-                batch for batch in batches if batch["id"] == batch_id
-            )
-            report_data = build_analysis_report_data(
-                vehicle=selected_vehicle,
-                batch=selected_batch,
-                analysis=result,
-                anomalies=anomaly_result,
-                selected_start=selected_start,
-                selected_end=selected_end,
-                ai_context=ai_payload,
-                ai_result=current_ai_result,
-                ai_selection_fingerprint=selection_fingerprint(ai_selection),
-                sampling_expected_interval_seconds=(
-                    sampling_review["baseline_seconds"]
-                    if sampling_review["baseline_source"] == "specified" else None
-                ),
-                sampling_gap_multiplier=sampling_review["gap_multiplier"],
-            )
-            pdf_bytes = generate_analysis_report_pdf(report_data)
-        except Exception as exc:
-            st.error(_safe_pdf_error_message("single", exc))
+    with report_tab:
+        if demo:
+            st.info("虚构数据演示不调用 AI；统计、异常回查与 PDF 可离线使用。")
         else:
-            st.session_state[report_state_key] = report_key
-            st.session_state[report_pdf_key] = pdf_bytes
-            st.success("分析报告已生成，可以下载 PDF 文件。")
+            _render_ai_interpretation(
+                payload=ai_payload,
+                selection=ai_selection,
+                state_key="ai_single_batch_result",
+            )
 
-    if (
-        st.session_state.get(report_state_key) == report_key
-        and st.session_state.get(report_pdf_key)
-    ):
-        selected_vehicle_code = next(
-            vehicle["vehicle_code"]
-            for vehicle in vehicles
-            if vehicle["id"] == vehicle_id
+        st.subheader("导出分析报告")
+        st.caption("PDF 报告包含当前车辆、批次、时间范围、统计、异常事件、采样质量检查与规则及曲线。"
+                   "调整采样检查规则后需重新生成 PDF。")
+        current_ai_result = None if demo else st.session_state.get("ai_single_batch_result")
+        report_state_key = "demo_analysis_report_key" if demo else "analysis_report_key"
+        report_pdf_key = "demo_analysis_report_pdf" if demo else "analysis_report_pdf"
+        current_ai_pdf_fingerprint = (
+            current_ai_result.get("input_fingerprint", "")
+            if isinstance(current_ai_result, dict)
+            and current_ai_result.get("status") == "available"
+            else "no-ai-result"
         )
-        safe_vehicle_code = "".join(
-            character for character in selected_vehicle_code
-            if character.isalnum() or character in "-_"
-        ) or "vehicle"
-        st.download_button(
-            "下载 PDF 报告",
-            data=st.session_state[report_pdf_key],
-            file_name=f"rail_vehicle_report_{safe_vehicle_code}_batch_{batch_id}.pdf",
-            mime="application/pdf",
-            key="demo_download_analysis_report" if demo else "download_analysis_report",
-        )
+        report_key = selection_fingerprint({
+            "analysis": ai_payload, "selection": ai_selection,
+            "sampling_quality": sampling_review, "ai_result": current_ai_pdf_fingerprint,
+            "vehicle": selected_vehicle, "samples": result["samples"],
+        })
+        if st.session_state.get(report_state_key) != report_key:
+            st.session_state.pop(report_state_key, None)
+            st.session_state.pop(report_pdf_key, None)
+
+        if st.button("生成 PDF 分析报告", type="primary", key="demo_generate_analysis_report" if demo else "generate_analysis_report"):
+            try:
+                selected_vehicle = demo_vehicle if demo else get_vehicle(vehicle_id)
+                if selected_vehicle is None:
+                    raise ValueError("找不到所选车辆，请刷新页面后重试。")
+                selected_batch = next(
+                    batch for batch in batches if batch["id"] == batch_id
+                )
+                report_data = build_analysis_report_data(
+                    vehicle=selected_vehicle,
+                    batch=selected_batch,
+                    analysis=result,
+                    anomalies=anomaly_result,
+                    selected_start=selected_start,
+                    selected_end=selected_end,
+                    ai_context=ai_payload,
+                    ai_result=current_ai_result,
+                    ai_selection_fingerprint=selection_fingerprint(ai_selection),
+                    sampling_expected_interval_seconds=(
+                        sampling_review["baseline_seconds"]
+                        if sampling_review["baseline_source"] == "specified" else None
+                    ),
+                    sampling_gap_multiplier=sampling_review["gap_multiplier"],
+                )
+                pdf_bytes = generate_analysis_report_pdf(report_data)
+            except Exception as exc:
+                st.error(_safe_pdf_error_message("single", exc))
+            else:
+                st.session_state[report_state_key] = report_key
+                st.session_state[report_pdf_key] = pdf_bytes
+                st.success("分析报告已生成，可以下载 PDF 文件。")
+
+        if (
+            st.session_state.get(report_state_key) == report_key
+            and st.session_state.get(report_pdf_key)
+        ):
+            selected_vehicle_code = next(
+                vehicle["vehicle_code"]
+                for vehicle in vehicles
+                if vehicle["id"] == vehicle_id
+            )
+            safe_vehicle_code = "".join(
+                character for character in selected_vehicle_code
+                if character.isalnum() or character in "-_"
+            ) or "vehicle"
+            st.download_button(
+                "下载 PDF 报告",
+                data=st.session_state[report_pdf_key],
+                file_name=f"rail_vehicle_report_{safe_vehicle_code}_batch_{batch_id}.pdf",
+                mime="application/pdf",
+                key="demo_download_analysis_report" if demo else "download_analysis_report",
+            )
 
 
 def render_statistics_demo() -> None:

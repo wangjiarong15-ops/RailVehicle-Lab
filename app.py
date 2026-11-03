@@ -7,7 +7,7 @@ from rail_vehicle.deployment import public_demo_enabled
 from rail_vehicle.pages import cockpit, ml_detection, run_analysis, vehicles, vibration_analysis
 from rail_vehicle.pages import demo_center, fleet_comparison
 from rail_vehicle.pages import home
-from rail_vehicle.ui import apply_design, render_navigation, initialize_theme
+from rail_vehicle.ui import apply_design, render_navigation, initialize_theme, page_title
 
 
 def main() -> None:
@@ -30,8 +30,7 @@ def main() -> None:
     elif page == "车辆参数":
         vehicles.render()
     elif page == "CSV 数据导入":
-        st.header("CSV 数据导入")
-        st.caption("数据工作台 / 文件上传 → 格式校验 → 预览 → 保存")
+        page_title("CSV 数据导入", "数据工作台 / 文件上传 → 格式校验 → 预览 → 保存")
         run_analysis._render_import()
     elif page == "运行分析":
         run_analysis.render()

@@ -27,7 +27,7 @@ def apply_design():
     # Two stable layout test IDs for density; all other rules target our own classes.
     st.html("""<style>
     /* Presentation-only visual refresh: native Streamlit behavior unchanged. */
-    [data-testid="stMainBlockContainer"] {padding-top:3.2rem;padding-bottom:2rem;max-width:1600px;}
+    [data-testid="stMainBlockContainer"] {padding-top:4rem;padding-bottom:2rem;max-width:1600px;}
     [data-testid="stSidebarUserContent"] {padding-top:1.0rem;}
     .rv-brand {display:flex;align-items:center;gap:.8rem;padding:.85rem .9rem;
       border:1px solid rgba(115,169,229,.28);border-radius:14px;
@@ -57,8 +57,7 @@ def apply_design():
       box-shadow:0 6px 22px rgba(8,44,94,.12);}
     [class*="st-key-rv-panel-"] {background:var(--rv-surface,#132338);border-radius:16px;
       border:1px solid rgba(119,164,219,.18);box-shadow:0 4px 18px rgba(4,18,38,.06);}
-    @media (max-width:960px) {[data-testid="stMainBlockContainer"] {padding-top:2rem;}
-      .rv-brand {padding:.65rem;}}
+    @media (max-width:960px) {.rv-brand {padding:.65rem;}}
     @media (prefers-reduced-motion:reduce) {
       .rv-themes a,[class*="st-key-nav_"] button,[class*="st-key-rv-kpi-"] {
         transition:none!important;transform:none!important;}}
@@ -92,6 +91,17 @@ def page_title(title, subtitle="", *, primary=False):
     (st.title if primary else st.header)(title)
     if subtitle:
         st.caption(subtitle)
+
+
+def source_caption(*, fictional=False):
+    """Label data provenance without implying live monitoring or safety status."""
+    st.caption("数据来源：内置虚构演示 · 不代表实际车辆" if fictional
+               else "数据来源：本地导入的历史数据 · 非实时监测")
+
+
+def workflow_caption(text):
+    """Provide consistent, compact workflow guidance across pages."""
+    st.caption(text)
 
 
 def kpi(column, label, value, detail):

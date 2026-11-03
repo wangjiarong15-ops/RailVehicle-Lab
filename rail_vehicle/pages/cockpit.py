@@ -9,7 +9,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
 from rail_vehicle.ui import page_title
-from rail_vehicle.ui import plot_chart
+from rail_vehicle.ui import plot_chart, source_caption
 from rail_vehicle.deployment import demo_source_options
 
 from rail_vehicle.demo_data import demo_csv_content
@@ -108,6 +108,7 @@ def render() -> None:
     st.info("历史数据模拟回放 · 使用已保存的运行样本，不代表真实实时监测。")
     source = st.radio("回放数据来源", demo_source_options("历史运行批次", "内置虚构演示"), horizontal=True,
                       key="cockpit_source")
+    source_caption(fictional=source == "内置虚构演示")
     try:
         if source == "内置虚构演示":
             selection = ("demo",)

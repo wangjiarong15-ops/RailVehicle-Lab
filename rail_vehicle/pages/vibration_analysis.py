@@ -5,7 +5,7 @@ import sqlite3
 import plotly.graph_objects as go
 import streamlit as st
 from rail_vehicle.ui import page_title
-from rail_vehicle.ui import plot_chart, record_analysis
+from rail_vehicle.ui import plot_chart, record_analysis, source_caption
 from rail_vehicle.deployment import demo_source_options
 
 from rail_vehicle.demo_data import vibration_demo_samples
@@ -50,6 +50,7 @@ def render():
         st.code('.venv\\Scripts\\python.exe -m pip install -e ".[signal]"', language="powershell")
         return
     source = st.radio("振动数据来源", demo_source_options("历史运行批次", "内置高频虚构信号"), horizontal=True, key="vibration_source")
+    source_caption(fictional=source == "内置高频虚构信号")
     try:
         if source == "内置高频虚构信号":
             samples = vibration_demo_samples()

@@ -54,8 +54,11 @@ class StatisticsDemoTests(unittest.TestCase):
             self.assertTrue(calculate.called)
             self.assertTrue(any("120" in item.value for item in app.markdown))
             self.assertEqual(len(app.get("plotly_chart")), 4)
+            labels = [tab.label for tab in app.tabs]
+            self.assertTrue(all(label in labels for label in ("运行概览", "采样质量", "异常事件", "AI 与报告")))
+            self.assertTrue(any("内置虚构演示" in item.value for item in app.caption))
             text = " ".join(item.value for item in [*app.markdown, *app.caption])
-            self.assertIn("基础结果说明（无需 AI）", [item.value for item in app.subheader])
+            self.assertIn("基础结果说明（无需 AI）", [item.label for item in app.expander])
             self.assertIn("5 条（4.17%）", text)
             self.assertIn("2 个按方向合并", text)
             self.assertFalse(any("生成 AI" in button.label for button in app.button))

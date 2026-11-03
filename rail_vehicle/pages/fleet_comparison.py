@@ -5,7 +5,7 @@ import sqlite3
 import plotly.graph_objects as go
 import streamlit as st
 from rail_vehicle.ui import page_title
-from rail_vehicle.ui import plot_chart, record_analysis
+from rail_vehicle.ui import plot_chart, record_analysis, source_caption
 from rail_vehicle.deployment import demo_source_options
 
 from rail_vehicle.demo_data import ml_demo_samples
@@ -51,6 +51,7 @@ def render():
     st.caption("智能分析工作台 / 数据与参数 → 计算结果 → 证据与报告")
     st.info("描述性运行表现对比，不代表同工况试验，不输出故障、安全或车辆优劣结论。")
     source = st.radio("对比数据来源", demo_source_options("历史车辆与批次", "内置虚构对比"), horizontal=True, key="fleet_source")
+    source_caption(fictional=source == "内置虚构对比")
     try:
         if source == "内置虚构对比":
             entries = demo_entries()

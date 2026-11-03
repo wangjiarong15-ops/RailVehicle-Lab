@@ -9,7 +9,7 @@ from rail_vehicle.dashboard import load_dashboard
 from rail_vehicle.deployment import public_demo_enabled
 from rail_vehicle.dynamics import analyze_run_data
 from rail_vehicle.anomaly import detect_anomalies
-from rail_vehicle.ui import navigate, plot_chart, page_title, kpi, chart_container, empty_state, data_table, action_button, status_label
+from rail_vehicle.ui import navigate, plot_chart, page_title, kpi, chart_container, empty_state, data_table, action_button, status_label, source_caption
 from rail_vehicle.dashboard_chart import dashboard_chart
 from rail_vehicle.timestamp_utils import parse_iso_timestamp
 
@@ -30,6 +30,7 @@ def render():
     heading, controls = st.columns([4, 1], vertical_alignment="center")
     with heading:
         page_title("平台首页", "RAILVEHICLE LAB / 运行数据总览", primary=True)
+        source_caption(fictional=public)
     with controls:
         with st.popover("预览设置", width="stretch"):
             threshold = st.number_input("预览加速度阈值（m/s²）", min_value=0., value=1., step=.1, key="home_threshold")
@@ -97,7 +98,7 @@ def render():
             st.caption("仅记录本会话实际计算，刷新新会话后不保留。")
         with chart_container("rv-panel-actions"):
             st.subheader("快捷操作")
-            actions = [("统计与异常演示", "体验基础统计"), ("动态运行驾驶舱", "运行驾驶舱"), ("演示中心", "演示中心")] if public else [("车辆参数", "管理车辆"), ("CSV 数据导入", "导入数据"), ("运行分析", "开始分析")]
+            actions = [("统计与异常演示", "体验基础统计"), ("动态运行驾驶舱", "运行驾驶舱"), ("演示中心", "演示中心")] if public else [("车辆参数", "管理车辆"), ("CSV 数据导入", "导入数据"), ("运行分析", "开始分析"), ("演示中心", "虚构数据演示")]
             for target, title in actions:
                 action_button(title+" →", key=f"home_{target}", on_click=navigate, args=(target,), width="stretch")
         status_label("公开虚构数据演示" if public else "本地分析工作空间")

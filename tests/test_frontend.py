@@ -97,6 +97,7 @@ class FrontendTests(unittest.TestCase):
         self.assertFalse(app.exception)
         self.assertTrue(any("暂无可预览" in item.value for item in app.info))
         self.assertTrue(any("首次使用" in item.value for item in app.subheader))
+        self.assertTrue(any("非实时监测" in item.value for item in app.caption))
 
     def test_fictional_csv_can_be_validated_without_database_side_effects(self):
         before = self.path.read_bytes()
@@ -159,6 +160,7 @@ class FrontendTests(unittest.TestCase):
             app = AppTest.from_function(public_home_app).run()
             self.assertFalse(app.exception)
             self.assertTrue(all(metric.value == "—" for metric in app.metric))
+            self.assertTrue(any("内置虚构演示" in item.value for item in app.caption))
             self.assertEqual(len(app.dataframe), 0)
 
     def test_session_history_only_records_executed_unique_analysis(self):
