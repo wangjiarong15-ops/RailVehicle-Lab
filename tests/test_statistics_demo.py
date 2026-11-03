@@ -11,7 +11,7 @@ from streamlit.testing.v1 import AppTest
 
 from rail_vehicle.demo_data import analysis_demo_data
 from rail_vehicle.anomaly import detect_anomalies
-from rail_vehicle.pages import demo_center, run_analysis
+from rail_vehicle.pages import ai_center, demo_center, run_analysis
 
 
 class StatisticsDemoTests(unittest.TestCase):
@@ -22,7 +22,7 @@ class StatisticsDemoTests(unittest.TestCase):
         self.stack.enter_context(patch("rail_vehicle.db.init_db", side_effect=AssertionError("private database")))
         for name in ("list_vehicles", "list_vehicle_batches", "list_batch_samples", "get_vehicle"):
             self.stack.enter_context(patch.object(run_analysis, name, side_effect=AssertionError("private history")))
-        self.stack.enter_context(patch.object(run_analysis.AIConfig, "from_sources", side_effect=AssertionError("no AI config")))
+        self.stack.enter_context(patch.object(ai_center.AIConfig, "from_sources", side_effect=AssertionError("no AI config")))
         self.ai = self.stack.enter_context(patch.object(run_analysis, "_render_ai_interpretation", side_effect=AssertionError("no AI")))
 
     def app(self):

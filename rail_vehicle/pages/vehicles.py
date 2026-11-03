@@ -4,6 +4,7 @@ import streamlit as st
 from rail_vehicle.ui import page_title
 import sqlite3
 from rail_vehicle.ui import navigate
+from rail_vehicle.ai.center_state import clear_all_contexts
 
 from rail_vehicle.vehicle_data import (
     DuplicateVehicleCodeError,
@@ -153,6 +154,8 @@ def _vehicle_dialog(vehicle=None):
         except (sqlite3.Error, OSError):
             st.error("暂时无法保存车辆，请检查数据库后重试。")
         else:
+            if editing:
+                clear_all_contexts(st.session_state)
             st.session_state["vehicle_flash"] = "车辆档案已保存。"
             _close_editor()
             st.rerun()

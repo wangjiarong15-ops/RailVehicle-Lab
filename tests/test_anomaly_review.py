@@ -25,7 +25,7 @@ def review_app():
 
 def analysis_app():
     from unittest.mock import patch
-    from rail_vehicle.pages import run_analysis
+    from rail_vehicle.pages import ai_center, run_analysis
     from rail_vehicle.ai.config import AIConfig
     from tests.test_anomaly_review import samples
     vehicle = dict(id=1, vehicle_code="FICTIONAL", vehicle_type="虚构演示车辆", vehicle_length_m=20,
@@ -35,7 +35,7 @@ def analysis_app():
          patch.object(run_analysis, "get_vehicle", return_value=vehicle), \
          patch.object(run_analysis, "list_vehicle_batches", return_value=batches), \
          patch.object(run_analysis, "list_batch_samples", return_value=samples()), \
-         patch.object(run_analysis.AIConfig, "from_sources", return_value=AIConfig(enabled=False)):
+         patch.object(ai_center.AIConfig, "from_sources", return_value=AIConfig(enabled=False)):
         run_analysis._render_dynamics_analysis()
 
 

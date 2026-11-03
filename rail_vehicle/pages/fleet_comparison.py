@@ -15,6 +15,8 @@ from rail_vehicle.vehicle_data import list_vehicles
 from rail_vehicle.ai.ui import clear_result, selection_fingerprint
 from rail_vehicle.pages.experiment_ai import render_experiment_ai
 from rail_vehicle.pages.experiment_export import render_export
+from rail_vehicle.ai.center_state import clear_context
+from rail_vehicle.pages.ai_link import restore_source_widgets
 
 
 STATE_KEY = "fleet_comparison_result"
@@ -47,6 +49,8 @@ def comparison_chart(results, field, unit):
 
 
 def render():
+    restore_source_widgets("fleet")
+    clear_context(st.session_state, "fleet")
     page_title("多车辆运行对比")
     st.caption("智能分析工作台 / 数据与参数 → 计算结果 → 证据与报告")
     st.info("描述性运行表现对比，不代表同工况试验，不输出故障、安全或车辆优劣结论。")
@@ -64,7 +68,7 @@ def render():
                 return
             by_id = {v["id"]: v for v in vehicles}
             selected = st.multiselect("选择 2–6 辆车辆", list(by_id),
-                                      format_func=lambda vid: by_id[vid]["vehicle_code"], max_selections=6)
+                                      format_func=lambda vid: by_id[vid]["vehicle_code"], max_selections=6, key="fleet_vehicles")
             if len(selected) < 2:
                 _clear_results()
                 st.info("请选择至少两辆不同车辆。")
@@ -80,7 +84,7 @@ def render():
                 bid = st.selectbox(f"{by_id[vid]['vehicle_code']} 的运行批次", list(labels),
                                    format_func=labels.get, key=f"fleet_batch_{vid}")
                 entries.append(dict(vehicle=by_id[vid], batch_id=bid, samples=list_batch_samples(vid, bid)))
-        low, high = st.slider("共同速度区间（km/h，含边界）", 0, 600, (0, 600))
+        low, high = st.slider("共同速度区间（km/h，含边界）", 0, 600, (0, 600), key="fleet_speed_range")
         # Hash full local inputs; raw samples and private identifiers never enter AI context.
         fingerprint = selection_fingerprint(dict(source=source, entries=entries, low=low, high=high))
         saved = st.session_state.get(STATE_KEY)

@@ -14,6 +14,8 @@ from rail_vehicle.run_data import list_batch_samples, list_vehicle_batches
 from rail_vehicle.vehicle_data import list_vehicles
 from rail_vehicle.pages.experiment_export import render_export
 from rail_vehicle.pages.experiment_ai import render_experiment_ai
+from rail_vehicle.ai.center_state import clear_context
+from rail_vehicle.pages.ai_link import restore_source_widgets
 from rail_vehicle.vibration import (
     STATE_KEY, VibrationInputError, VibrationUnavailableError, analyze_vibration,
     signal_libraries, vibration_fingerprint,
@@ -39,6 +41,8 @@ def vibration_chart(result, *, rolling=False):
 
 
 def render():
+    restore_source_widgets("vibration")
+    clear_context(st.session_state, "vibration")
     page_title("振动与平稳性分析")
     st.caption("智能分析工作台 / 数据与参数 → 计算结果 → 证据与报告")
     st.info("探索性振动分析 · 提供未加权指标，不输出标准舒适等级、故障诊断或运行安全结论。")

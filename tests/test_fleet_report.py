@@ -17,7 +17,7 @@ from rail_vehicle.experiment_report import generate_experiment_pdf
 import rail_vehicle.experiment_report as reports
 from rail_vehicle.fleet_comparison import compare_vehicles
 from rail_vehicle.fleet_report import build_fleet_report
-from rail_vehicle.pages import fleet_comparison as page, experiment_ai
+from rail_vehicle.pages import fleet_comparison as page, ai_center, experiment_ai
 
 
 NOW = datetime(2026, 10, 26, tzinfo=timezone.utc)
@@ -45,6 +45,11 @@ def cached(payload):
 
 
 def fleet_app():
+    import streamlit as st
+    if st.session_state.get("navigation_page") == "AI 智能分析中心":
+        from rail_vehicle.pages.ai_center import render
+        render()
+        return
     from rail_vehicle.pages.fleet_comparison import render
     render()
 
@@ -165,7 +170,7 @@ class FleetReportTests(unittest.TestCase):
 
     def test_public_pdf_generation_uses_cached_statistics_without_ai_or_recompute(self):
         with patch.dict(os.environ, {"RAIL_PUBLIC_DEMO": "true"}), \
-             patch.object(experiment_ai.AIConfig, "from_sources", side_effect=AssertionError("no config")), \
+             patch.object(ai_center.AIConfig, "from_sources", side_effect=AssertionError("no config")), \
              patch.object(page, "compare_vehicles", wraps=compare_vehicles) as compute:
             app = self.app()
             app.button[0].click().run()
@@ -186,20 +191,26 @@ class FleetReportTests(unittest.TestCase):
                     output["summary"]["evidence_ids"] = ["unknown.id"]
                 return output
         provider = Provider()
-        with patch.object(experiment_ai.AIConfig, "from_sources", return_value=READY), \
-             patch.object(experiment_ai, "create_configured_provider", return_value=provider) as factory:
+        with patch.object(ai_center.AIConfig, "from_sources", return_value=READY), \
+             patch.object(ai_center, "create_configured_provider", return_value=provider) as factory:
             app = self.app()
             app.button[0].click().run()
             app.button(key="fleet_report_generate").click().run()
             self.assertEqual(len(app.get("download_button")), 1)
             factory.assert_not_called()
-            app.button(key="fleet_experiment_ai_generate").click().run()
+            app.button(key="ai_center_link_fleet").click().run()
+            app.button(key="ai_center_generate").click().run()
+            app.session_state["navigation_page"] = "source"
+            app.run()
             self.assertEqual(len(app.get("download_button")), 0)
             app.button(key="fleet_report_generate").click().run()
             self.assertEqual(len(app.get("download_button")), 1)
             factory.assert_called_once()
             provider.fail = True
-            app.button(key="fleet_experiment_ai_generate").click().run()
+            app.button(key="ai_center_link_fleet").click().run()
+            app.button(key="ai_center_generate").click().run()
+            app.session_state["navigation_page"] = "source"
+            app.run()
             self.assertEqual(len(app.get("download_button")), 0)
             app.button(key="fleet_report_generate").click().run()
             self.assertFalse(app.exception)

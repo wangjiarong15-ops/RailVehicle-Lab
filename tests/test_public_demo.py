@@ -62,7 +62,7 @@ class PublicDemoTests(unittest.TestCase):
         from rail_vehicle.vibration import STATE_KEY as VIBRATION_KEY
         with patch.dict(os.environ, {"RAIL_PUBLIC_DEMO": "true"}), \
              patch("rail_vehicle.db.init_db", side_effect=AssertionError("no database")), \
-             patch("rail_vehicle.pages.experiment_ai.AIConfig.from_sources", side_effect=AssertionError("no config")):
+             patch("rail_vehicle.pages.ai_center.AIConfig.from_sources", side_effect=AssertionError("no config")):
             app = AppTest.from_file(str(Path(__file__).resolve().parents[1]/"app.py"), default_timeout=30).run()
             for kind, action, state_key in (("ml", "ml_train", ML_KEY), ("vibration", "vibration_calculate", VIBRATION_KEY)):
                 with self.subTest(kind=kind):
@@ -83,6 +83,6 @@ class PublicDemoTests(unittest.TestCase):
         with patch.dict(os.environ, {"RAIL_PUBLIC_DEMO": "true"}), \
              patch("rail_vehicle.pages.experiment_ai.st.session_state", state), \
              patch("rail_vehicle.pages.experiment_ai.st.info"), \
-             patch("rail_vehicle.pages.experiment_ai.AIConfig.from_sources", side_effect=AssertionError("no config")):
+             patch("rail_vehicle.pages.ai_center.AIConfig.from_sources", side_effect=AssertionError("no config")):
             self.assertEqual(render_experiment_ai({}, "fingerprint", {}, "ml"), (None, None))
         self.assertNotIn("experiment_ml_ai", state)

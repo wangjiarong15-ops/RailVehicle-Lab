@@ -13,20 +13,13 @@ from rail_vehicle.analysis_report import (
     generate_batch_comparison_report_pdf,
     generate_analysis_report_pdf,
 )
-from rail_vehicle.ai.config import AIConfig
 from rail_vehicle.ai.context import (
     build_batch_comparison_payload,
     build_single_batch_payload,
 )
-from rail_vehicle.ai.openai_provider import create_configured_provider
 from rail_vehicle.ai.ui import (
-    ai_configuration_message,
     clear_result,
-    invalidate_stale_result,
-    render_validated_result,
-    request_ai_analysis,
     selection_fingerprint,
-    status_message,
 )
 from rail_vehicle.ai.provider import input_fingerprint
 from rail_vehicle.batch_comparison import compare_run_batches
@@ -36,6 +29,8 @@ from rail_vehicle.dynamics import analyze_run_data
 from rail_vehicle.anomaly import EVENT_DURATION_NOTE, detect_anomalies
 from rail_vehicle.pages.anomaly_review import render_event_review
 from rail_vehicle.pages.sampling_quality import render_sampling_quality
+from rail_vehicle.pages.ai_link import render_center_link, restore_source_widgets
+from rail_vehicle.ai.center_state import clear_context
 from rail_vehicle.ui import plot_chart, record_analysis, source_caption, workflow_caption, navigate
 from rail_vehicle.time_filter import filter_samples_by_time_range
 from rail_vehicle.run_data import (
@@ -62,54 +57,13 @@ def _safe_pdf_error_message(report_kind: str, _error: Exception) -> str:
 def _render_ai_interpretation(
     *, payload: dict, selection: dict, state_key: str, has_data: bool = True
 ) -> None:
-    st.subheader("🤖 AI 辅助解读")
-    st.caption(
-        "AI 生成内容，仅基于当前统计分析结果，不构成故障、事故、安全或法规结论。"
-    )
-    st.info(
-        "AI 将仅使用当前页面已经计算出的统计指标、异常事件和批次对比结果进行解读，"
-        "不会直接读取原始 CSV。"
-    )
+    """Register current facts for the shared AI center; no provider calls here."""
+    kind = "single" if state_key == "ai_single_batch_result" else "batch"
     if not has_data:
+        clear_context(st.session_state, kind)
         clear_result(st.session_state, state_key)
-        st.info("当前分析没有数据，无法生成 AI 解读。")
         return
-
-    invalidate_stale_result(st.session_state, state_key, payload, selection)
-    config = AIConfig.from_sources()
-    unavailable_reason = ai_configuration_message(config)
-    if unavailable_reason:
-        clear_result(st.session_state, state_key)
-        st.warning(unavailable_reason)
-
-    generate = st.button(
-        "🤖 生成 AI 辅助解读",
-        key=f"generate_{state_key}",
-        disabled=unavailable_reason is not None,
-    )
-    if generate:
-        clear_result(st.session_state, state_key)
-        result = request_ai_analysis(
-            payload,
-            config,
-            has_data=True,
-            provider_factory=create_configured_provider,
-        )
-        if result.get("status") == "available":
-            result["selection_fingerprint"] = selection_fingerprint(selection)
-            result["ai_metadata"] = {
-                "provider": config.provider,
-                "model": config.model,
-                "generated_at": datetime.now(timezone.utc).isoformat(),
-                "status": "success",
-            }
-            st.session_state[state_key] = result
-        else:
-            st.warning(status_message(result))
-
-    saved_result = st.session_state.get(state_key)
-    if saved_result is not None:
-        render_validated_result(saved_result, payload, st)
+    render_center_link(kind, payload, selection)
 
 
 def _render_import() -> None:
@@ -269,7 +223,11 @@ def _format_stats_table(metrics: dict, acceleration: bool = False) -> list[dict]
 
 
 def _render_dynamics_analysis(*, demo: bool = False) -> None:
+    if not demo:
+        restore_source_widgets("single")
     ai_state_key = "demo_single_batch_result" if demo else "ai_single_batch_result"
+    if not demo:
+        clear_context(st.session_state, "single")
     source_caption(fictional=demo)
     workflow_caption("① 选择车辆与批次　→　② 调整时间和阈值　→　③ 查看分析、异常与报告")
     st.caption(
@@ -394,7 +352,7 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         min_value=0.0,
         value=1.0,
         step=0.1,
-        key="demo_analysis_threshold" if demo else None,
+        key="demo_analysis_threshold" if demo else "analysis_threshold",
         help="同一阈值用于统计占比和异常识别；绝对值严格大于阈值时标为数据异常点。",
     )
     parameter_columns[1].caption(f"当前范围：{selected_start:%Y-%m-%d %H:%M:%S} — {selected_end:%Y-%m-%d %H:%M:%S} UTC")
@@ -648,7 +606,7 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         report_state_key = "demo_analysis_report_key" if demo else "analysis_report_key"
         report_pdf_key = "demo_analysis_report_pdf" if demo else "analysis_report_pdf"
         current_ai_pdf_fingerprint = (
-            current_ai_result.get("input_fingerprint", "")
+            selection_fingerprint(current_ai_result)
             if isinstance(current_ai_result, dict)
             and current_ai_result.get("status") == "available"
             else "no-ai-result"
@@ -730,6 +688,8 @@ def render_statistics_demo() -> None:
 
 
 def _render_batch_comparison() -> None:
+    restore_source_widgets("batch")
+    clear_context(st.session_state, "batch")
     st.caption(
         "选择同一车辆的两个或多个历史批次；对比曲线按各批次首条样本对齐，横轴为相对运行时间（秒）。"
     )
@@ -882,7 +842,7 @@ def _render_batch_comparison() -> None:
     st.caption("报告包含当前批次对比指标、三张相对时间曲线，以及与当前对比输入 fingerprint 匹配的 AI 解读（如果已生成）。")
     current_ai_result = st.session_state.get("ai_batch_comparison_result")
     current_ai_pdf_fingerprint = (
-        current_ai_result.get("input_fingerprint", "")
+        selection_fingerprint(current_ai_result)
         if isinstance(current_ai_result, dict)
         and current_ai_result.get("status") == "available"
         else "no-ai-result"

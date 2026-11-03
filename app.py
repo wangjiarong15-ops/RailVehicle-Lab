@@ -7,6 +7,7 @@ from rail_vehicle.deployment import public_demo_enabled
 from rail_vehicle.pages import cockpit, ml_detection, run_analysis, vehicles, vibration_analysis
 from rail_vehicle.pages import demo_center, fleet_comparison
 from rail_vehicle.pages import home
+from rail_vehicle.pages import ai_center
 from rail_vehicle.ui import apply_design, render_navigation, initialize_theme, page_title
 
 
@@ -42,6 +43,8 @@ def main() -> None:
         vibration_analysis.render()
     elif page == "多车辆运行对比":
         fleet_comparison.render()
+    elif page == "AI 智能分析中心":
+        ai_center.render()
     elif page == "统计与异常演示":
         run_analysis.render_statistics_demo()
     else:

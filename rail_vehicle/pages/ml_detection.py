@@ -18,6 +18,8 @@ from rail_vehicle.vehicle_data import list_vehicles
 from rail_vehicle.pages.experiment_export import render_export
 from rail_vehicle.pages.experiment_ai import render_experiment_ai
 from rail_vehicle.pages.ml_review import render_review
+from rail_vehicle.ai.center_state import clear_context
+from rail_vehicle.pages.ai_link import restore_source_widgets
 
 
 CATEGORY_LABELS = dict(both="两者均标记", ml_only="仅模型标记", rule_only="仅规则标记", neither="两者均未标记")
@@ -53,6 +55,8 @@ def build_score_chart(result):
 
 
 def render():
+    restore_source_widgets("ml")
+    clear_context(st.session_state, "ml")
     page_title("机器学习异常检测")
     st.caption("智能分析工作台 / 数据与参数 → 计算结果 → 证据与报告")
     st.info("本地 Isolation Forest · 学习参考批次分布，探索待检测数据中的离群样本。结果不代表故障或安全判断。")

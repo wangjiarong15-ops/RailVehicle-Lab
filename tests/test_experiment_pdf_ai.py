@@ -17,7 +17,7 @@ from rail_vehicle.experiment_report import (
     build_ml_report, build_vibration_report, generate_experiment_pdf, validated_experiment_ai,
 )
 from rail_vehicle.ml_anomaly import detect_ml_anomalies
-from rail_vehicle.pages import experiment_ai, experiment_export, ml_detection, vibration_analysis
+from rail_vehicle.pages import ai_center, experiment_ai, experiment_export, ml_detection, vibration_analysis
 from rail_vehicle.vibration import analyze_vibration
 import rail_vehicle.experiment_report as reports
 
@@ -48,11 +48,21 @@ def cached_result(payload):
 
 
 def ml_app():
+    import streamlit as st
+    if st.session_state.get("navigation_page") == "AI 智能分析中心":
+        from rail_vehicle.pages.ai_center import render
+        render()
+        return
     from rail_vehicle.pages.ml_detection import render
     render()
 
 
 def vibration_app():
+    import streamlit as st
+    if st.session_state.get("navigation_page") == "AI 智能分析中心":
+        from rail_vehicle.pages.ai_center import render
+        render()
+        return
     from rail_vehicle.pages.vibration_analysis import render
     render()
 
@@ -190,20 +200,26 @@ class ExperimentAIPDFPageTests(unittest.TestCase):
                     result["summary"]["evidence_ids"] = ["UNKNOWN"]
                 return result
         provider = Provider()
-        with patch.object(experiment_ai.AIConfig, "from_sources", return_value=READY), \
-             patch.object(experiment_ai, "create_configured_provider", return_value=provider), \
+        with patch.object(ai_center.AIConfig, "from_sources", return_value=READY), \
+             patch.object(ai_center, "create_configured_provider", return_value=provider), \
              patch.object(experiment_export, "generate_experiment_pdf", wraps=generate_experiment_pdf) as generate:
             app = self.demo("ml")
             app.button(key="ml_report_generate").click().run()
             self.assertEqual(len(app.get("download_button")), 1)
             self.assertIsNone(generate.call_args.args[0]["ai"])
             self.assertEqual(provider.calls, 0)
-            app.button(key="ml_experiment_ai_generate").click().run()
+            app.button(key="ai_center_link_ml").click().run()
+            app.button(key="ai_center_generate").click().run()
+            app.session_state["navigation_page"] = "source"
+            app.run()
             self.assertEqual(len(app.get("download_button")), 0)
             app.button(key="ml_report_generate").click().run()
             self.assertIsNotNone(generate.call_args.args[0]["ai"])
             self.assertEqual(provider.calls, 1)
-            app.button(key="ml_experiment_ai_generate").click().run()
+            app.button(key="ai_center_link_ml").click().run()
+            app.button(key="ai_center_generate").click().run()
+            app.session_state["navigation_page"] = "source"
+            app.run()
             self.assertEqual(len(app.get("download_button")), 0)
             app.button(key="ml_report_generate").click().run()
             self.assertIsNone(generate.call_args.args[0]["ai"])
@@ -214,11 +230,14 @@ class ExperimentAIPDFPageTests(unittest.TestCase):
         class Provider:
             def analyze(self, payload):
                 return valid_output(payload)
-        with patch.object(experiment_ai.AIConfig, "from_sources", return_value=READY), \
-             patch.object(experiment_ai, "create_configured_provider", return_value=Provider()), \
+        with patch.object(ai_center.AIConfig, "from_sources", return_value=READY), \
+             patch.object(ai_center, "create_configured_provider", return_value=Provider()), \
              patch.object(experiment_export, "generate_experiment_pdf", wraps=generate_experiment_pdf) as generate:
             app = self.demo("vibration")
-            app.button(key="vibration_experiment_ai_generate").click().run()
+            app.button(key="ai_center_link_vibration").click().run()
+            app.button(key="ai_center_generate").click().run()
+            app.session_state["navigation_page"] = "source"
+            app.run()
             app.button(key="vibration_report_generate").click().run()
             self.assertEqual(len(app.exception), 0)
             self.assertIsNotNone(generate.call_args.args[0]["ai"])

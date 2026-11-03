@@ -17,7 +17,7 @@ from rail_vehicle.ai.provider import AIAnalysisService, FakeProvider
 from rail_vehicle.ai.schemas import AIContractError, collect_evidence_metadata, validate_input_payload, validate_output
 from rail_vehicle.demo_data import ml_demo_samples, vibration_demo_samples
 from rail_vehicle.ml_anomaly import detect_ml_anomalies
-from rail_vehicle.pages import experiment_ai, ml_detection, vibration_analysis
+from rail_vehicle.pages import ai_center, experiment_ai, ml_detection, vibration_analysis
 from rail_vehicle.vibration import analyze_vibration
 
 
@@ -33,11 +33,21 @@ def response_for(payload, evidence_id=None):
 
 
 def ml_app():
+    import streamlit as st
+    if st.session_state.get("navigation_page") == "AI 智能分析中心":
+        from rail_vehicle.pages.ai_center import render
+        render()
+        return
     from rail_vehicle.pages.ml_detection import render
     render()
 
 
 def vibration_app():
+    import streamlit as st
+    if st.session_state.get("navigation_page") == "AI 智能分析中心":
+        from rail_vehicle.pages.ai_center import render
+        render()
+        return
     from rail_vehicle.pages.vibration_analysis import render
     render()
 
@@ -148,22 +158,26 @@ class ExperimentAIPageTests(unittest.TestCase):
         return app
 
     def test_disabled_ai_has_no_provider_calls_and_pdf_remains_available(self):
-        with patch.object(experiment_ai.AIConfig, "from_sources", return_value=AIConfig(enabled=False)), \
-             patch.object(experiment_ai, "create_configured_provider") as factory:
+        with patch.object(ai_center.AIConfig, "from_sources", return_value=AIConfig(enabled=False)), \
+             patch.object(ai_center, "create_configured_provider") as factory:
             app = self.demo("ml")
-            self.assertTrue(app.button(key="ml_experiment_ai_generate").disabled)
+            app.button(key="ai_center_link_ml").click().run()
+            self.assertTrue(app.button(key="ai_center_generate").disabled)
+            app.session_state["navigation_page"] = "source"
+            app.run()
             app.button(key="ml_report_generate").click().run()
             self.assertEqual(len(app.get("download_button")), 1)
             factory.assert_not_called()
 
     def test_missing_key_and_no_calculation_cannot_trigger_ai(self):
-        with patch.object(experiment_ai.AIConfig, "from_sources", return_value=AIConfig(enabled=True, provider="deepseek")), \
-             patch.object(experiment_ai, "create_configured_provider") as factory:
+        with patch.object(ai_center.AIConfig, "from_sources", return_value=AIConfig(enabled=True, provider="deepseek")), \
+             patch.object(ai_center, "create_configured_provider") as factory:
             with patch.object(ml_detection, "list_vehicles", return_value=[]):
                 app = AppTest.from_function(ml_app).run()
                 self.assertEqual(len(app.button), 0)
             app = self.demo("ml")
-            self.assertTrue(app.button(key="ml_experiment_ai_generate").disabled)
+            app.button(key="ai_center_link_ml").click().run()
+            self.assertTrue(app.button(key="ai_center_generate").disabled)
             self.assertTrue(any("未配置" in item.value for item in app.warning))
             factory.assert_not_called()
 
@@ -175,15 +189,18 @@ class ExperimentAIPageTests(unittest.TestCase):
                     captured.append(payload)
                     return response_for(payload, "batch.B2.ml.ml_count")
             return Provider()
-        with patch.object(experiment_ai.AIConfig, "from_sources", return_value=READY), \
-             patch.object(experiment_ai, "create_configured_provider", side_effect=factory) as dispatch:
+        with patch.object(ai_center.AIConfig, "from_sources", return_value=READY), \
+             patch.object(ai_center, "create_configured_provider", side_effect=factory) as dispatch:
             app = self.demo("ml")
             dispatch.assert_not_called()
-            app.button(key="ml_experiment_ai_generate").click().run()
+            app.button(key="ai_center_link_ml").click().run()
+            app.button(key="ai_center_generate").click().run()
             self.assertEqual(len(app.exception), 0)
             self.assertEqual(captured[0]["analysis_type"], "ml_experiment")
             self.assertTrue(any("batch.B2.ml.ml_count" in item.value for item in app.caption))
             self.assertEqual(app.session_state["experiment_ml_ai"]["scope_validation"], "verified")
+            app.session_state["navigation_page"] = "source"
+            app.run()
             app.number_input(key="ml_rule_threshold").set_value(2.0).run()
             self.assertNotIn("experiment_ml_ai", app.session_state)
             self.assertFalse(any("当前实验提供了聚合指标" in item.value for item in app.text))
@@ -195,13 +212,16 @@ class ExperimentAIPageTests(unittest.TestCase):
             def analyze(self, payload):
                 seen.append(payload)
                 return response_for(payload, "experiment.vibration.vertical.raw_rms")
-        with patch.object(experiment_ai.AIConfig, "from_sources", return_value=READY), \
-             patch.object(experiment_ai, "create_configured_provider", return_value=Provider()):
+        with patch.object(ai_center.AIConfig, "from_sources", return_value=READY), \
+             patch.object(ai_center, "create_configured_provider", return_value=Provider()):
             app = self.demo("vibration")
-            app.button(key="vibration_experiment_ai_generate").click().run()
+            app.button(key="ai_center_link_vibration").click().run()
+            app.button(key="ai_center_generate").click().run()
             self.assertEqual(len(app.exception), 0)
             self.assertEqual(seen[0]["analysis_type"], "vibration_experiment")
             self.assertIn("experiment_vibration_ai", app.session_state)
+            app.session_state["navigation_page"] = "source"
+            app.run()
             app.slider[0].set_value((0.0, 9.0)).run()
             self.assertNotIn("experiment_vibration_ai", app.session_state)
             self.assertEqual(len(seen), 1)
@@ -210,32 +230,40 @@ class ExperimentAIPageTests(unittest.TestCase):
         bad = dict(summary=dict(text="PRIVATE_MODEL_BODY", evidence_ids=["UNKNOWN"],
                                 claim_scope=dict(category="metric", axis="not_applicable", batch_refs=[])),
                    observations=[], possible_causes=[], further_checks=[], limitations=[])
-        with patch.object(experiment_ai.AIConfig, "from_sources", return_value=READY), \
-             patch.object(experiment_ai, "create_configured_provider", return_value=FakeProvider(bad)):
+        with patch.object(ai_center.AIConfig, "from_sources", return_value=READY), \
+             patch.object(ai_center, "create_configured_provider", return_value=FakeProvider(bad)):
             app = self.demo("ml")
-            app.button(key="ml_experiment_ai_generate").click().run()
+            app.button(key="ai_center_link_ml").click().run()
+            app.button(key="ai_center_generate").click().run()
             self.assertNotIn("experiment_ml_ai", app.session_state)
             self.assertTrue(any("未知证据" in w.value for w in app.warning))
             self.assertNotIn("PRIVATE_MODEL_BODY", " ".join(t.value for t in app.text))
+            app.session_state["navigation_page"] = "source"
+            app.run()
             app.button(key="ml_report_generate").click().run()
             self.assertEqual(len(app.get("download_button")), 1)
 
     def test_provider_exception_is_safe_and_experiment_stays_visible(self):
-        with patch.object(experiment_ai.AIConfig, "from_sources", return_value=READY), \
-             patch.object(experiment_ai, "create_configured_provider", side_effect=RuntimeError("PRIVATE_NETWORK_DETAIL")):
+        with patch.object(ai_center.AIConfig, "from_sources", return_value=READY), \
+             patch.object(ai_center, "create_configured_provider", side_effect=RuntimeError("PRIVATE_NETWORK_DETAIL")):
             app = self.demo("ml")
-            app.button(key="ml_experiment_ai_generate").click().run()
+            app.button(key="ai_center_link_ml").click().run()
+            app.button(key="ai_center_generate").click().run()
             self.assertEqual(len(app.exception), 0)
-            self.assertEqual(len(app.metric), 4)
             self.assertNotIn("PRIVATE_NETWORK_DETAIL", " ".join(w.value for w in app.warning))
+            app.session_state["navigation_page"] = "source"
+            app.run()
+            self.assertEqual(len(app.metric), 4)
 
     def test_configuration_failure_does_not_block_analysis_or_pdf(self):
-        with patch.object(experiment_ai.AIConfig, "from_sources", side_effect=RuntimeError("PRIVATE_CONFIG_DETAIL")):
+        with patch.object(ai_center.AIConfig, "from_sources", side_effect=RuntimeError("PRIVATE_CONFIG_DETAIL")):
             app = self.demo("ml")
             self.assertEqual(len(app.exception), 0)
             self.assertEqual(len(app.metric), 4)
             app.button(key="ml_report_generate").click().run()
             self.assertEqual(len(app.get("download_button")), 1)
+            app.button(key="ai_center_link_ml").click().run()
+            self.assertTrue(app.button(key="ai_center_generate").disabled)
             self.assertNotIn("PRIVATE_CONFIG_DETAIL", " ".join(w.value for w in app.warning))
 
     def test_legacy_experiment_cache_is_not_treated_as_verified(self):
@@ -255,7 +283,7 @@ class ExperimentAIPageTests(unittest.TestCase):
                 selection_fingerprint=selection_fingerprint(dict(selection=dict(source="demo"), analysis_fingerprint="a"*64)),
                 analysis=dict(summary=dict(text="PRIVATE_LEGACY_TEXT")))
             render_experiment_ai(dict(fingerprint="a"*64, result=result), "a"*64, dict(source="demo"), "ml")
-        with patch.object(experiment_ai.AIConfig, "from_sources", return_value=READY):
+        with patch.object(ai_center.AIConfig, "from_sources", return_value=READY):
             app = AppTest.from_function(cached_app).run()
         self.assertEqual(len(app.exception), 0)
         self.assertNotIn("experiment_ml_ai", app.session_state)

@@ -94,7 +94,7 @@ class MLReviewTests(unittest.TestCase):
 
     def test_page_selects_category_and_point_without_training_or_ai(self):
         with patch.object(ml_detection, "detect_ml_anomalies", side_effect=AssertionError("no training")), \
-             patch("rail_vehicle.pages.experiment_ai.request_ai_analysis", side_effect=AssertionError("no AI")):
+             patch("rail_vehicle.pages.ai_center.request_ai_analysis", side_effect=AssertionError("no AI")):
             app = self.app()
             app.selectbox(key="ml_review_category").set_value("rule_only").run()
             self.assertFalse(app.exception)

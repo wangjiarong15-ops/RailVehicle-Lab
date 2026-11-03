@@ -16,13 +16,18 @@ from rail_vehicle.ai.prompts import build_evidence_reference_instructions
 from rail_vehicle.ai.provider import AIAnalysisService, FakeProvider
 from rail_vehicle.ai.schemas import AIContractError, collect_evidence_metadata, validate_output
 from rail_vehicle.fleet_comparison import compare_vehicles
-from rail_vehicle.pages import fleet_comparison as page, experiment_ai
+from rail_vehicle.pages import fleet_comparison as page, ai_center, experiment_ai
 
 
 READY = AIConfig(enabled=True, provider="deepseek", model="mock-model", api_key="test-only-placeholder")
 
 
 def fleet_app():
+    import streamlit as st
+    if st.session_state.get("navigation_page") == "AI 智能分析中心":
+        from rail_vehicle.pages.ai_center import render
+        render()
+        return
     from rail_vehicle.pages.fleet_comparison import render
     render()
 
@@ -121,19 +126,21 @@ class FleetAITests(unittest.TestCase):
             def analyze(self, payload):
                 seen.append(payload)
                 return output_for(payload)
-        with patch.object(experiment_ai.AIConfig, "from_sources", return_value=READY), \
-             patch.object(experiment_ai, "create_configured_provider", return_value=Provider()) as factory:
+        with patch.object(ai_center.AIConfig, "from_sources", return_value=READY), \
+             patch.object(ai_center, "create_configured_provider", return_value=Provider()) as factory:
             app = self.app()
             self.assertEqual(len(app.button), 1)
             app.button[0].click().run()
             factory.assert_not_called()
             self.assertEqual(len(app.dataframe), 2)
-            app.button(key="fleet_experiment_ai_generate").click().run()
+            app.button(key="ai_center_link_fleet").click().run()
+            app.button(key="ai_center_generate").click().run()
             self.assertFalse(app.exception)
             factory.assert_called_once()
             self.assertEqual(seen[0]["analysis_type"], "fleet_comparison")
             self.assertTrue(any("横向加速度统计" in item.value for item in app.text))
             self.assertEqual(app.session_state["experiment_fleet_ai"]["scope_validation"], "verified")
+            app.session_state["navigation_page"] = "source"
             app.run()
             factory.assert_called_once()
             self.assertEqual(len(app.get("plotly_chart")), 3)
@@ -141,51 +148,60 @@ class FleetAITests(unittest.TestCase):
     def test_changed_band_or_raw_sample_invalidates_comparison_and_ai(self):
         entries = deepcopy(self.entries)
         with patch.object(page, "demo_entries", side_effect=lambda: deepcopy(entries)), \
-             patch.object(experiment_ai.AIConfig, "from_sources", return_value=READY), \
-             patch.object(experiment_ai, "create_configured_provider", return_value=FakeProvider(output_for(build_fleet_comparison_payload(self.result)))):
+             patch.object(ai_center.AIConfig, "from_sources", return_value=READY), \
+             patch.object(ai_center, "create_configured_provider", return_value=FakeProvider(output_for(build_fleet_comparison_payload(self.result)))):
             app = self.app()
             app.button[0].click().run()
-            app.button(key="fleet_experiment_ai_generate").click().run()
+            app.button(key="ai_center_link_fleet").click().run()
+            app.button(key="ai_center_generate").click().run()
             self.assertIn("experiment_fleet_ai", app.session_state)
             entries[0]["samples"][0]["lateral_accel"] += 0.01
+            app.session_state["navigation_page"] = "source"
             app.run()
             self.assertNotIn("experiment_fleet_ai", app.session_state)
             self.assertEqual(len(app.dataframe), 0)
             app.button[0].click().run()
-            app.button(key="fleet_experiment_ai_generate").click().run()
+            app.button(key="ai_center_link_fleet").click().run()
+            app.button(key="ai_center_generate").click().run()
+            app.session_state["navigation_page"] = "source"
+            app.run()
             app.slider[0].set_value((70, 80)).run()
             self.assertNotIn("experiment_fleet_ai", app.session_state)
             self.assertEqual(len(app.get("plotly_chart")), 0)
 
     def test_disabled_and_rejected_ai_do_not_hide_deterministic_results(self):
-        with patch.object(experiment_ai.AIConfig, "from_sources", return_value=AIConfig(enabled=False)), \
-             patch.object(experiment_ai, "create_configured_provider") as factory:
+        with patch.object(ai_center.AIConfig, "from_sources", return_value=AIConfig(enabled=False)), \
+             patch.object(ai_center, "create_configured_provider") as factory:
             app = self.app()
             app.button[0].click().run()
-            self.assertTrue(app.button(key="fleet_experiment_ai_generate").disabled)
             self.assertEqual(len(app.dataframe), 2)
+            app.button(key="ai_center_link_fleet").click().run()
+            self.assertTrue(app.button(key="ai_center_generate").disabled)
             factory.assert_not_called()
         class BadProvider:
             def analyze(self, payload):
                 output = output_for(payload)
                 output["summary"]["evidence_ids"] = ["unknown.id"]
                 return output
-        with patch.object(experiment_ai.AIConfig, "from_sources", return_value=READY), \
-             patch.object(experiment_ai, "create_configured_provider", return_value=BadProvider()):
+        with patch.object(ai_center.AIConfig, "from_sources", return_value=READY), \
+             patch.object(ai_center, "create_configured_provider", return_value=BadProvider()):
             app = self.app()
             app.button[0].click().run()
-            app.button(key="fleet_experiment_ai_generate").click().run()
+            app.button(key="ai_center_link_fleet").click().run()
+            app.button(key="ai_center_generate").click().run()
             self.assertFalse(app.exception)
             self.assertTrue(any("未知证据" in item.value for item in app.warning))
             self.assertNotIn("experiment_fleet_ai", app.session_state)
-            self.assertEqual(len(app.dataframe), 2)
             self.assertFalse(any("横向加速度统计" in item.value for item in app.text))
+            app.session_state["navigation_page"] = "source"
+            app.run()
+            self.assertEqual(len(app.dataframe), 2)
 
     def test_public_mode_blocks_ai_and_keeps_comparison(self):
         import os
         with patch.dict(os.environ, {"RAIL_PUBLIC_DEMO": "true"}), \
-             patch.object(experiment_ai.AIConfig, "from_sources", side_effect=AssertionError("no config")), \
-             patch.object(experiment_ai, "create_configured_provider") as factory:
+             patch.object(ai_center.AIConfig, "from_sources", side_effect=AssertionError("no config")), \
+             patch.object(ai_center, "create_configured_provider") as factory:
             app = self.app()
             app.button[0].click().run()
             self.assertFalse(app.exception)
