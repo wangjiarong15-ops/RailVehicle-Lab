@@ -163,9 +163,10 @@ class FrontendTests(unittest.TestCase):
         app = self.home()
         self.assertFalse(app.exception)
         values = {metric.label: metric.value for metric in app.metric}
-        self.assertEqual(values["运行样本"], "120")
+        self.assertEqual(values["采样点总数"], "120 点")
         self.assertEqual(values["统计异常点"], "5")
         self.assertEqual(values["统计异常区段"], "2")
+        self.assertEqual(list(app.dataframe[0].value["编号"]), ["#1", "#2"])
         self.assertEqual(len(app.get("plotly_chart")), 1)
         app.number_input(key="home_threshold").set_value(10.).run()
         self.assertEqual({m.label: m.value for m in app.metric}["统计异常区段"], "0")
@@ -180,6 +181,53 @@ class FrontendTests(unittest.TestCase):
         app = self.home(data)
         self.assertEqual(len(app.get("plotly_chart")), 0)
         self.assertTrue(any("20,000" in item.value for item in app.info))
+
+    def test_home_event_pagination_uses_full_count_and_matching_global_numbers(self):
+        self.import_batch()
+        data = load_dashboard(self.path)
+        for index, sample in enumerate(data["preview"]["samples"]):
+            sample["lateral_accel"] = 2.0 if index % 2 == 0 else 0.0
+            sample["vertical_accel"] = 0.0
+        app = self.home(data)
+        self.assertFalse(app.exception)
+        self.assertEqual({m.label: m.value for m in app.metric}["统计异常区段"], "60")
+        self.assertEqual(list(app.dataframe[0].value["编号"]), [f"#{i}" for i in range(1, 31)])
+        app.selectbox(key="home_event_page").set_value(1).run()
+        self.assertFalse(app.exception)
+        self.assertEqual(list(app.dataframe[0].value["编号"]), [f"#{i}" for i in range(31, 61)])
+        self.assertTrue(any("第 31–60 段" in item.value for item in app.caption))
+        app.number_input(key="home_threshold").set_value(3.).run()
+        self.assertFalse(app.exception)
+        self.assertEqual({m.label: m.value for m in app.metric}["统计异常区段"], "0")
+        self.assertFalse(any(box.key == "home_event_page" for box in app.selectbox))
+
+    def test_home_timezone_switch_keeps_metrics_and_event_numbers(self):
+        self.import_batch()
+        app = self.home()
+        metrics = {item.label: item.value for item in app.metric}
+        original = app.dataframe[0].value
+        app.selectbox(key="home_timezone").set_value("Asia/Shanghai").run()
+        self.assertFalse(app.exception)
+        self.assertEqual({item.label: item.value for item in app.metric}, metrics)
+        localized = app.dataframe[0].value
+        self.assertEqual(list(original["编号"]), list(localized["编号"]))
+        self.assertTrue(all(value.endswith("+08:00") for value in localized["开始时间（Asia/Shanghai）"]))
+        self.assertTrue(any("Asia/Shanghai" in item.value for item in app.caption))
+
+    def test_home_missing_timezone_database_falls_back_to_utc(self):
+        from zoneinfo import ZoneInfoNotFoundError
+        from rail_vehicle.dashboard_chart import display_timestamp
+        self.import_batch()
+        def available_clock(value, zone="UTC"):
+            if zone == "Asia/Shanghai":
+                raise ZoneInfoNotFoundError("missing timezone fixture")
+            return display_timestamp(value, zone)
+        with patch.object(home, "display_timestamp", side_effect=available_clock):
+            app = self.home()
+            app.selectbox(key="home_timezone").set_value("Asia/Shanghai").run()
+        self.assertFalse(app.exception)
+        self.assertTrue(any("暂按 UTC" in item.value for item in app.warning))
+        self.assertIn("开始时间（UTC）", app.dataframe[0].value.columns)
 
     def test_bad_preview_reports_safe_error_instead_of_inventing_metrics(self):
         self.import_batch()

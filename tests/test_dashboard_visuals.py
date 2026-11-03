@@ -10,7 +10,7 @@ from urllib.parse import parse_qs, urlsplit
 from rail_vehicle.demo_data import analysis_demo_data
 from rail_vehicle.dynamics import analyze_run_data
 from rail_vehicle.anomaly import detect_anomalies
-from rail_vehicle.dashboard_chart import dashboard_chart
+from rail_vehicle.dashboard_chart import dashboard_chart, dashboard_events, display_timestamp
 from rail_vehicle.ui import theme_url
 
 
@@ -48,6 +48,49 @@ class DashboardVisualTests(unittest.TestCase):
                 figure = dashboard_chart(analysis,anomalies)
                 self.assertTrue(all(len(trace.x)<=1200 for trace in figure.data))
                 self.assertTrue(any(shape.x0==shape.x1 for shape in figure.layout.shapes))
+
+    def test_numbered_event_pages_and_threshold_annotations_match_data(self):
+        anomalies = deepcopy(self.anomalies)
+        anomalies["events"] = [deepcopy(anomalies["events"][i % 2]) for i in range(35)]
+        anomalies["threshold"] = 1.25
+        first, second = dashboard_events(anomalies, 0), dashboard_events(anomalies, 1)
+        self.assertEqual([n for n, _ in first], list(range(1, 31)))
+        self.assertEqual([n for n, _ in second], list(range(31, 36)))
+        chart = dashboard_chart(self.analysis, anomalies, 1)
+        labels = [annotation.text for annotation in chart.layout.annotations]
+        self.assertEqual([item for item in labels if item.startswith("#")], [f"#{i}" for i in range(31, 36)])
+        self.assertEqual(labels.count("+1.25 m/s²"), 2)
+        self.assertEqual(labels.count("-1.25 m/s²"), 2)
+        self.assertEqual(chart.layout.hovermode, "x unified")
+        if hasattr(chart.layout, "hoversubplots"):
+            self.assertEqual(chart.layout.hoversubplots, "axis")
+        self.assertTrue(all(trace.xaxis == "x" for trace in chart.data))
+        self.assertTrue(all(shape.xref not in ("x2", "x3") for shape in chart.layout.shapes))
+        self.assertEqual(chart.layout.xaxis.anchor, "y3")
+        self.assertNotIn("xaxis2", chart.layout.to_plotly_json())
+        self.assertNotIn("xaxis3", chart.layout.to_plotly_json())
+        self.assertTrue(all(shape.xref in ("x", "x domain") for shape in chart.layout.shapes))
+
+    def test_timezone_changes_clocks_not_values_events_or_instants(self):
+        before = deepcopy((self.analysis, self.anomalies))
+        utc_chart = dashboard_chart(self.analysis, self.anomalies)
+        local_chart = dashboard_chart(self.analysis, self.anomalies, timezone_name="Asia/Shanghai")
+        for original, localized in zip(utc_chart.data, local_chart.data):
+            self.assertEqual(list(original.y), list(localized.y))
+            self.assertEqual(list(original.x), list(localized.x))  # same absolute instants
+            if localized.customdata is not None:
+                self.assertTrue(all(stamp.endswith("+08:00") for stamp in localized.customdata))
+        self.assertIn("Asia/Shanghai", local_chart.layout.xaxis.title.text)
+        self.assertEqual([a.text for a in utc_chart.layout.annotations], [a.text for a in local_chart.layout.annotations])
+        self.assertEqual((self.analysis, self.anomalies), before)
+
+    def test_display_timezone_handles_offsets_naive_utc_and_day_rollover(self):
+        local = display_timestamp("2026-11-03T20:30:00Z", "Asia/Shanghai")
+        self.assertEqual(local.isoformat(), "2026-11-04T04:30:00+08:00")
+        self.assertEqual(display_timestamp("2026-11-03T20:30:00", "Asia/Shanghai"), local)
+        self.assertEqual(display_timestamp("2026-11-04T04:30:00+08:00"), display_timestamp("2026-11-03T20:30:00Z"))
+        with self.assertRaises(ValueError):
+            display_timestamp("2026-11-03T00:00:00Z", "unknown")
 
     def test_native_theme_urls_preserve_page_and_reject_unknown_modes(self):
         for mode in ("light","dark"):

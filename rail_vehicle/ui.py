@@ -11,6 +11,10 @@ import plotly.io as pio
 import streamlit as st
 
 COLORS = ["#176BCE", "#0D9488", "#8258B5", "#E39A24", "#D34444", "#526E8B"]
+THEME_TOKENS = {
+    "dark": {"surface": "#132338", "accent": "#4D9DFF", "muted": "#B4C5DA"},
+    "light": {"surface": "#FFFFFF", "accent": "#176BCE", "muted": "#455D78"},
+}
 pio.templates["rail"] = go.layout.Template(layout=dict(
     font=dict(family="Microsoft YaHei, sans-serif", size=12), hovermode="closest",
     paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
@@ -18,17 +22,20 @@ pio.templates["rail"] = go.layout.Template(layout=dict(
 ))
 
 
-def plot_chart(figure, **kwargs):
+def plot_chart(figure, *, config=None, **kwargs):
     figure.update_layout(template="rail")
-    return st.plotly_chart(figure, theme="streamlit", config={"displaylogo": False}, **kwargs)
+    chart_config = {"displaylogo": False, **(config or {})}
+    return st.plotly_chart(figure, theme="streamlit", config=chart_config, **kwargs)
 
 
 def apply_design():
-    # Two stable layout test IDs for density; all other rules target our own classes.
+    # Scope styling to our keyed components and a few stable native test IDs.
     st.html("""<style>
     /* Presentation-only visual refresh: native Streamlit behavior unchanged. */
-    [data-testid="stMainBlockContainer"] {padding-top:4rem;padding-bottom:2rem;max-width:1600px;}
+    [data-testid="stMainBlockContainer"] {padding-top:4rem;padding-bottom:3rem;max-width:1600px;}
     [data-testid="stSidebarUserContent"] {padding-top:1.0rem;}
+    [data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] p {
+      color:var(--rv-muted,#B4C5DA);opacity:1;}
     .rv-brand {display:flex;align-items:center;gap:.8rem;padding:.85rem .9rem;
       border:1px solid rgba(115,169,229,.28);border-radius:14px;
       background:linear-gradient(125deg,rgba(34,113,205,.24),rgba(30,49,86,.08));
@@ -37,7 +44,7 @@ def apply_design():
       border-radius:12px;background:linear-gradient(145deg,#277EE1,#123D83);
       color:#FFFFFF;font-size:1.25rem;box-shadow:0 5px 16px rgba(15,75,155,.25);}
     .rv-brand-name {font-size:1.04rem;font-weight:750;letter-spacing:.01em;line-height:1.25;}
-    .rv-brand-subtitle {font-size:.73rem;opacity:.72;line-height:1.4;margin-top:.18rem;}
+    .rv-brand-subtitle {font-size:.73rem;color:var(--rv-muted,#B4C5DA);line-height:1.4;margin-top:.18rem;}
     .rv-status {display:inline-flex;align-items:center;padding:.24rem .65rem;
       border:1px solid var(--rv-accent,#4D9DFF);border-radius:999px;
       color:inherit;font-size:.76rem;font-weight:600;}
@@ -48,9 +55,20 @@ def apply_design():
     .rv-themes a:hover {background:rgba(80,146,220,.13);}
     .rv-themes a:focus-visible {outline:2px solid var(--rv-accent,#4D9DFF);outline-offset:3px;}
     [class*="st-key-nav_"] button {border-radius:10px;text-align:left;min-height:2.35rem;
+      justify-content:flex-start;padding-inline:.9rem;gap:.65rem;
       transition:background-color .16s ease,transform .16s ease;}
+    [data-testid="stSidebarUserContent"] [data-testid="stButton"] button > div {
+      width:100%;justify-content:flex-start;}
+    [class*="st-key-nav_"] button [data-testid="stIconMaterial"] {width:20px;min-width:20px;}
+    [class*="st-key-nav_"] button[data-testid="stBaseButton-primary"] {
+      background:rgba(72,129,196,.18);border:1px solid rgba(91,154,227,.28);
+      border-left:3px solid var(--rv-accent,#4D9DFF);color:inherit;}
+    [class*="st-key-nav_"] button[data-testid="stBaseButton-tertiary"] {color:var(--rv-muted,#B4C5DA);}
+    .rv-nav-heading {padding:.65rem .9rem .1rem;color:var(--rv-muted,#B4C5DA);
+      font-size:.78rem;font-weight:600;line-height:1.3;}
+    [class*="st-key-rv-nav-group-"] [data-testid="stVerticalBlock"] {gap:.15rem;}
     [class*="st-key-nav_"] button:hover {transform:translateX(2px);}
-    [class*="st-key-rv-kpi-"] {background:var(--rv-surface,#132338);border-radius:15px;
+    [class*="st-key-rv-kpi-"] {background:var(--rv-surface,#132338);border-radius:15px;padding:.65rem .9rem;
       border:1px solid rgba(119,164,219,.20);box-shadow:0 3px 14px rgba(4,18,38,.07);
       transition:border-color .18s ease,box-shadow .18s ease;}
     [class*="st-key-rv-kpi-"]:hover {border-color:rgba(88,154,238,.42);
@@ -74,11 +92,13 @@ def initialize_theme():
     const explicit=modes.includes('light_theme')?'light':modes.includes('dark_theme')?'dark':null;
     let saved=null;try{saved=localStorage.getItem('rail_vehicle_theme');}catch(e){}
     const theme=explicit||(saved==='light'?'light':'dark');
-    document.documentElement.style.setProperty('--rv-surface',theme==='dark'?'#132338':'#FFFFFF');
-    document.documentElement.style.setProperty('--rv-accent',theme==='dark'?'#4D9DFF':'#176BCE');
+    const tokens=__THEME_TOKENS__;
+    for(const [name,value] of Object.entries(tokens[theme])){
+      document.documentElement.style.setProperty('--rv-'+name,value);
+    }
     try{localStorage.setItem('rail_vehicle_theme',theme);}catch(e){}
     if(!explicit){u.searchParams.append('embed_options',theme+'_theme');window.location.replace(u.href);}
-    })();</script>""", unsafe_allow_javascript=True)
+    })();</script>""".replace("__THEME_TOKENS__", json.dumps(THEME_TOKENS)), unsafe_allow_javascript=True)
 
 
 def theme_url(mode, page):
@@ -105,7 +125,7 @@ def workflow_caption(text):
 
 
 def kpi(column, label, value, detail):
-    with column.container(border=True, key="rv-kpi-"+label):
+    with column.container(border=True, key="rv-kpi-"+label, gap=None):
         st.metric(label, value)
         st.caption(detail)
 
@@ -148,12 +168,12 @@ def record_analysis(kind, selection, count, *, fictional=False):
 
 
 GROUPS = (
-    ("总览", (("平台首页", "▦"),)),
-    ("数据工作台", (("车辆参数", "▤"), ("CSV 数据导入", "↥"), ("运行分析", "∿"))),
-    ("运行与智能分析", (("动态运行驾驶舱", "◉"), ("机器学习异常检测", "◇"),
-                        ("振动与平稳性分析", "≋"), ("多车辆运行对比", "⇄"),
-                        ("AI 智能分析中心", "✦"))),
-    ("演示与实验", (("统计与异常演示", "⊞"), ("演示中心", "▷"))),
+    ("总览", (("平台首页", ":material/dashboard:"),)),
+    ("数据工作台", (("车辆参数", ":material/train:"), ("CSV 数据导入", ":material/upload_file:"), ("运行分析", ":material/monitoring:"))),
+    ("运行与智能分析", (("动态运行驾驶舱", ":material/speed:"), ("机器学习异常检测", ":material/model_training:"),
+                        ("振动与平稳性分析", ":material/vibration:"), ("多车辆运行对比", ":material/compare_arrows:"),
+                        ("AI 智能分析中心", ":material/smart_toy:"))),
+    ("演示与实验", (("统计与异常演示", ":material/query_stats:"), ("演示中心", ":material/play_circle:"))),
 )
 
 
@@ -169,15 +189,16 @@ def render_navigation(public):
                 '<div><div class="rv-brand-name">RailVehicle-Lab</div>'
                 '<div class="rv-brand-subtitle">轨道车辆运行与动力学分析</div></div></div>')
         st.divider()
-        for group, entries in GROUPS:
+        for index, (group, entries) in enumerate(GROUPS):
             visible = [(name, icon) for name, icon in entries if name in allowed]
             if not visible:
                 continue
-            st.caption(group)
-            for name, icon in visible:
-                st.button(f"{icon}  {name}", key=f"nav_{name}", width="stretch",
-                          type="primary" if selected == name else "tertiary",
-                          on_click=navigate, args=(name,))
+            with st.container(key=f"rv-nav-group-{index}"):
+                st.html(f'<div class="rv-nav-heading">{escape(group)}</div>')
+                for name, icon in visible:
+                    st.button(name, icon=icon, key=f"nav_{name}", width="stretch",
+                              type="primary" if selected == name else "tertiary",
+                              on_click=navigate, args=(name,))
         st.divider()
         st.caption("● 公开虚构数据演示" if public else "● 本地 SQLite 工作空间")
         st.caption("统计异常 ≠ 故障或安全结论")
