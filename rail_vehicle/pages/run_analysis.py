@@ -36,7 +36,7 @@ from rail_vehicle.dynamics import analyze_run_data
 from rail_vehicle.anomaly import EVENT_DURATION_NOTE, detect_anomalies
 from rail_vehicle.pages.anomaly_review import render_event_review
 from rail_vehicle.pages.sampling_quality import render_sampling_quality
-from rail_vehicle.ui import plot_chart, record_analysis, source_caption, workflow_caption
+from rail_vehicle.ui import plot_chart, record_analysis, source_caption, workflow_caption, navigate
 from rail_vehicle.time_filter import filter_samples_by_time_range
 from rail_vehicle.run_data import (
     MAX_CSV_SIZE_MB,
@@ -113,6 +113,7 @@ def _render_ai_interpretation(
 
 
 def _render_import() -> None:
+    workflow_caption("① 上传 CSV　→　② 检查格式与采样　→　③ 确认导入并分析")
     st.caption("上传 CSV 后先检查数据；只有整份文件通过校验后才能写入数据库。")
     st.caption(f"单个 CSV 文件大小上限：{MAX_CSV_SIZE_MB} MB。")
 
@@ -225,6 +226,15 @@ def _render_import() -> None:
                     st.success(
                         f"导入成功：批次 #{batch_id}，共保存 {validation.source_row_count:,} 行。"
                     )
+                    if validation.distinct_vehicle_count == 1 and len(validation.sampling_by_vehicle) == 1:
+                        code = next(iter(validation.sampling_by_vehicle))
+                        matching_vehicle = next((vehicle for vehicle in vehicles if vehicle["vehicle_code"] == code), None)
+                        if matching_vehicle is not None:
+                            st.button("分析本次导入 →", key="import_analyze_latest", on_click=navigate,
+                                      args=("运行分析",), kwargs={"dynamics_vehicle_id": matching_vehicle["id"],
+                                                               "dynamics_batch_id": batch_id})
+                    elif validation.distinct_vehicle_count > 1:
+                        st.caption("该批次包含多辆车，请在运行分析中选择需要查看的车辆。")
 
     st.divider()
     st.subheader("历史导入记录")

@@ -118,6 +118,41 @@ class FrontendTests(unittest.TestCase):
             self.assertTrue(any("导入未完成" in error.value for error in app.error))
             self.assertNotIn("PRIVATE_DETAIL", " ".join(error.value for error in app.error))
 
+    def test_single_vehicle_import_shortcut_selects_exact_vehicle_and_batch(self):
+        with patch.object(run_analysis, "list_vehicles", lambda: list_vehicles(self.path)), \
+             patch.object(run_analysis, "list_import_batches", lambda: list_import_batches(self.path)), \
+             patch.object(run_analysis, "import_run_data", lambda name, valid: import_run_data(name, valid, self.path)):
+            app = AppTest.from_function(import_app, default_timeout=15).run()
+            app.file_uploader[0].upload("fictional.csv", demo_csv_content(0).encode(), "text/csv").run()
+            next(button for button in app.button if button.label == "导入到 SQLite").click().run()
+            self.assertFalse(app.exception)
+            batches = list_import_batches(self.path)
+            self.assertEqual(len(batches), 1)
+            app.button(key="import_analyze_latest").click().run()
+            self.assertEqual(app.session_state["navigation_page"], "运行分析")
+            self.assertEqual(app.session_state["dynamics_vehicle_id"], self.vid)
+            self.assertEqual(app.session_state["dynamics_batch_id"], batches[0]["id"])
+            self.assertEqual(len(list_import_batches(self.path)), 1)
+
+    def test_multi_vehicle_import_requires_explicit_vehicle_selection(self):
+        add_vehicle(dict(self.values, vehicle_code="OTHER-002"), self.path)
+        header = "timestamp,vehicle_id,speed_kmh,lateral_accel,vertical_accel\n"
+        csv_data = header + "2026-10-08T09:30:00Z,DEMO-001,80,0.1,0.1\n2026-10-08T09:30:00Z,OTHER-002,81,0.1,0.1\n"
+        with patch.object(run_analysis, "list_vehicles", lambda: list_vehicles(self.path)), \
+             patch.object(run_analysis, "list_import_batches", lambda: list_import_batches(self.path)), \
+             patch.object(run_analysis, "import_run_data", lambda name, valid: import_run_data(name, valid, self.path)):
+            app = AppTest.from_function(import_app, default_timeout=15).run()
+            app.file_uploader[0].upload("fictional.csv", csv_data.encode(), "text/csv").run()
+            next(button for button in app.button if button.label == "导入到 SQLite").click().run()
+            self.assertFalse(app.exception)
+            self.assertFalse(any(button.key == "import_analyze_latest" for button in app.button))
+            self.assertTrue(any("包含多辆车" in caption.value for caption in app.caption))
+
+    def test_vehicle_import_shortcut_opens_import_page(self):
+        app = self.vehicle_page()
+        app.button(key="vehicle_import").click().run()
+        self.assertEqual(app.session_state["navigation_page"], "CSV 数据导入")
+
     def home(self, fixture=None):
         app = AppTest.from_function(home_app, default_timeout=15)
         app.session_state["fixture"] = load_dashboard(self.path) if fixture is None else fixture
