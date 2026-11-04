@@ -61,6 +61,29 @@ def build_replay_chart(track: ReplayTrack, index: int, position: float, threshol
     return figure
 
 
+def build_response_schematic(sample, threshold):
+    """Symbolic direction and threshold status; no displacement is inferred."""
+    figure = go.Figure()
+    figure.add_shape(type="rect", x0=2, x1=8, y0=3, y1=5,
+                     line=dict(color="#58a6ff", width=3), fillcolor="rgba(42,100,169,0.22)")
+    for x in (3.2, 6.8):
+        figure.add_shape(type="circle", x0=x-.45, x1=x+.45, y0=2.25, y1=3.15,
+                         line=dict(color="#91a9c9", width=2), fillcolor="#273c56")
+    figure.add_annotation(x=5, y=4, text="车体示意", showarrow=False, font=dict(size=14))
+    for field, label, x, y in (("lateral_accel", "横向", 5, 6.2),
+                               ("vertical_accel", "垂向", 5, 1.1)):
+        value = sample[field]
+        marker = "●" if value == 0 else ("→" if value > 0 else "←") if field == "lateral_accel" else ("↑" if value > 0 else "↓")
+        color = "#f46d7a" if abs(value) > threshold else "#58a6ff"
+        figure.add_annotation(x=x, y=y, text=f"{label} {marker} {value:+.3f} m/s²",
+                              showarrow=False, font=dict(color=color, size=14))
+    figure.update_layout(height=230, margin=dict(l=5, r=5, t=5, b=5),
+                         xaxis=dict(range=[0, 10], visible=False, fixedrange=True),
+                         yaxis=dict(range=[0, 7], visible=False, fixedrange=True),
+                         showlegend=False)
+    return figure
+
+
 def _render_instruments(track: ReplayTrack, threshold: float, max_speed: float) -> None:
     previous = st.session_state[STATE_KEY]
     state = advance_replay(previous, monotonic(), track.duration)
@@ -95,6 +118,10 @@ def _render_instruments(track: ReplayTrack, threshold: float, max_speed: float) 
         ))
         gauge.update_layout(height=260, margin=dict(l=25, r=25, t=45, b=15))
         plot_chart(gauge, width="stretch", key="cockpit_gauge")
+        st.markdown("**车辆响应示意**")
+        plot_chart(build_response_schematic(sample, threshold), width="stretch", key="cockpit_schematic",
+                   config={"displayModeBar": False})
+        st.caption("箭头仅表示当前加速度符号，颜色表示是否超阈值；图形不表示位移或姿态。")
         st.caption("状态仅描述当前样本的统计阈值，不构成车辆故障或运行安全判断。")
     with chart_col:
         plot_chart(build_replay_chart(track, index, state.position, threshold),

@@ -34,6 +34,18 @@ class CockpitTests(unittest.TestCase):
         self.assertEqual(len(app.exception), 0)
         return app
 
+    def test_response_schematic_uses_sample_direction_and_strict_threshold(self):
+        sample = {"lateral_accel": -1.0, "vertical_accel": 1.1}
+        chart = cockpit.build_response_schematic(sample, 1.0)
+        lateral, vertical = chart.layout.annotations[1:]
+        self.assertIn("← -1.000", lateral.text)
+        self.assertEqual(lateral.font.color, "#58a6ff")
+        self.assertIn("↑ +1.100", vertical.text)
+        self.assertEqual(vertical.font.color, "#f46d7a")
+        zero = cockpit.build_response_schematic({"lateral_accel": 0, "vertical_accel": 0}, 1)
+        self.assertIn("●", zero.layout.annotations[1].text)
+        self.assertIn("●", zero.layout.annotations[2].text)
+
     def test_no_data_gives_guidance_and_demo_is_available(self):
         app = AppTest.from_function(cockpit_app).run()
         self.assertEqual(len(app.exception), 0)
@@ -44,6 +56,7 @@ class CockpitTests(unittest.TestCase):
         self.assertTrue(any("历史数据模拟回放" in item.value for item in app.info))
 
     def test_play_progress_anomaly_pause_and_reset(self):
+        self.stack.enter_context(patch.object(cockpit, "build_response_schematic", wraps=cockpit.build_response_schematic))
         app = self.demo_app()
         first_speed = app.metric[0].value
         app.button[0].click().run()
@@ -53,6 +66,7 @@ class CockpitTests(unittest.TestCase):
         self.assertEqual(app.session_state[cockpit.STATE_KEY].position, 31)
         self.assertNotEqual(app.metric[0].value, first_speed)
         self.assertEqual(app.metric[1].value, "1.800")
+        self.assertEqual(cockpit.build_response_schematic.call_args.args[0]["lateral_accel"], 1.8)
         self.assertTrue(any("横向加速度" in item.value for item in app.error))
         app.button[1].click().run()
         position = app.session_state[cockpit.STATE_KEY].position
@@ -63,6 +77,7 @@ class CockpitTests(unittest.TestCase):
         app.button[2].click().run()
         self.assertEqual(app.session_state[cockpit.STATE_KEY].position, 0)
         self.assertEqual(app.metric[0].value, first_speed)
+        self.assertNotEqual(cockpit.build_response_schematic.call_args.args[0]["lateral_accel"], 1.8)
         self.assertEqual(len(app.exception), 0)
 
     def test_rate_threshold_end_and_source_reset(self):
