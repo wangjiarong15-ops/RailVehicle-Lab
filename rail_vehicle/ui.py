@@ -12,8 +12,8 @@ import streamlit as st
 
 COLORS = ["#176BCE", "#0D9488", "#8258B5", "#E39A24", "#D34444", "#526E8B"]
 THEME_TOKENS = {
-    "dark": {"surface": "#132338", "accent": "#4D9DFF", "muted": "#B4C5DA"},
-    "light": {"surface": "#FFFFFF", "accent": "#176BCE", "muted": "#455D78"},
+    "dark": {"surface": "#101F31", "accent": "#65ADFF", "muted": "#A8BAD0", "line": "#273B51"},
+    "light": {"surface": "#FFFFFF", "accent": "#176BCE", "muted": "#455D78", "line": "#D7E2EF"},
 }
 pio.templates["rail"] = go.layout.Template(layout=dict(
     font=dict(family="Microsoft YaHei, sans-serif", size=12), hovermode="closest",
@@ -32,17 +32,25 @@ def apply_design():
     # Scope styling to our keyed components and a few stable native test IDs.
     st.html("""<style>
     /* Presentation-only visual refresh: native Streamlit behavior unchanged. */
-    [data-testid="stMainBlockContainer"] {padding-top:4rem;padding-bottom:3rem;max-width:1600px;}
-    [data-testid="stSidebarUserContent"] {padding-top:1.0rem;}
+    [data-testid="stMainBlockContainer"] {padding-top:4.15rem;padding-bottom:3rem;max-width:1680px;}
+    [data-testid="stSidebarUserContent"] {padding-top:.35rem;}
+    [data-testid="stHeading"] h1 {letter-spacing:-.035em;font-weight:700;padding-top:.2rem;padding-bottom:.6rem;}
+    [data-testid="stHeading"] h2 {letter-spacing:-.02em;}
+    .rv-eyebrow {font-size:.72rem;letter-spacing:.16em;font-weight:650;
+      color:var(--rv-accent,#65ADFF);margin-bottom:.2rem;}
+    .rv-legend {display:flex;flex-wrap:wrap;gap:.5rem 1.2rem;font-size:.76rem;
+      color:var(--rv-muted,#A8BAD0);padding:.35rem 0;}
+    .rv-legend span {display:inline-flex;align-items:center;gap:.4rem;}
+    .rv-legend b {color:#E76F80;font-weight:600;}
+    .rv-legend .rv-threshold {color:var(--rv-accent,#65ADFF);}
     [data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] p {
       color:var(--rv-muted,#B4C5DA);opacity:1;}
-    .rv-brand {display:flex;align-items:center;gap:.8rem;padding:.85rem .9rem;
-      border:1px solid rgba(115,169,229,.28);border-radius:14px;
-      background:linear-gradient(125deg,rgba(34,113,205,.24),rgba(30,49,86,.08));
-      margin-bottom:.7rem;}
+    .rv-brand {display:flex;align-items:center;gap:.7rem;padding:.75rem .6rem;
+      margin-bottom:.4rem;}
     .rv-brand-icon {width:42px;height:42px;min-width:42px;display:flex;align-items:center;justify-content:center;
-      border-radius:12px;background:linear-gradient(145deg,#277EE1,#123D83);
-      color:#FFFFFF;font-size:1.25rem;box-shadow:0 5px 16px rgba(15,75,155,.25);}
+      border-radius:10px;background:#2463A5;
+      color:#FFFFFF;font-size:1.05rem;font-weight:750;letter-spacing:-.08em;
+      border-bottom:3px solid #54C4D4;}
     .rv-brand-name {font-size:1.04rem;font-weight:750;letter-spacing:.01em;line-height:1.25;}
     .rv-brand-subtitle {font-size:.73rem;color:var(--rv-muted,#B4C5DA);line-height:1.4;margin-top:.18rem;}
     .rv-status {display:inline-flex;align-items:center;padding:.24rem .65rem;
@@ -54,7 +62,7 @@ def apply_design():
       transition:background-color .18s ease;}
     .rv-themes a:hover {background:rgba(80,146,220,.13);}
     .rv-themes a:focus-visible {outline:2px solid var(--rv-accent,#4D9DFF);outline-offset:3px;}
-    [class*="st-key-nav_"] button {border-radius:10px;text-align:left;min-height:2.35rem;
+    [class*="st-key-nav_"] button {border-radius:8px;text-align:left;min-height:2.15rem;
       justify-content:flex-start;padding-inline:.9rem;gap:.65rem;
       transition:background-color .16s ease,transform .16s ease;}
     [data-testid="stSidebarUserContent"] [data-testid="stButton"] button > div {
@@ -68,13 +76,18 @@ def apply_design():
       font-size:.78rem;font-weight:600;line-height:1.3;}
     [class*="st-key-rv-nav-group-"] [data-testid="stVerticalBlock"] {gap:.15rem;}
     [class*="st-key-nav_"] button:hover {transform:translateX(2px);}
-    [class*="st-key-rv-kpi-"] {background:var(--rv-surface,#132338);border-radius:15px;padding:.65rem .9rem;
-      border:1px solid rgba(119,164,219,.20);box-shadow:0 3px 14px rgba(4,18,38,.07);
+    [class*="st-key-rv-kpi-"] {background:var(--rv-surface,#101F31);border-radius:10px;padding:.7rem 1rem;
+      border:1px solid var(--rv-line,#273B51);border-top:2px solid var(--rv-accent,#65ADFF);
       transition:border-color .18s ease,box-shadow .18s ease;}
+    [class*="st-key-rv-kpi-"] [data-testid="stMetricValue"] {font-variant-numeric:tabular-nums;font-size:2rem;letter-spacing:-.04em;}
+    [class*="st-key-rv-kpi-"] [data-testid="stMetricLabel"] {color:var(--rv-muted,#A8BAD0);}
     [class*="st-key-rv-kpi-"]:hover {border-color:rgba(88,154,238,.42);
       box-shadow:0 6px 22px rgba(8,44,94,.12);}
-    [class*="st-key-rv-panel-"] {background:var(--rv-surface,#132338);border-radius:16px;
-      border:1px solid rgba(119,164,219,.18);box-shadow:0 4px 18px rgba(4,18,38,.06);}
+    [class*="st-key-rv-panel-"] {background:var(--rv-surface,#101F31);border-radius:12px;
+      border:1px solid var(--rv-line,#273B51);}
+    [class*="st-key-rv-panel-"] h3 {font-size:1.05rem;font-weight:650;letter-spacing:-.015em;}
+    [class*="st-key-rv-panel-"] [data-testid="stVerticalBlock"] {gap:.65rem;}
+    .st-key-rv-panel-actions {border-top:2px solid var(--rv-accent,#65ADFF);}
     @media (max-width:960px) {.rv-brand {padding:.65rem;}}
     @media (prefers-reduced-motion:reduce) {
       .rv-themes a,[class*="st-key-nav_"] button,[class*="st-key-rv-kpi-"] {
@@ -108,9 +121,11 @@ def theme_url(mode, page):
 
 
 def page_title(title, subtitle="", *, primary=False):
-    (st.title if primary else st.header)(title)
-    if subtitle:
-        st.caption(subtitle)
+    with st.container(gap=None):
+        st.html('<div class="rv-eyebrow">RAILVEHICLE LAB / ENGINEERING WORKSPACE</div>')
+        (st.title if primary else st.header)(title)
+        if subtitle:
+            st.caption(subtitle)
 
 
 def source_caption(*, fictional=False):
@@ -185,10 +200,9 @@ def render_navigation(public):
         st.session_state["navigation_page"] = linked if linked in allowed else "演示中心" if public else "平台首页"
     selected = st.session_state["navigation_page"]
     with st.sidebar:
-        st.html('<div class="rv-brand"><div class="rv-brand-icon" aria-hidden="true">🚆</div>'
+        st.html('<div class="rv-brand"><div class="rv-brand-icon" aria-hidden="true">RV</div>'
                 '<div><div class="rv-brand-name">RailVehicle-Lab</div>'
                 '<div class="rv-brand-subtitle">轨道车辆运行与动力学分析</div></div></div>')
-        st.divider()
         for index, (group, entries) in enumerate(GROUPS):
             visible = [(name, icon) for name, icon in entries if name in allowed]
             if not visible:

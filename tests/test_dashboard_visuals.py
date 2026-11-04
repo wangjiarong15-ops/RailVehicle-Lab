@@ -27,6 +27,9 @@ class DashboardVisualTests(unittest.TestCase):
         for index, field in ((0,"speed_kmh"),(1,"lateral_accel"),(3,"vertical_accel")):
             self.assertEqual(list(figure.data[index].y), [row[field] for row in self.analysis["samples"]])
             self.assertEqual(figure.data[index].mode, "markers")
+        # Anomaly traces must not consume a color slot and change channel identity.
+        self.assertEqual([figure.data[i].marker.color for i in (0, 1, 3)],
+                         ["#4299E8", "#24B9B0", "#A38CF0"])
         self.assertEqual(len(figure.data[2].y), 3)
         self.assertEqual(len(figure.data[4].y), 2)
         self.assertEqual((self.analysis, self.anomalies), before)

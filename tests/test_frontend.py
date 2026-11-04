@@ -168,6 +168,11 @@ class FrontendTests(unittest.TestCase):
         self.assertEqual(values["统计异常区段"], "2")
         self.assertEqual(list(app.dataframe[0].value["编号"]), ["#1", "#2"])
         self.assertEqual(len(app.get("plotly_chart")), 1)
+        self.assertEqual(app.button(key="home_运行分析").proto.type, "primary")
+        self.assertEqual(app.button(key="home_车辆参数").proto.type, "secondary")
+        self.assertLess([b.key for b in app.button].index("home_运行分析"),
+                        [b.key for b in app.button].index("home_车辆参数"))
+        self.assertTrue(any(h.value == "当前批次摘要" for h in app.subheader))
         app.number_input(key="home_threshold").set_value(10.).run()
         self.assertEqual({m.label: m.value for m in app.metric}["统计异常区段"], "0")
 

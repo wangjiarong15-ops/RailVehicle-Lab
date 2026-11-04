@@ -45,6 +45,9 @@ class CockpitTests(unittest.TestCase):
         zero = cockpit.build_response_schematic({"lateral_accel": 0, "vertical_accel": 0}, 1)
         self.assertIn("●", zero.layout.annotations[1].text)
         self.assertIn("●", zero.layout.annotations[2].text)
+        # Presentation may highlight channels, but cannot imply measured displacement.
+        self.assertEqual(chart.to_plotly_json()["layout"]["shapes"],
+                         zero.to_plotly_json()["layout"]["shapes"])
 
     def test_no_data_gives_guidance_and_demo_is_available(self):
         app = AppTest.from_function(cockpit_app).run()

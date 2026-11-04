@@ -9,7 +9,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
 from rail_vehicle.ui import page_title
-from rail_vehicle.ui import plot_chart, source_caption
+from rail_vehicle.ui import plot_chart, source_caption, chart_container, kpi
 from rail_vehicle.deployment import demo_source_options
 
 from rail_vehicle.demo_data import demo_csv_content
@@ -64,14 +64,32 @@ def build_replay_chart(track: ReplayTrack, index: int, position: float, threshol
 def build_response_schematic(sample, threshold):
     """Symbolic direction and threshold status; no displacement is inferred."""
     figure = go.Figure()
-    figure.add_shape(type="rect", x0=2, x1=8, y0=3, y1=5,
-                     line=dict(color="#58a6ff", width=3), fillcolor="rgba(42,100,169,0.22)")
-    for x in (3.2, 6.8):
-        figure.add_shape(type="circle", x0=x-.45, x1=x+.45, y0=2.25, y1=3.15,
-                         line=dict(color="#91a9c9", width=2), fillcolor="#273c56")
-    figure.add_annotation(x=5, y=4, text="车体示意", showarrow=False, font=dict(size=14))
-    for field, label, x, y in (("lateral_accel", "横向", 5, 6.2),
-                               ("vertical_accel", "垂向", 5, 1.1)):
+    # Fixed geometry: the drawings never translate/rotate in response to acceleration.
+    figure.add_shape(type="path", path="M 0.9,3.3 L 8.8,3.3 Q 9.3,3.3 9.15,3.9 L 8.6,5.05 Q 8.3,5.5 7.8,5.5 L 1.3,5.5 Q 0.9,5.5 0.9,5.1 Z",
+                     line=dict(color="#58a6ff", width=2), fillcolor="rgba(74,130,192,0.16)")
+    figure.add_shape(type="line", x0=1, x1=8.9, y0=3.85, y1=3.85,
+                     line=dict(color="#41b8c8", width=3))
+    for x in (1.5, 2.8, 5.5, 6.8):
+        figure.add_shape(type="rect", x0=x, x1=x+.85, y0=4.4, y1=5.05,
+                         line=dict(color="#58a6ff", width=1), fillcolor="rgba(54,143,212,0.24)")
+    figure.add_shape(type="path", path="M 8.05,5.08 L 8.45,5.0 L 8.8,4.42 L 8.05,4.42 Z",
+                     line=dict(color="#58a6ff", width=1), fillcolor="rgba(54,143,212,0.24)")
+    figure.add_shape(type="rect", x0=4.05, x1=5.05, y0=3.4, y1=5.1,
+                     line=dict(color="#809bb9", width=1), fillcolor="rgba(0,0,0,0)")
+    figure.add_shape(type="line", x0=4.55, x1=4.55, y0=3.4, y1=5.1,
+                     line=dict(color="#809bb9", width=1))
+    for x in (2.5, 7.4):
+        figure.add_shape(type="rect", x0=x-.8, x1=x+.8, y0=2.95, y1=3.3,
+                         line=dict(color="#809bb9", width=1), fillcolor="#273c56")
+        for wheel in (x-.5, x+.5):
+            figure.add_shape(type="circle", x0=wheel-.24, x1=wheel+.24, y0=2.57, y1=3.05,
+                             line=dict(color="#91a9c9", width=2), fillcolor="#273c56")
+    figure.add_shape(type="line", x0=.4, x1=9.6, y0=2.53, y1=2.53,
+                     line=dict(color="#809bb9", width=1))
+    figure.add_annotation(x=5, y=6.25, text="车辆侧视 · 非物理位移模型", showarrow=False,
+                          font=dict(size=11))
+    for field, label, x, y in (("lateral_accel", "横向", 5, 1.6),
+                               ("vertical_accel", "垂向", 5, .65)):
         value = sample[field]
         marker = "●" if value == 0 else ("→" if value > 0 else "←") if field == "lateral_accel" else ("↑" if value > 0 else "↓")
         color = "#f46d7a" if abs(value) > threshold else "#58a6ff"
@@ -97,10 +115,10 @@ def _render_instruments(track: ReplayTrack, threshold: float, max_speed: float) 
         "回放结束" if state.position >= track.duration else "已暂停"
     )
     cols = st.columns(4)
-    cols[0].metric("当前速度（km/h）", f"{sample['speed_kmh']:.1f}", border=True)
-    cols[1].metric("横向加速度（m/s²）", f"{sample['lateral_accel']:.3f}", border=True)
-    cols[2].metric("垂向加速度（m/s²）", f"{sample['vertical_accel']:.3f}", border=True)
-    cols[3].metric("回放状态", state_label, border=True)
+    kpi(cols[0], "当前速度（km/h）", f"{sample['speed_kmh']:.1f}", "当前历史采样点")
+    kpi(cols[1], "横向加速度（m/s²）", f"{sample['lateral_accel']:.3f}", "横向通道 · 带符号原值")
+    kpi(cols[2], "垂向加速度（m/s²）", f"{sample['vertical_accel']:.3f}", "垂向通道 · 带符号原值")
+    kpi(cols[3], "回放状态", state_label, f"{state.rate:g}× · 历史数据模拟")
     if exceeded:
         st.error("当前样本数据超阈值：" + "、".join(exceeded))
     else:
@@ -108,40 +126,51 @@ def _render_instruments(track: ReplayTrack, threshold: float, max_speed: float) 
     st.progress(state.position / track.duration if track.duration else 1.0,
                 text=f"回放进度 {state.position:.1f} / {track.duration:.1f} 秒 · 样本 {index + 1}/{len(track.samples)}")
     st.caption(f"当前样本时间（UTC）：{sample['timestamp']} · 样本距回放时刻 {state.position - track.offsets[index]:.1f} 秒")
-    gauge_col, chart_col = st.columns([1, 3])
-    with gauge_col:
+    gauge_col, chart_col = st.columns([1.15, 2.85])
+    with gauge_col, chart_container("rv-panel-cockpit-instruments"):
+        st.subheader("车辆状态")
+        st.caption("当前样本 / 仪表与响应示意")
         gauge = go.Figure(go.Indicator(
             mode="gauge+number", value=sample["speed_kmh"],
             title={"text": "速度 · km/h"},
             gauge={"axis": {"range": [0, max(1, max_speed, sample['speed_kmh']) * 1.1]},
-                   "bar": {"color": "#2563eb"}},
+                   "bar": {"color": "#58a6ff", "thickness": .22},
+                   "bgcolor": "rgba(111,146,181,0.1)", "borderwidth": 0},
         ))
-        gauge.update_layout(height=260, margin=dict(l=25, r=25, t=45, b=15))
+        gauge.update_layout(height=210, margin=dict(l=20, r=20, t=45, b=10))
         plot_chart(gauge, width="stretch", key="cockpit_gauge")
         st.markdown("**车辆响应示意**")
         plot_chart(build_response_schematic(sample, threshold), width="stretch", key="cockpit_schematic",
                    config={"displayModeBar": False})
         st.caption("箭头仅表示当前加速度符号，颜色表示是否超阈值；图形不表示位移或姿态。")
         st.caption("状态仅描述当前样本的统计阈值，不构成车辆故障或运行安全判断。")
-    with chart_col:
+    with chart_col, chart_container("rv-panel-cockpit-curves"):
+        st.subheader("运行信号")
+        st.caption("最近 60 秒 · 红色菱形为超阈值采样点")
         plot_chart(build_replay_chart(track, index, state.position, threshold),
                         width="stretch", key="cockpit_curves")
     st.caption("曲线显示最近 60 秒、最多 1,000 条已回放记录；不插值、不补造样本。高倍速可能跳过部分仪表帧，已回放异常点仍在曲线上标红。")
 
 
 def render() -> None:
-    page_title("动态运行驾驶舱")
-    st.caption("运行与实验工作台 / 数据来源清晰 · 用户主动操作")
-    st.info("历史数据模拟回放 · 使用已保存的运行样本，不代表真实实时监测。")
-    source = st.radio("回放数据来源", demo_source_options("历史运行批次", "内置虚构演示"), horizontal=True,
-                      key="cockpit_source")
+    page_title("动态运行驾驶舱", "HISTORICAL REPLAY / 历史运行回放")
+    source_col, threshold_col = st.columns([2, 1], vertical_alignment="bottom")
+    with source_col:
+        source = st.radio("回放数据来源", demo_source_options("历史运行批次", "内置虚构演示"), horizontal=True,
+                          key="cockpit_source")
+    with threshold_col:
+        threshold = st.number_input("加速度绝对值阈值（m/s²）", min_value=0.0,
+                                    value=1.0, step=0.1, key="cockpit_threshold")
     source_caption(fictional=source == "内置虚构演示")
+    with st.expander("回放说明"):
+        st.info("历史数据模拟回放 · 使用已保存的运行样本，不代表真实实时监测。")
+        if source == "内置虚构演示":
+            st.caption("虚构城轨车辆 DEMO-001 · 120 条、每秒一条；不写入数据库。第 30–32 秒与 70–71 秒设置了测试波动。")
     try:
         if source == "内置虚构演示":
             selection = ("demo",)
             max_speed = 120.0
             load_track = _demo_track
-            st.caption("虚构城轨车辆 DEMO-001 · 120 条、每秒一条；不写入数据库。第 30–32 秒与 70–71 秒设置了测试波动。")
         else:
             vehicles = list_vehicles()
             if not vehicles:
@@ -178,9 +207,7 @@ def render() -> None:
         st.error("暂时无法读取历史运行数据，请稍后重试。")
         return
 
-    threshold = st.number_input("加速度绝对值阈值（m/s²）", min_value=0.0,
-                                value=1.0, step=0.1, key="cockpit_threshold")
-    controls = st.columns([1, 1, 1, 2])
+    controls = st.columns([1, 1, 1, 2], vertical_alignment="bottom")
     state = st.session_state.get(STATE_KEY, ReplayState())
     action = None
     if controls[0].button("播放", icon=":material/play_arrow:", type="primary", disabled=state.playing or track.duration == 0):

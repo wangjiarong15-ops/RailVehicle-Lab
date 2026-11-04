@@ -24,6 +24,7 @@ def display_timestamp(value, timezone_name="UTC"):
 
 EVENTS_PER_PAGE = 30
 HOME_PLOT_CONFIG = {"displaylogo": False, "modeBarButtonsToRemove": ["zoomIn2d", "zoomOut2d", "select2d", "lasso2d"]}
+CHANNEL_COLORS = {"speed_kmh": "#4299E8", "lateral_accel": "#24B9B0", "vertical_accel": "#A38CF0"}
 
 
 def dashboard_events(anomalies, page=0):
@@ -43,7 +44,7 @@ def dashboard_chart(analysis, anomalies, event_page=0, *, timezone_name="UTC"):
         figure.add_trace(go.Scatter(x=timestamps, y=[rows[i][field] for i in indices],
                                    customdata=[stamp.isoformat() for stamp in timestamps],
                                    hovertemplate="%{customdata}<br>%{y:.3f}<extra>%{fullData.name}</extra>",
-                                   mode="markers", marker=dict(size=3), name=name), row=number,col=1)
+                                   mode="markers", marker=dict(size=3, color=CHANNEL_COLORS[field]), name=name), row=number,col=1)
         if number > 1:
             points = [p for p in anomalies["points"] if p["field"] == field]
             visible = points if len(points)<=1200 else [points[round(i*(len(points)-1)/1199)] for i in range(1200)]
@@ -54,7 +55,7 @@ def dashboard_chart(analysis, anomalies, event_page=0, *, timezone_name="UTC"):
             for value in (-anomalies["threshold"],anomalies["threshold"]):
                 figure.add_hline(y=value,line_dash="dot",line_color="#CF8C39",row=number,col=1)
                 figure.add_annotation(x=clock(rows[-1]["timestamp"]), y=value, text=f"{value:+g} m/s²",
-                                      showarrow=False, xanchor="right", yanchor="bottom", font=dict(color="#E9AC56", size=11),
+                                      showarrow=False, xanchor="right", yanchor="bottom", font=dict(size=11),
                                       row=number, col=1)
     for index, event in dashboard_events(anomalies, event_page):
         row = 2 if event["field"] == "lateral_accel" else 3
@@ -65,7 +66,12 @@ def dashboard_chart(analysis, anomalies, event_page=0, *, timezone_name="UTC"):
             figure.add_vrect(x0=start,x1=end,fillcolor="#F46D7A",opacity=.18,line_width=0,row=row,col=1)
         figure.add_annotation(x=start, y=event["maximum_signed_value"], text=f"#{index}", showarrow=False,
                               yshift=13, font=dict(color="#F46D7A", size=11), row=row, col=1)
-    figure.update_layout(height=620,margin=dict(l=45,r=20,t=40,b=35),showlegend=False,
+    # Left-aligned channel labels read as instrument headers, not floating titles.
+    for annotation in figure.layout.annotations[:3]:
+        annotation.update(x=0, xanchor="left", font=dict(size=12), yshift=8)
+    figure.update_yaxes(gridcolor="rgba(128,151,180,0.15)", zerolinecolor="rgba(128,151,180,0.3)",
+                        tickfont=dict(size=10))
+    figure.update_layout(height=500,margin=dict(l=38,r=16,t=24,b=30),showlegend=False,
                          hovermode="x unified", hoverlabel=dict(bgcolor="rgba(12,26,47,0.92)",
                          font=dict(color="white", size=12)))
     # Cross-panel unified hover was added after our minimum supported Plotly version.

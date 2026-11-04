@@ -23,7 +23,7 @@ def render():
             st.warning("暂时无法读取工作空间数据，请检查数据库后刷新。")
     heading, controls = st.columns([4, 1], vertical_alignment="center")
     with heading:
-        page_title("平台首页", "RAILVEHICLE LAB / 运行数据总览", primary=True)
+        page_title("平台首页", primary=True)
         source_caption(fictional=public)
     with controls:
         with st.popover("预览设置", width="stretch"):
@@ -78,13 +78,14 @@ def render():
             elif invalid:
                 st.warning("最近批次包含无法分析的记录，请在运行分析中检查数据。")
             else:
-                st.caption(f"{preview['vehicle_code']} / 批次 #{preview['batch_id']} · {preview['sample_count']:,} 条 · |a| > {threshold:g} m/s²；仅此车辆/批次，不代表全平台异常总数。")
-                st.caption(f"图表与异常区段列表使用 {timezone_name}；时区切换不改变样本、指标或事件数量。")
+                st.caption(f"{preview['vehicle_code']}  /  批次 #{preview['batch_id']}  /  {preview['sample_count']:,} 个采样点  /  {timezone_name}")
                 events = anomalies["events"]
                 pages = max(1, (len(events) + EVENTS_PER_PAGE - 1) // EVENTS_PER_PAGE)
                 event_page = st.selectbox("异常区段展示页", range(pages), format_func=lambda value: f"第 {value + 1} / {pages} 页", key="home_event_page") if pages > 1 else 0
                 visible = dashboard_events(anomalies, event_page)
-                st.caption("◆ 红色菱形：超阈值采样点　｜　红色高亮：异常区段　｜　红色竖线：首末时间相同的异常区段　｜　橙色虚线：阈值")
+                st.html('<div class="rv-legend"><span><b>◆</b> 超阈值采样点</span>'
+                        '<span><b>▰</b> 异常区段</span><span><b>│</b> 首末时间相同的区段</span>'
+                        '<span>┄ 阈值线</span></div>')
                 plot_chart(dashboard_chart(analysis, anomalies, event_page, timezone_name=timezone_name), key="home_speed", width="stretch", config=HOME_PLOT_CONFIG)
                 st.subheader("异常区段列表")
                 if visible:
@@ -97,10 +98,9 @@ def render():
                                 for index, event in visible])
                 else:
                     st.info("当前阈值下没有统计异常区段。")
-                a, b = st.columns(2)
-                a.metric("平均速度（km/h）", f"{analysis['speed']['mean']:.2f}")
-                b.metric("统计异常点", len(anomalies["points"]))
-                st.caption("每个通道最多绘制 1,200 个采样点；区段按页展示，统计使用整批预览数据。空档不插值，也不证明空档内持续异常。")
+                with st.expander("数据范围与绘图说明"):
+                    st.caption("仅此车辆/批次，不代表全平台异常总数。每通道最多绘制 1,200 个采样点；区段按页展示，统计使用整批预览数据。")
+                    st.caption("时区切换不改变样本、指标或事件数量。空档不插值，也不证明空档内持续异常。")
             st.warning("⚠️ 数据异常仅用于分析参考，不构成车辆故障或运行安全结论。")
         with chart_container("rv-panel-imports"):
             st.subheader("最近导入记录")
@@ -109,6 +109,19 @@ def render():
             else:
                 st.caption("暂无导入记录。公开演示不读取历史导入数据。" if public else "暂无导入记录，请先导入 CSV。")
     with right:
+        with chart_container("rv-panel-actions"):
+            st.subheader("快捷操作")
+            st.caption("从数据到结论，开始一次分析。")
+            actions = [("统计与异常演示", "体验基础统计"), ("动态运行驾驶舱", "运行驾驶舱"), ("演示中心", "演示中心")] if public else [("运行分析", "开始分析"), ("CSV 数据导入", "导入数据"), ("车辆参数", "管理车辆"), ("演示中心", "虚构数据演示")]
+            for target, title in actions:
+                action_button(title+" →", key=f"home_{target}", on_click=navigate, args=(target,), width="stretch",
+                              type="primary" if target in {"运行分析", "统计与异常演示"} else "secondary")
+        if analysis and anomalies:
+            with chart_container("rv-panel-summary"):
+                st.subheader("当前批次摘要")
+                st.metric("平均速度（km/h）", f"{analysis['speed']['mean']:.2f}")
+                st.metric("统计异常点", len(anomalies["points"]))
+                st.caption(f"加速度绝对值 > {threshold:g} m/s²；按通道计数。")
         with chart_container("rv-panel-recent"):
             st.subheader("最近分析")
             records = st.session_state.get("recent_analysis_records", [])
@@ -127,10 +140,4 @@ def render():
                         st.caption(f"{row['分析类型']} · {row['数据点数']:,} 样本 · {row['来源']} · {row['完成时间']}")
             if records:
                 st.caption("仅记录本会话实际计算，刷新新会话后不保留。")
-        with chart_container("rv-panel-actions"):
-            st.subheader("快捷操作")
-            actions = [("统计与异常演示", "体验基础统计"), ("动态运行驾驶舱", "运行驾驶舱"), ("演示中心", "演示中心")] if public else [("车辆参数", "管理车辆"), ("CSV 数据导入", "导入数据"), ("运行分析", "开始分析"), ("演示中心", "虚构数据演示")]
-            for target, title in actions:
-                action_button(title+" →", key=f"home_{target}", on_click=navigate, args=(target,), width="stretch",
-                              type="primary" if target == "运行分析" else "secondary")
         status_label("公开虚构数据演示" if public else "本地分析工作空间")
