@@ -122,6 +122,33 @@ class CockpitTests(unittest.TestCase):
         self.assertFalse(app.session_state[cockpit.STATE_KEY].playing)
         self.assertEqual(app.metric[2].value, "1.600")
 
+    def test_dense_events_are_paged_and_selection_survives_list_shrink(self):
+        from copy import deepcopy
+        from rail_vehicle.anomaly import detect_anomalies
+        track = cockpit._demo_track()
+        template = detect_anomalies(track.samples, 1)["events"][0]
+        events = [deepcopy(template) for _ in range(250)]
+        with patch.object(cockpit, "_demo_track", return_value=track), \
+             patch.object(cockpit, "_cached_events", return_value=events) as load:
+            app = self.demo_app()
+            self.assertEqual(len(app.selectbox(key="cockpit_event").options), 100)
+            self.assertTrue(any("共 250 个事件" in item.value for item in app.caption))
+            app.number_input(key="cockpit_event_page").set_value(3).run()
+            self.assertEqual(len(app.selectbox(key="cockpit_event").options), 50)
+            app.selectbox(key="cockpit_event").set_value(249).run()
+            app.button(key="cockpit_event_jump").click().run()
+            self.assertEqual(app.session_state[cockpit.STATE_KEY].position, 30)
+            load.return_value = events[:101]
+            app.run()
+            self.assertFalse(app.exception)
+            self.assertEqual(app.number_input(key="cockpit_event_page").value, 2)
+            self.assertEqual(app.selectbox(key="cockpit_event").value, 100)
+            load.return_value = events[:2]
+            app.run()
+            self.assertFalse(app.exception)
+            self.assertEqual(len(app.selectbox(key="cockpit_event").options), 2)
+            self.assertEqual(app.selectbox(key="cockpit_event").value, 0)
+
     def test_duplicate_timestamp_jump_and_zero_duration_window_are_explicit(self):
         from rail_vehicle.replay import prepare_replay
         track = prepare_replay([
@@ -151,6 +178,17 @@ class CockpitTests(unittest.TestCase):
         self.assertTrue(all(trace.mode == "markers" for trace in chart.data))
         self.assertEqual(list(chart.data[0].x), [0, 30])
         self.assertTrue(any(shape.type == "rect" for shape in chart.layout.shapes))
+
+    def test_dense_chart_limits_background_shapes_but_keeps_all_visible_markers(self):
+        from datetime import datetime, timedelta, timezone
+        from rail_vehicle.replay import prepare_replay
+        origin = datetime(2026, 10, 8, tzinfo=timezone.utc)
+        track = prepare_replay([dict(timestamp=(origin + timedelta(milliseconds=10 * i)).isoformat(),
+                                     speed_kmh=60, lateral_accel=2 if i % 2 == 0 else 0,
+                                     vertical_accel=0) for i in range(1000)])
+        chart = cockpit.build_replay_chart(track, 999, 9.99, 1)
+        self.assertEqual(len(chart.data[2].x), 500)
+        self.assertEqual(len(chart.layout.shapes), 4 + cockpit.CHART_EVENT_LIMIT)
 
     def test_sampling_gap_review_warns_and_jumps_without_changing_samples(self):
         from rail_vehicle.replay import prepare_replay

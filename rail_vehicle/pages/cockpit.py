@@ -30,6 +30,8 @@ STATE_KEY = "cockpit_state"
 SELECTION_KEY = "cockpit_selection"
 EVENT_CACHE_KEY = "cockpit_event_cache"
 QUALITY_CACHE_KEY = "cockpit_quality_cache"
+EVENTS_PER_PAGE = 100
+CHART_EVENT_LIMIT = 40
 
 
 def _cached_events(state, track, threshold):
@@ -98,7 +100,7 @@ def build_replay_chart(track: ReplayTrack, index: int, position: float, threshol
             for value in (-threshold, threshold):
                 figure.add_hline(y=value, line_dash="dash", line_color="#dc2626",
                                  row=row_index, col=1)
-    for event in detect_anomalies(rows, threshold)["events"]:
+    for event in detect_anomalies(rows, threshold)["events"][:CHART_EVENT_LIMIT]:
         row_index = 2 if event["field"] == "lateral_accel" else 3
         start, end = _offset(track, event["start_timestamp"]), _offset(track, event["end_timestamp"])
         if start == end:
@@ -204,7 +206,8 @@ def _render_instruments(track: ReplayTrack, threshold: float, max_speed: float, 
         st.caption("最近 60 秒 · 红色菱形为超阈值样本，高亮仅表示异常样本首末时间范围")
         plot_chart(build_replay_chart(track, index, state.position, threshold),
                         width="stretch", key="cockpit_curves")
-    st.caption("仅显示最近 60 秒最多 1,000 个观测点，不连接或补造采样空档；区段高亮不代表空档内持续观测异常。高倍速可能跳过部分仪表帧。")
+    st.caption(f"仅显示最近 60 秒最多 1,000 个观测点；区段高亮最多前 {CHART_EVENT_LIMIT} 段，菱形仍标示全部显示样本的超阈值点。"
+               "不连接或补造采样空档；区段高亮不代表空档内持续观测异常。高倍速可能跳过部分仪表帧。")
 
 
 def render() -> None:
@@ -275,7 +278,22 @@ def render() -> None:
     with st.expander("异常事件与窗口回放"):
         st.caption("事件按当前阈值与完整批次计算，连续指相邻异常样本；采样空档不能证明持续异常。")
         if events:
-            chosen = st.selectbox("选择统计异常事件", range(len(events)),
+            page_count = (len(events) + EVENTS_PER_PAGE - 1) // EVENTS_PER_PAGE
+            page = 1
+            if page_count > 1:
+                # A narrower threshold or a different batch can shrink the list.
+                previous_page = st.session_state.get("cockpit_event_page")
+                if previous_page is not None and not 1 <= previous_page <= page_count:
+                    st.session_state["cockpit_event_page"] = max(1, min(previous_page, page_count))
+                page = st.number_input("事件页（每页最多 100 条）", min_value=1, max_value=page_count,
+                                       value=1 if previous_page is None else None, step=1, key="cockpit_event_page")
+            start = (page - 1) * EVENTS_PER_PAGE
+            stop = min(start + EVENTS_PER_PAGE, len(events))
+            st.caption(f"共 {len(events):,} 个事件；当前显示 #{start + 1}–#{stop}。")
+            previous_event = st.session_state.get("cockpit_event")
+            if previous_event is not None and not start <= previous_event < stop:
+                st.session_state["cockpit_event"] = start
+            chosen = st.selectbox("选择统计异常事件", range(start, stop),
                                   format_func=lambda i: f"#{i+1} · {events[i]['type']} · {events[i]['start_timestamp']} → {events[i]['end_timestamp']}",
                                   key="cockpit_event")
             margin = st.number_input("事件前后窗口（秒）", min_value=0.0, max_value=3600.0,

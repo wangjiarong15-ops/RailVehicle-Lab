@@ -43,12 +43,12 @@ def timed(label, function):
     return result
 
 
-def run(count, repeats):
+def run(count, repeats, pattern="sparse"):
     origin = datetime(2026, 1, 1, tzinfo=timezone.utc)
     rows = [dict(timestamp=(origin + timedelta(milliseconds=10 * i)).isoformat(),
-                 speed_kmh=60., lateral_accel=2. if i % 1000 == 0 else .1,
+                 speed_kmh=60., lateral_accel=2. if i % (2 if pattern == "alternating" else 1000) == 0 else .1,
                  vertical_accel=.2) for i in range(count)]
-    print(f"虚构样本: {count:,}")
+    print(f"虚构样本: {count:,}；异常分布: {pattern}")
     track = timed("准备回放", lambda: prepare_replay(rows))
     state = {}
     events = timed("首次异常检查", lambda: _cached_events(state, track, 1.0))
@@ -71,11 +71,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--counts", type=int, nargs="+", default=[100000, 300000])
     parser.add_argument("--repeats", type=int, default=10000)
+    parser.add_argument("--pattern", choices=("sparse", "alternating"), default="sparse",
+                        help="alternating 为每隔一个样本超阈值的高密度场景")
     args = parser.parse_args()
     if any(count <= 0 for count in args.counts) or args.repeats <= 0:
         parser.error("样本数和重复次数必须为正整数")
     for count in args.counts:
-        run(count, args.repeats)
+        run(count, args.repeats, args.pattern)
 
 
 if __name__ == "__main__":
