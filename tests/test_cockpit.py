@@ -83,6 +83,39 @@ class CockpitTests(unittest.TestCase):
         self.assertNotEqual(cockpit.build_response_schematic.call_args.args[0]["lateral_accel"], 1.8)
         self.assertEqual(len(app.exception), 0)
 
+    def test_seek_event_window_return_and_threshold_invalidation(self):
+        app = self.demo_app()
+        app.slider(key="cockpit_seek").set_value(30.0).run()
+        self.assertEqual(app.session_state[cockpit.STATE_KEY].position, 30)
+        self.assertEqual(app.metric[1].value, "1.400")
+        app.button(key="cockpit_event_play").click().run()
+        self.assertFalse(app.exception)
+
+        window = app.session_state["cockpit_window"]["track"]
+        self.assertEqual(len(window.samples), 13)
+        self.assertEqual(window.duration, 12)
+        self.assertEqual(app.session_state[cockpit.STATE_KEY].position, 0)
+        app.slider(key="cockpit_seek").set_value(5.0).run()
+        self.assertEqual(app.metric[1].value, "1.400")
+        app.button(key="cockpit_window_clear").click().run()
+        self.assertNotIn("cockpit_window", app.session_state)
+        self.assertEqual(app.session_state[cockpit.STATE_KEY].position, 0)
+        app.button(key="cockpit_event_play").click().run()
+        app.number_input(key="cockpit_threshold").set_value(2.0).run()
+        self.assertNotIn("cockpit_window", app.session_state)
+        self.assertFalse(app.exception)
+
+    def test_chart_shows_samples_without_lines_across_gaps(self):
+        from rail_vehicle.replay import prepare_replay
+        track = prepare_replay([
+            dict(timestamp="2026-10-08T08:00:00Z", speed_kmh=60, lateral_accel=2, vertical_accel=0),
+            dict(timestamp="2026-10-08T08:00:30Z", speed_kmh=70, lateral_accel=2, vertical_accel=0),
+        ])
+        chart = cockpit.build_replay_chart(track, 1, 30, 1)
+        self.assertTrue(all(trace.mode == "markers" for trace in chart.data))
+        self.assertEqual(list(chart.data[0].x), [0, 30])
+        self.assertTrue(any(shape.type == "rect" for shape in chart.layout.shapes))
+
     def test_rate_threshold_end_and_source_reset(self):
         app = self.demo_app()
         app.selectbox(key="cockpit_rate").set_value(4.0).run()

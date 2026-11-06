@@ -3,7 +3,7 @@
 import unittest
 
 from rail_vehicle.replay import (
-    ReplayState, advance_replay, control_replay, prepare_replay, sample_status,
+    ReplayState, advance_replay, control_replay, prepare_replay, sample_status, event_replay_window,
 )
 
 
@@ -13,6 +13,17 @@ def row(timestamp, speed=60, lateral=0.1, vertical=-0.2):
 
 
 class ReplayTests(unittest.TestCase):
+    def test_event_window_preserves_duplicates_gaps_and_only_observed_samples(self):
+        track = prepare_replay([row("2026-10-08T08:00:00Z"), row("2026-10-08T08:00:10Z", 70),
+                                row("2026-10-08T08:00:10Z", 80), row("2026-10-08T08:00:40Z", 90)])
+        window = event_replay_window(track, 10, 10, 0)
+        self.assertEqual(window.offsets, (0, 0))
+        self.assertEqual([r["speed_kmh"] for r in window.samples], [70, 80])
+        window = event_replay_window(track, 10, 10, 30)
+        self.assertEqual(window.offsets, (0, 10, 10, 40))
+        with self.assertRaises(ValueError):
+            event_replay_window(track, 20, 20, 0)
+
     def test_track_orders_utc_and_preserves_irregular_spacing_and_values(self):
         samples = [row("2026-10-08T08:00:10Z", 80),
                    row("2026-10-08T16:00:00+08:00", 40),

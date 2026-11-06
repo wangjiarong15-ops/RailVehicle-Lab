@@ -3,6 +3,8 @@
 import csv
 import io
 import sqlite3
+from dataclasses import replace
+from datetime import timezone
 from time import monotonic
 
 import plotly.graph_objects as go
@@ -13,8 +15,10 @@ from rail_vehicle.ui import plot_chart, source_caption, chart_container, kpi
 from rail_vehicle.deployment import demo_source_options
 
 from rail_vehicle.demo_data import demo_csv_content
+from rail_vehicle.anomaly import detect_anomalies
+from rail_vehicle.timestamp_utils import parse_iso_timestamp
 from rail_vehicle.replay import (
-    ReplayState, ReplayTrack, advance_replay, control_replay, prepare_replay, sample_status,
+    ReplayState, ReplayTrack, advance_replay, control_replay, prepare_replay, sample_status, event_replay_window,
 )
 from rail_vehicle.run_data import list_batch_samples, list_vehicle_batches
 from rail_vehicle.vehicle_data import list_vehicles
@@ -22,6 +26,19 @@ from rail_vehicle.vehicle_data import list_vehicles
 
 STATE_KEY = "cockpit_state"
 SELECTION_KEY = "cockpit_selection"
+
+
+def _offset(track, timestamp):
+    def instant(value):
+        dt = parse_iso_timestamp(value)
+        return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
+    return (instant(timestamp) - instant(track.samples[0]["timestamp"])).total_seconds()
+
+
+def _seek_changed():
+    state = st.session_state[STATE_KEY]
+    st.session_state[STATE_KEY] = replace(state, position=float(st.session_state["cockpit_seek"]),
+                                           playing=False, last_tick=None)
 
 
 def _demo_track() -> ReplayTrack:
@@ -42,7 +59,7 @@ def build_replay_chart(track: ReplayTrack, index: int, position: float, threshol
     for row_index, (field, label, color) in enumerate(channels, start=1):
         values = [row[field] for row in rows]
         figure.add_trace(go.Scatter(x=offsets, y=values, name=label,
-                                   mode="lines+markers", marker_size=4,
+                                   mode="markers", marker_size=4,
                                    line_color=color), row=row_index, col=1)
         figure.update_yaxes(title_text=label, row=row_index, col=1)
         if row_index > 1:
@@ -55,6 +72,14 @@ def build_replay_chart(track: ReplayTrack, index: int, position: float, threshol
             for value in (-threshold, threshold):
                 figure.add_hline(y=value, line_dash="dash", line_color="#dc2626",
                                  row=row_index, col=1)
+    for event in detect_anomalies(rows, threshold)["events"]:
+        row_index = 2 if event["field"] == "lateral_accel" else 3
+        start, end = _offset(track, event["start_timestamp"]), _offset(track, event["end_timestamp"])
+        if start == end:
+            figure.add_vline(x=start, line_color="#dc2626", opacity=.5, row=row_index, col=1)
+        else:
+            figure.add_vrect(x0=start, x1=end, fillcolor="#dc2626", opacity=.13,
+                             line_width=0, row=row_index, col=1)
     figure.update_xaxes(range=[max(0, position - 60), max(10, position + 1)])
     figure.update_xaxes(title_text="相对运行时间（秒）", row=3, col=1)
     figure.update_layout(height=570, showlegend=False, margin=dict(l=20, r=20, t=15, b=20))
@@ -146,10 +171,10 @@ def _render_instruments(track: ReplayTrack, threshold: float, max_speed: float) 
         st.caption("状态仅描述当前样本的统计阈值，不构成车辆故障或运行安全判断。")
     with chart_col, chart_container("rv-panel-cockpit-curves"):
         st.subheader("运行信号")
-        st.caption("最近 60 秒 · 红色菱形为超阈值采样点")
+        st.caption("最近 60 秒 · 红色菱形为超阈值样本，高亮仅表示异常样本首末时间范围")
         plot_chart(build_replay_chart(track, index, state.position, threshold),
                         width="stretch", key="cockpit_curves")
-    st.caption("曲线显示最近 60 秒、最多 1,000 条已回放记录；不插值、不补造样本。高倍速可能跳过部分仪表帧，已回放异常点仍在曲线上标红。")
+    st.caption("仅显示最近 60 秒最多 1,000 个观测点，不连接或补造采样空档；区段高亮不代表空档内持续观测异常。高倍速可能跳过部分仪表帧。")
 
 
 def render() -> None:
@@ -196,7 +221,8 @@ def render() -> None:
             st.session_state[STATE_KEY] = ReplayState()
             st.session_state["cockpit_track"] = load_track()
             st.session_state[SELECTION_KEY] = selection
-        track = st.session_state["cockpit_track"]
+            st.session_state.pop("cockpit_window", None)
+        full_track = st.session_state["cockpit_track"]
     except (ValueError, TypeError, KeyError, OverflowError):
         st.session_state.pop(STATE_KEY, None)
         st.session_state.pop("cockpit_track", None)
@@ -207,17 +233,49 @@ def render() -> None:
         st.error("暂时无法读取历史运行数据，请稍后重试。")
         return
 
-    controls = st.columns([1, 1, 1, 2], vertical_alignment="bottom")
-    state = st.session_state.get(STATE_KEY, ReplayState())
-    action = None
-    if controls[0].button("播放", icon=":material/play_arrow:", type="primary", disabled=state.playing or track.duration == 0):
-        action = "play"
-    if controls[1].button("暂停", icon=":material/pause:", disabled=not state.playing):
-        action = "pause"
-    if controls[2].button("重置", icon=":material/restart_alt:"):
-        action = "reset"
-    rate = controls[3].selectbox("回放速度", [0.5, 1.0, 2.0, 4.0, 8.0], index=1,
-                                 format_func=lambda value: f"{value:g}×", key="cockpit_rate")
+    controls_slot = st.container()
+    events = detect_anomalies(full_track.samples, threshold)["events"]
+    active_window = st.session_state.get("cockpit_window")
+    if active_window and active_window["threshold"] != threshold:
+        st.session_state.pop("cockpit_window", None)
+        st.session_state[STATE_KEY] = ReplayState(rate=st.session_state.get(STATE_KEY, ReplayState()).rate)
+        active_window = None
+    with st.expander("异常事件与窗口回放"):
+        st.caption("事件按当前阈值与完整批次计算，连续指相邻异常样本；采样空档不能证明持续异常。")
+        if events:
+            chosen = st.selectbox("选择统计异常事件", range(len(events)),
+                                  format_func=lambda i: f"#{i+1} · {events[i]['type']} · {events[i]['start_timestamp']} → {events[i]['end_timestamp']}",
+                                  key="cockpit_event")
+            margin = st.number_input("事件前后窗口（秒）", min_value=0.0, max_value=3600.0,
+                                     value=5.0, step=1.0, key="cockpit_margin")
+            if st.button("回放事件窗口", key="cockpit_event_play"):
+                event = events[chosen]
+                window = event_replay_window(full_track, _offset(full_track, event["start_timestamp"]),
+                                             _offset(full_track, event["end_timestamp"]), margin)
+                st.session_state["cockpit_window"] = {"track": window, "threshold": threshold, "event": chosen + 1}
+                st.session_state[STATE_KEY] = ReplayState(rate=st.session_state.get(STATE_KEY, ReplayState()).rate)
+                st.rerun()
+        else:
+            st.info("当前阈值下没有统计异常事件。")
+        if active_window and st.button("返回完整批次", key="cockpit_window_clear"):
+            st.session_state.pop("cockpit_window", None)
+            st.session_state[STATE_KEY] = ReplayState(rate=st.session_state.get(STATE_KEY, ReplayState()).rate)
+            st.rerun()
+    track = active_window["track"] if active_window else full_track
+    if active_window:
+        st.caption(f"事件 #{active_window['event']} 窗口：实际样本 {track.samples[0]['timestamp']} 至 {track.samples[-1]['timestamp']}；仅使用该窗口观测点。")
+    with controls_slot:
+        controls = st.columns([1, 1, 1, 2], vertical_alignment="bottom")
+        state = st.session_state.get(STATE_KEY, ReplayState())
+        action = None
+        if controls[0].button("播放", icon=":material/play_arrow:", type="primary", disabled=state.playing or track.duration == 0):
+            action = "play"
+        if controls[1].button("暂停", icon=":material/pause:", disabled=not state.playing):
+            action = "pause"
+        if controls[2].button("重置", icon=":material/restart_alt:"):
+            action = "reset"
+        rate = controls[3].selectbox("回放速度", [0.5, 1.0, 2.0, 4.0, 8.0], index=1,
+                                     format_func=lambda value: f"{value:g}×", key="cockpit_rate")
     if rate != state.rate:
         state = control_replay(state, "rate", monotonic(), track.duration, rate=rate)
     if action:
@@ -225,6 +283,10 @@ def render() -> None:
     st.session_state[STATE_KEY] = state
     if action:
         st.rerun()
+    st.session_state["cockpit_seek"] = min(state.position, track.duration)
+    st.slider("时间轴定位（相对当前回放范围，秒；暂停时可拖动）", min_value=0.0,
+              max_value=max(1.0, track.duration), key="cockpit_seek", disabled=state.playing or track.duration == 0,
+              on_change=_seek_changed)
     if track.duration == 0:
         st.info("所有记录位于同一时刻，当前仅展示最后一条样本，无可播放的时间跨度。")
     st.fragment(run_every=0.5 if state.playing else None)(_render_instruments)(track, threshold, max_speed)

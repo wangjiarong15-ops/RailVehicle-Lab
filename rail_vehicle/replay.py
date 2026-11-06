@@ -1,6 +1,6 @@
 """Deterministic, clock-independent historical sample replay."""
 
-from bisect import bisect_right
+from bisect import bisect_left, bisect_right
 from dataclasses import dataclass, replace
 from datetime import timezone
 import math
@@ -50,6 +50,18 @@ def prepare_replay(samples: list[dict[str, Any]]) -> ReplayTrack:
         })
     offsets = tuple((instant - instants[0]).total_seconds() for instant in instants)
     return ReplayTrack(normalized, offsets)
+
+
+def event_replay_window(track: ReplayTrack, start: float, end: float, margin: float) -> ReplayTrack:
+    """Select observed samples in an inclusive event window; do not interpolate."""
+    if not all(math.isfinite(x) for x in (start, end, margin)) or margin < 0 or start > end:
+        raise ValueError("事件窗口必须是有效的时间范围。")
+    first = bisect_left(track.offsets, max(0.0, start - margin))
+    last = bisect_right(track.offsets, min(track.duration, end + margin))
+    if first >= last:
+        raise ValueError("事件窗口中没有观测样本。")
+    origin = track.offsets[first]
+    return ReplayTrack(track.samples[first:last], tuple(value - origin for value in track.offsets[first:last]))
 
 
 def advance_replay(state: ReplayState, now: float, duration: float) -> ReplayState:

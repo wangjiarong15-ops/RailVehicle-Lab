@@ -29,7 +29,7 @@ def render():
         if public:
             st.caption("公开演示模式禁止调用 AI 服务。")
         return
-    left, middle, right = st.columns([1.1, 2.2, 1.4])
+    left, middle, right = st.columns([1.0, 1.8, 1.8])
     with left:
         st.subheader("分析对象")
         requested = st.session_state.pop("ai_center_requested_kind", None)
@@ -121,8 +121,9 @@ def render():
                 st.caption("离线结果说明：选择证据后查看 Python 已计算的值及口径，无需 API。")
                 evidence_id = st.selectbox("核查证据", list(details), key=f"ai_center_evidence_{kind}")
                 rows = details[evidence_id]
-                st.dataframe([{field: row[field] for field in ("指标", "值", "单位")} for row in rows],
-                             hide_index=True, width="stretch")
+                st.dataframe([{"指标": row["指标"], "值 / 单位": f"{row['值']} {row['单位']}".strip()}
+                              for row in rows], hide_index=True, width="stretch",
+                             column_config={"指标": st.column_config.TextColumn("指标", width=110)})
                 st.caption(f"类别：{rows[0]['类别']}；轴向：{rows[0]['轴向']}；批次：{rows[0]['批次范围']}")
                 st.caption(f"计算口径：{rows[0]['口径']}")
             else:

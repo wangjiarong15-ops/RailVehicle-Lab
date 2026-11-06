@@ -81,7 +81,7 @@ def test_single_and_comparison_contexts_remain_separate():
     assert current_context(state, "single") is not None
 
 
-def test_all_five_contexts_accept_only_their_own_aggregate_types():
+def all_fictional_payloads():
     pytest.importorskip("sklearn")
     pytest.importorskip("scipy")
     from tests.test_ai_ui import comparison_payload
@@ -92,13 +92,17 @@ def test_all_five_contexts_accept_only_their_own_aggregate_types():
     from rail_vehicle.vibration import analyze_vibration
     from rail_vehicle.fleet_comparison import compare_vehicles
     from rail_vehicle.pages.fleet_comparison import demo_entries
-    payloads = {
+    return {
         "single": payload_fixture(),
         "batch": comparison_payload(),
         "ml": build_ml_experiment_payload(detect_ml_anomalies(*ml_demo_samples())),
         "vibration": build_vibration_experiment_payload(analyze_vibration(vibration_demo_samples())),
         "fleet": build_fleet_comparison_payload(dict(comparison=compare_vehicles(demo_entries()), speed_min=0, speed_max=600)),
     }
+
+
+def test_all_five_contexts_accept_only_their_own_aggregate_types():
+    payloads = all_fictional_payloads()
     state = {}
     for kind, payload in payloads.items():
         register_context(state, kind, payload, {"batch": kind})
@@ -107,6 +111,26 @@ def test_all_five_contexts_accept_only_their_own_aggregate_types():
         other = payloads["batch" if kind == "single" else "single"]
         with pytest.raises(ValueError):
             register_context(state, kind, other, {})
+
+
+def test_each_center_context_returns_to_its_source_without_calling_provider():
+    targets = {"single": "运行分析", "batch": "运行分析", "ml": "机器学习异常检测",
+               "vibration": "振动与平稳性分析", "fleet": "多车辆运行对比"}
+    state = {}
+    for kind, payload in all_fictional_payloads().items():
+        register_context(state, kind, payload, {"batch": kind})
+    with patch.object(ai_center.AIConfig, "from_sources", return_value=AIConfig(enabled=False)), \
+         patch.object(ai_center, "create_configured_provider") as factory:
+        app = AppTest.from_function(center_app, default_timeout=15)
+        app.session_state["fixture_initialized"] = True
+        app.session_state["ai_center_contexts"] = state["ai_center_contexts"]
+        for kind, target in targets.items():
+            app.session_state["ai_center_requested_kind"] = kind
+            app.run()
+            assert not app.exception
+            next(button for button in app.button if button.label == "返回分析页面").click().run()
+            assert app.session_state["navigation_page"] == target
+            factory.assert_not_called()
 
 
 def test_center_requires_click_and_renders_validated_evidence():
@@ -176,6 +200,11 @@ def test_source_link_opens_center_without_calling_provider():
         assert not app.exception
         assert app.session_state["navigation_page"] == "AI 智能分析中心"
         assert app.button(key="ai_center_generate").disabled
+        factory.assert_not_called()
+        next(button for button in app.button if button.label == "返回分析页面").click().run()
+        assert not app.exception
+        assert app.session_state["navigation_page"] == "运行分析"
+        assert app.button(key="ai_center_link_single")
         factory.assert_not_called()
 
 
