@@ -46,6 +46,61 @@ def navigation_app():
         render_center_link("single", payload_fixture(), {"vehicle_id": 1, "batch_id": 2})
 
 
+def actual_run_source_app():
+    import streamlit as st
+    from rail_vehicle.pages import ai_center, run_analysis
+    if st.session_state.get("navigation_page") == "AI 智能分析中心":
+        ai_center.render()
+    elif st.session_state.get("test_kind") == "batch":
+        run_analysis._render_batch_comparison()
+    else:
+        run_analysis._render_dynamics_analysis()
+
+
+@pytest.mark.parametrize("kind,result_key", [("single", "ai_single_batch_result"),
+                                               ("batch", "ai_batch_comparison_result")])
+def test_actual_run_analysis_round_trip_preserves_selection_and_invalidates_changed_input(kind, result_key):
+    from datetime import time
+    from rail_vehicle.demo_data import analysis_demo_data
+    from rail_vehicle.pages import run_analysis
+    from tests.test_ai_ui import valid_response
+    vehicle, batches, samples = analysis_demo_data()
+    class LocalFake:
+        def analyze(self, payload):
+            return FakeProvider(valid_response(payload)).analyze(payload)
+    config = AIConfig(enabled=True, provider="deepseek", model="mock", api_key="placeholder")
+    with patch.object(run_analysis, "list_vehicles", return_value=[vehicle]), \
+         patch.object(run_analysis, "list_vehicle_batches", return_value=batches), \
+         patch.object(run_analysis, "list_batch_samples", side_effect=lambda _vehicle, batch: samples[batch]), \
+         patch.object(ai_center.AIConfig, "from_sources", return_value=config), \
+         patch.object(ai_center, "create_configured_provider", return_value=LocalFake()) as factory:
+        app = AppTest.from_function(actual_run_source_app, default_timeout=20)
+        app.session_state["test_kind"] = kind
+        app.run()
+        assert not app.exception
+        if kind == "single":
+            app.number_input(key="analysis_threshold").set_value(1.5).run()
+        else:
+            assert app.multiselect(key="comparison_batch_ids_-1").value == [-1, -2]
+        app.button(key=f"ai_center_link_{kind}").click().run()
+        factory.assert_not_called()
+        app.button(key="ai_center_generate").click().run()
+        assert not app.exception
+        assert app.session_state[result_key]["scope_validation"] == "verified"
+        next(button for button in app.button if button.label == "返回分析页面").click().run()
+        assert not app.exception
+        assert app.session_state["navigation_page"] == "运行分析"
+        assert result_key in app.session_state
+        if kind == "single":
+            assert app.number_input(key="analysis_threshold").value == 1.5
+            app.time_input(key="analysis_start_time_-1_-1").set_value(time(9, 30, 10)).run()
+        else:
+            assert app.multiselect(key="comparison_batch_ids_-1").value == [-1, -2]
+            app.multiselect(key="comparison_batch_ids_-1").set_value([-1]).run()
+        assert result_key not in app.session_state
+        factory.assert_called_once()
+
+
 def test_snapshot_isolated_and_changed_selection_invalidates_result():
     state = {}
     payload = payload_fixture()
@@ -150,6 +205,22 @@ def test_center_requires_click_and_renders_validated_evidence():
         factory.assert_called_once()
         assert app.session_state["ai_single_batch_result"]["scope_validation"] == "verified"
         assert any("metric.speed.mean" in item.value for item in app.caption)
+
+
+def test_model_change_invalidates_success_without_automatic_request():
+    from tests.test_ai_ui import valid_response
+    response = valid_response(payload_fixture())
+    config = AIConfig(enabled=True, provider="deepseek", model="model-one", api_key="placeholder")
+    with patch.object(ai_center.AIConfig, "from_sources", return_value=config), \
+         patch.object(ai_center, "create_configured_provider", return_value=FakeProvider(response)) as factory:
+        app = AppTest.from_function(center_app).run()
+        app.button(key="ai_center_generate").click().run()
+        assert app.session_state["ai_single_batch_result"]["scope_validation"] == "verified"
+        app.text_input(key="ai_center_model_deepseek").set_value("model-two").run()
+        assert not app.exception
+        assert "ai_single_batch_result" not in app.session_state
+        assert all("速度统计结果已计算" not in item.value for item in app.text)
+        factory.assert_called_once()
 
 
 def test_public_center_does_not_load_configuration():

@@ -140,8 +140,10 @@ class FleetAITests(unittest.TestCase):
             self.assertEqual(seen[0]["analysis_type"], "fleet_comparison")
             self.assertTrue(any("横向加速度统计" in item.value for item in app.text))
             self.assertEqual(app.session_state["experiment_fleet_ai"]["scope_validation"], "verified")
-            app.session_state["navigation_page"] = "source"
-            app.run()
+            next(button for button in app.button if button.label == "返回分析页面").click().run()
+            self.assertEqual(app.session_state["navigation_page"], "多车辆运行对比")
+            self.assertEqual(app.radio(key="fleet_source").value, "内置虚构对比")
+            self.assertIn("experiment_fleet_ai", app.session_state)
             factory.assert_called_once()
             self.assertEqual(len(app.get("plotly_chart")), 3)
 
