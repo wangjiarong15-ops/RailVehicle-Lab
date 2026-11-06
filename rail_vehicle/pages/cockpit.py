@@ -28,6 +28,30 @@ from rail_vehicle.vehicle_data import list_vehicles
 
 STATE_KEY = "cockpit_state"
 SELECTION_KEY = "cockpit_selection"
+EVENT_CACHE_KEY = "cockpit_event_cache"
+QUALITY_CACHE_KEY = "cockpit_quality_cache"
+
+
+def _cached_events(state, track, threshold):
+    """Reuse facts only for this exact in-session track and threshold."""
+    cached = state.get(EVENT_CACHE_KEY)
+    if not cached or cached["track"] is not track or cached["threshold"] != threshold:
+        cached = {"track": track, "threshold": threshold,
+                  "events": detect_anomalies(track.samples, threshold)["events"]}
+        state[EVENT_CACHE_KEY] = cached
+    return cached["events"]
+
+
+def _cached_sampling_review(state, track, expected, multiplier):
+    """Sampling rules affect only presentation, never the stored samples."""
+    cached = state.get(QUALITY_CACHE_KEY)
+    if (not cached or cached["track"] is not track or cached["expected"] != expected
+            or cached["multiplier"] != multiplier):
+        cached = {"track": track, "expected": expected, "multiplier": multiplier,
+                  "review": review_sampling_timestamps((row["timestamp"] for row in track.samples),
+                              expected_interval_seconds=expected or None, gap_multiplier=multiplier)}
+        state[QUALITY_CACHE_KEY] = cached
+    return cached["review"]
 
 
 def _offset(track, timestamp):
@@ -228,6 +252,8 @@ def render() -> None:
             st.session_state["cockpit_track"] = load_track()
             st.session_state[SELECTION_KEY] = selection
             st.session_state.pop("cockpit_window", None)
+            st.session_state.pop(EVENT_CACHE_KEY, None)
+            st.session_state.pop(QUALITY_CACHE_KEY, None)
         full_track = st.session_state["cockpit_track"]
     except (ValueError, TypeError, KeyError, OverflowError):
         st.session_state.pop(STATE_KEY, None)
@@ -240,7 +266,7 @@ def render() -> None:
         return
 
     controls_slot = st.container()
-    events = detect_anomalies(full_track.samples, threshold)["events"]
+    events = _cached_events(st.session_state, full_track, threshold)
     active_window = st.session_state.get("cockpit_window")
     if active_window and active_window["threshold"] != threshold:
         st.session_state.pop("cockpit_window", None)
@@ -282,8 +308,7 @@ def render() -> None:
                                            value=0.0, step=0.01, format="%.6f", key="cockpit_gap_expected")
         multiplier = columns[1].number_input("长间隔判定倍数", min_value=1.1, max_value=1000.0,
                                              value=3.0, step=0.5, key="cockpit_gap_multiplier")
-        review = review_sampling_timestamps((row["timestamp"] for row in full_track.samples),
-                                            expected_interval_seconds=expected or None, gap_multiplier=multiplier)
+        review = _cached_sampling_review(st.session_state, full_track, expected, multiplier)
         baseline = review["baseline_seconds"]
         st.write(f"完整批次：重复时刻额外记录 {review['duplicate_timestamp_rows']} 条，长采样间隔 {review['long_gap_count']} 处。")
         if baseline is None:

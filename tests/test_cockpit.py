@@ -187,6 +187,41 @@ class CockpitTests(unittest.TestCase):
             self.assertTrue(any("不足两个独立时刻" in item.value for item in app.info))
             self.assertFalse(app.exception)
 
+    def test_replay_reuses_full_batch_checks_until_inputs_change(self):
+        with patch.object(cockpit, "detect_anomalies", wraps=cockpit.detect_anomalies) as anomalies, \
+             patch.object(cockpit, "review_sampling_timestamps", wraps=cockpit.review_sampling_timestamps) as quality:
+            app = self.demo_app()
+            track = app.session_state["cockpit_track"]
+            full_calls = lambda: sum(call.args[0] is track.samples for call in anomalies.call_args_list)
+            self.assertEqual(full_calls(), 1)
+            self.assertEqual(quality.call_count, 1)
+            app.slider(key="cockpit_seek").set_value(30.0).run()
+            self.assertEqual(app.metric[1].value, "1.400")
+            self.assertEqual(full_calls(), 1)
+            self.assertEqual(quality.call_count, 1)
+            app.number_input(key="cockpit_gap_expected").set_value(2.0).run()
+            self.assertEqual(quality.call_count, 2)
+            self.assertEqual(full_calls(), 1)
+            app.number_input(key="cockpit_threshold").set_value(2.0).run()
+            self.assertEqual(full_calls(), 2)
+            self.assertEqual(quality.call_count, 2)
+            self.assertFalse(app.exception)
+
+    def test_replay_checks_do_not_cross_distinct_tracks(self):
+        from rail_vehicle.replay import prepare_replay
+        rows = [dict(timestamp="2026-10-08T08:00:00Z", speed_kmh=60,
+                     lateral_accel=2, vertical_accel=0)]
+        first, second = prepare_replay(rows), prepare_replay(rows)
+        state = {}
+        with patch.object(cockpit, "detect_anomalies", wraps=cockpit.detect_anomalies) as anomalies, \
+             patch.object(cockpit, "review_sampling_timestamps", wraps=cockpit.review_sampling_timestamps) as quality:
+            cockpit._cached_events(state, first, 1)
+            cockpit._cached_sampling_review(state, first, 0, 3)
+            cockpit._cached_events(state, second, 1)
+            cockpit._cached_sampling_review(state, second, 0, 3)
+            self.assertEqual(anomalies.call_count, 2)
+            self.assertEqual(quality.call_count, 2)
+
     def test_gap_warning_preserves_last_observed_threshold_exceedance(self):
         from rail_vehicle.replay import prepare_replay
         rows = [dict(timestamp=f"2026-10-08T08:00:{second:02d}Z", speed_kmh=60,
