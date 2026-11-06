@@ -1,6 +1,7 @@
 """AI center navigation, session isolation and opt-in dispatch."""
 
 from unittest.mock import patch
+import pytest
 
 from streamlit.testing.v1 import AppTest
 
@@ -78,6 +79,34 @@ def test_single_and_comparison_contexts_remain_separate():
     state["ai_center_contexts"]["batch"]["selection"]["batches"] = [2, 3]
     assert current_context(state, "batch") is None
     assert current_context(state, "single") is not None
+
+
+def test_all_five_contexts_accept_only_their_own_aggregate_types():
+    pytest.importorskip("sklearn")
+    pytest.importorskip("scipy")
+    from tests.test_ai_ui import comparison_payload
+    from rail_vehicle.ai.experiment_context import build_ml_experiment_payload, build_vibration_experiment_payload
+    from rail_vehicle.ai.fleet_context import build_fleet_comparison_payload
+    from rail_vehicle.demo_data import ml_demo_samples, vibration_demo_samples
+    from rail_vehicle.ml_anomaly import detect_ml_anomalies
+    from rail_vehicle.vibration import analyze_vibration
+    from rail_vehicle.fleet_comparison import compare_vehicles
+    from rail_vehicle.pages.fleet_comparison import demo_entries
+    payloads = {
+        "single": payload_fixture(),
+        "batch": comparison_payload(),
+        "ml": build_ml_experiment_payload(detect_ml_anomalies(*ml_demo_samples())),
+        "vibration": build_vibration_experiment_payload(analyze_vibration(vibration_demo_samples())),
+        "fleet": build_fleet_comparison_payload(dict(comparison=compare_vehicles(demo_entries()), speed_min=0, speed_max=600)),
+    }
+    state = {}
+    for kind, payload in payloads.items():
+        register_context(state, kind, payload, {"batch": kind})
+        assert current_context(state, kind)["payload"]["analysis_type"] == payload["analysis_type"]
+    for kind in payloads:
+        other = payloads["batch" if kind == "single" else "single"]
+        with pytest.raises(ValueError):
+            register_context(state, kind, other, {})
 
 
 def test_center_requires_click_and_renders_validated_evidence():
