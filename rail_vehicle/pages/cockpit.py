@@ -16,9 +16,11 @@ from rail_vehicle.deployment import demo_source_options
 
 from rail_vehicle.demo_data import demo_csv_content
 from rail_vehicle.anomaly import detect_anomalies
+from rail_vehicle.data_quality import review_sampling_timestamps
 from rail_vehicle.timestamp_utils import parse_iso_timestamp
 from rail_vehicle.replay import (
     ReplayState, ReplayTrack, advance_replay, control_replay, prepare_replay, sample_status, event_replay_window,
+    replay_long_gap_at,
 )
 from rail_vehicle.run_data import list_batch_samples, list_vehicle_batches
 from rail_vehicle.vehicle_data import list_vehicles
@@ -127,7 +129,7 @@ def build_response_schematic(sample, threshold):
     return figure
 
 
-def _render_instruments(track: ReplayTrack, threshold: float, max_speed: float) -> None:
+def _render_instruments(track: ReplayTrack, threshold: float, max_speed: float, gap_cutoff: float | None) -> None:
     previous = st.session_state[STATE_KEY]
     state = advance_replay(previous, monotonic(), track.duration)
     st.session_state[STATE_KEY] = state
@@ -140,11 +142,15 @@ def _render_instruments(track: ReplayTrack, threshold: float, max_speed: float) 
         "回放结束" if state.position >= track.duration else "已暂停"
     )
     cols = st.columns(4)
-    kpi(cols[0], "当前速度（km/h）", f"{sample['speed_kmh']:.1f}", "当前历史采样点")
+    kpi(cols[0], "当前速度（km/h）", f"{sample['speed_kmh']:.1f}", "最近观测样本")
     kpi(cols[1], "横向加速度（m/s²）", f"{sample['lateral_accel']:.3f}", "横向通道 · 带符号原值")
     kpi(cols[2], "垂向加速度（m/s²）", f"{sample['vertical_accel']:.3f}", "垂向通道 · 带符号原值")
     kpi(cols[3], "回放状态", state_label, f"{state.rate:g}× · 历史数据模拟")
-    if exceeded:
+    gap = replay_long_gap_at(track, state.position, gap_cutoff)
+    if gap:
+        observed = "超阈值：" + "、".join(exceeded) if exceeded else "未超过设定阈值"
+        st.warning(f"当前回放时刻处于历史长采样间隔；仪表沿用间隔前最后一个观测样本，该样本{observed}，不代表空档内状态。")
+    elif exceeded:
         st.error("当前样本数据超阈值：" + "、".join(exceeded))
     else:
         st.success("当前样本未超过设定的加速度阈值。")
@@ -270,6 +276,38 @@ def render() -> None:
             st.session_state.pop("cockpit_window", None)
             st.session_state[STATE_KEY] = ReplayState(rate=st.session_state.get(STATE_KEY, ReplayState()).rate)
             st.rerun()
+    with st.expander("采样间隔与空档定位"):
+        columns = st.columns(2)
+        expected = columns[0].number_input("预期采样间隔（秒，0 表示自动）", min_value=0.0, max_value=1000000000.0,
+                                           value=0.0, step=0.01, format="%.6f", key="cockpit_gap_expected")
+        multiplier = columns[1].number_input("长间隔判定倍数", min_value=1.1, max_value=1000.0,
+                                             value=3.0, step=0.5, key="cockpit_gap_multiplier")
+        review = review_sampling_timestamps((row["timestamp"] for row in full_track.samples),
+                                            expected_interval_seconds=expected or None, gap_multiplier=multiplier)
+        baseline = review["baseline_seconds"]
+        st.write(f"完整批次：重复时刻额外记录 {review['duplicate_timestamp_rows']} 条，长采样间隔 {review['long_gap_count']} 处。")
+        if baseline is None:
+            st.info("不足两个独立时刻，无法判断采样间隔。")
+        else:
+            source = "手动指定" if expected else "去重后间隔中位数自动估计"
+            st.caption(f"基准 {baseline:.6g} 秒（{source}）；严格大于 {review['gap_cutoff_seconds']:.6g} 秒标为长间隔。"
+                       "自动估计可能漏掉持续低采样率或规则性缺测，已知采集间隔时请手动填写。")
+        if review["long_gaps"]:
+            gaps = review["long_gaps"]
+            selected_gap = st.selectbox("选择长采样间隔", range(len(gaps)),
+                format_func=lambda i: f"#{i+1} · {gaps[i]['start_timestamp']} → {gaps[i]['end_timestamp']} · {gaps[i]['interval_seconds']:.3f} 秒",
+                key="cockpit_gap")
+            gap_start, gap_end = st.columns(2)
+            for column, label, boundary, key in ((gap_start, "定位间隔前样本", "start_timestamp", "cockpit_gap_before"),
+                                                  (gap_end, "定位间隔后样本", "end_timestamp", "cockpit_gap_after")):
+                if column.button(label, key=key, width="stretch"):
+                    st.session_state.pop("cockpit_window", None)
+                    rate = st.session_state.get(STATE_KEY, ReplayState()).rate
+                    st.session_state[STATE_KEY] = ReplayState(position=_offset(full_track, gaps[selected_gap][boundary]), rate=rate)
+                    st.rerun()
+            if review["details_truncated"]:
+                st.caption(f"共 {review['long_gap_count']} 处，仅提供前 {len(gaps)} 处定位；计数覆盖完整批次。")
+        st.caption("仅检查时间分布，不判断数据是否完整或合格；历史样本已排序，原 CSV 顺序请查看导入检查。")
     track = active_window["track"] if active_window else full_track
     if active_window:
         st.caption(f"事件 #{active_window['event']} 窗口：实际样本 {track.samples[0]['timestamp']} 至 {track.samples[-1]['timestamp']}；仅使用该窗口观测点。")
@@ -298,4 +336,5 @@ def render() -> None:
               on_change=_seek_changed)
     if track.duration == 0:
         st.info("所有记录位于同一时刻，当前仅展示最后一条样本，无可播放的时间跨度。")
-    st.fragment(run_every=0.5 if state.playing else None)(_render_instruments)(track, threshold, max_speed)
+    st.fragment(run_every=0.5 if state.playing else None)(_render_instruments)(
+        track, threshold, max_speed, review["gap_cutoff_seconds"])

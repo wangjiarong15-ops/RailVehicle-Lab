@@ -64,6 +64,17 @@ def event_replay_window(track: ReplayTrack, start: float, end: float, margin: fl
     return ReplayTrack(track.samples[first:last], tuple(value - origin for value in track.offsets[first:last]))
 
 
+def replay_long_gap_at(track: ReplayTrack, position: float, cutoff: float | None) -> tuple[float, float] | None:
+    """Find the known long interval containing a replay time, excluding its endpoints."""
+    if cutoff is None:
+        return None
+    index = track.index_at(position)
+    if index + 1 >= len(track.offsets):
+        return None
+    start, end = track.offsets[index:index + 2]
+    return (start, end) if start < position < end and end - start > cutoff else None
+
+
 def advance_replay(state: ReplayState, now: float, duration: float) -> ReplayState:
     """Advance by monotonic wall-clock time, stopping exactly at the last sample."""
     if not state.playing or state.last_tick is None:

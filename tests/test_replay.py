@@ -4,6 +4,7 @@ import unittest
 
 from rail_vehicle.replay import (
     ReplayState, advance_replay, control_replay, prepare_replay, sample_status, event_replay_window,
+    replay_long_gap_at,
 )
 
 
@@ -13,6 +14,15 @@ def row(timestamp, speed=60, lateral=0.1, vertical=-0.2):
 
 
 class ReplayTests(unittest.TestCase):
+    def test_gap_warning_uses_observed_boundaries_and_strict_cutoff(self):
+        track = prepare_replay([row("2026-10-08T08:00:00Z"), row("2026-10-08T08:00:01Z"),
+                                row("2026-10-08T08:00:01Z", 80), row("2026-10-08T08:00:11Z")])
+        self.assertEqual(replay_long_gap_at(track, 5, 3), (1, 11))
+        for position in (0, 1, 11):
+            self.assertIsNone(replay_long_gap_at(track, position, 3))
+        self.assertIsNone(replay_long_gap_at(track, 5, 10))
+        self.assertIsNone(replay_long_gap_at(track, 5, None))
+
     def test_event_window_preserves_duplicates_gaps_and_only_observed_samples(self):
         track = prepare_replay([row("2026-10-08T08:00:00Z"), row("2026-10-08T08:00:10Z", 70),
                                 row("2026-10-08T08:00:10Z", 80), row("2026-10-08T08:00:40Z", 90)])

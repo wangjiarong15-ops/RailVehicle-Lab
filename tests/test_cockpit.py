@@ -152,6 +152,53 @@ class CockpitTests(unittest.TestCase):
         self.assertEqual(list(chart.data[0].x), [0, 30])
         self.assertTrue(any(shape.type == "rect" for shape in chart.layout.shapes))
 
+    def test_sampling_gap_review_warns_and_jumps_without_changing_samples(self):
+        from rail_vehicle.replay import prepare_replay
+        rows = [dict(timestamp=f"2026-10-08T08:00:{s:02d}Z", speed_kmh=speed,
+                     lateral_accel=0, vertical_accel=0)
+                for s, speed in ((0, 60), (1, 61), (2, 62), (2, 63), (20, 70), (21, 71))]
+        track = prepare_replay(rows)
+        with patch.object(cockpit, "_demo_track", return_value=track):
+            app = self.demo_app()
+            self.assertTrue(any("重复时刻额外记录 1 条，长采样间隔 1 处" in item.value for item in app.markdown))
+            app.slider(key="cockpit_seek").set_value(5.0).run()
+            self.assertEqual(app.metric[0].value, "63.0")
+            self.assertTrue(any("历史长采样间隔" in item.value for item in app.warning))
+            self.assertFalse(any("当前样本未超过" in item.value for item in app.success))
+            app.button(key="cockpit_gap_before").click().run()
+            self.assertEqual(app.session_state[cockpit.STATE_KEY].position, 2)
+            self.assertEqual(app.metric[0].value, "63.0")
+            app.button(key="cockpit_gap_after").click().run()
+            self.assertEqual(app.session_state[cockpit.STATE_KEY].position, 20)
+            self.assertEqual(app.metric[0].value, "70.0")
+            app.slider(key="cockpit_seek").set_value(5.0).run()
+            app.number_input(key="cockpit_gap_expected").set_value(10.0).run()
+            self.assertEqual(app.session_state[cockpit.STATE_KEY].position, 5)
+            self.assertFalse(any("历史长采样间隔" in item.value for item in app.warning))
+            self.assertEqual(track.samples[2]["speed_kmh"], 62)
+            self.assertFalse(app.exception)
+
+    def test_sampling_review_for_single_timestamp_cannot_infer_interval(self):
+        from rail_vehicle.replay import prepare_replay
+        track = prepare_replay([dict(timestamp="2026-10-08T08:00:00Z", speed_kmh=60,
+                                     lateral_accel=0, vertical_accel=0)])
+        with patch.object(cockpit, "_demo_track", return_value=track):
+            app = self.demo_app()
+            self.assertTrue(any("不足两个独立时刻" in item.value for item in app.info))
+            self.assertFalse(app.exception)
+
+    def test_gap_warning_preserves_last_observed_threshold_exceedance(self):
+        from rail_vehicle.replay import prepare_replay
+        rows = [dict(timestamp=f"2026-10-08T08:00:{second:02d}Z", speed_kmh=60,
+                     lateral_accel=2 if second == 2 else 0, vertical_accel=0)
+                for second in (0, 1, 2, 20, 21)]
+        with patch.object(cockpit, "_demo_track", return_value=prepare_replay(rows)):
+            app = self.demo_app()
+            app.slider(key="cockpit_seek").set_value(5.0).run()
+            self.assertTrue(any("该样本超阈值：横向加速度" in item.value for item in app.warning))
+            self.assertFalse(any("当前样本未超过" in item.value for item in app.success))
+            self.assertFalse(app.exception)
+
     def test_rate_threshold_end_and_source_reset(self):
         app = self.demo_app()
         app.selectbox(key="cockpit_rate").set_value(4.0).run()
