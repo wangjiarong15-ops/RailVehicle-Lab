@@ -1,6 +1,11 @@
 """Local Streamlit entry point for RailVehicle-Lab."""
 
 import streamlit as st
+# Streamlit may interrupt a running script when a user changes page.  Finish
+# pandas' lazy initialization before rendering navigation: Plotly otherwise can
+# see a partially initialized module on the next run.  pandas is a Streamlit
+# runtime dependency; no user data is loaded here.
+import pandas  # noqa: F401
 
 from rail_vehicle.db import init_db
 from rail_vehicle.deployment import public_demo_enabled

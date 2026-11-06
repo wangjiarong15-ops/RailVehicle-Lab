@@ -1,6 +1,8 @@
 """Basic Streamlit navigation smoke tests isolated from the local database."""
 
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -16,6 +18,16 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 class AppSmokeTests(unittest.TestCase):
+    def test_fresh_process_completes_pandas_initialization_before_page_navigation(self):
+        # A fresh interpreter matters: the Streamlit test runner may already
+        # have imported pandas, hiding interrupted lazy-import failures.
+        code = ("import app, sys; p = sys.modules['pandas']; "
+                "assert hasattr(p, 'Series') and hasattr(p, 'Index'); "
+                "import plotly.graph_objects as go; go.Scatter(x=[1], y=[2])")
+        result = subprocess.run([sys.executable, "-c", code], cwd=PROJECT_ROOT,
+                                capture_output=True, text=True, timeout=45)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_vehicle_and_run_analysis_pages_render_without_existing_data(self):
         with tempfile.TemporaryDirectory(prefix="rail-app-smoke-") as directory:
             db_path = Path(directory) / "smoke.sqlite3"
