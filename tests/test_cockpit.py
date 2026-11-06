@@ -95,6 +95,9 @@ class CockpitTests(unittest.TestCase):
         self.assertEqual(len(window.samples), 13)
         self.assertEqual(window.duration, 12)
         self.assertEqual(app.session_state[cockpit.STATE_KEY].position, 0)
+        self.assertTrue(app.session_state[cockpit.STATE_KEY].playing)
+        self.assertTrue(app.slider(key="cockpit_seek").disabled)
+        next(button for button in app.button if button.label == "暂停").click().run()
         app.slider(key="cockpit_seek").set_value(5.0).run()
         self.assertEqual(app.metric[1].value, "1.400")
         app.button(key="cockpit_window_clear").click().run()
@@ -104,6 +107,39 @@ class CockpitTests(unittest.TestCase):
         app.number_input(key="cockpit_threshold").set_value(2.0).run()
         self.assertNotIn("cockpit_window", app.session_state)
         self.assertFalse(app.exception)
+
+    def test_jump_to_event_restores_full_track_and_pauses_at_event_time(self):
+        app = self.demo_app()
+        app.selectbox(key="cockpit_rate").set_value(4.0).run()
+        app.button(key="cockpit_event_play").click().run()
+        self.assertTrue(app.session_state[cockpit.STATE_KEY].playing)
+        app.selectbox(key="cockpit_event").set_value(1).run()
+        app.button(key="cockpit_event_jump").click().run()
+        self.assertFalse(app.exception)
+        self.assertNotIn("cockpit_window", app.session_state)
+        self.assertEqual(app.session_state[cockpit.STATE_KEY].position, 70.0)
+        self.assertEqual(app.session_state[cockpit.STATE_KEY].rate, 4.0)
+        self.assertFalse(app.session_state[cockpit.STATE_KEY].playing)
+        self.assertEqual(app.metric[2].value, "1.600")
+
+    def test_duplicate_timestamp_jump_and_zero_duration_window_are_explicit(self):
+        from rail_vehicle.replay import prepare_replay
+        track = prepare_replay([
+            dict(timestamp="2026-10-08T08:00:00Z", speed_kmh=60, lateral_accel=0, vertical_accel=0),
+            dict(timestamp="2026-10-08T08:00:10Z", speed_kmh=61, lateral_accel=2, vertical_accel=0),
+            dict(timestamp="2026-10-08T08:00:10Z", speed_kmh=62, lateral_accel=0, vertical_accel=0),
+        ])
+        with patch.object(cockpit, "_demo_track", return_value=track):
+            app = self.demo_app()
+            app.button(key="cockpit_event_jump").click().run()
+            self.assertEqual(app.metric[0].value, "62.0")
+            self.assertTrue(any("最后一条" in item.value for item in app.caption))
+            app.number_input(key="cockpit_margin").set_value(0.0).run()
+            app.button(key="cockpit_event_play").click().run()
+            self.assertFalse(app.session_state[cockpit.STATE_KEY].playing)
+            self.assertEqual(len(app.session_state["cockpit_window"]["track"].samples), 2)
+            self.assertTrue(any("无可播放的时间跨度" in item.value for item in app.info))
+            self.assertFalse(app.exception)
 
     def test_chart_shows_samples_without_lines_across_gaps(self):
         from rail_vehicle.replay import prepare_replay

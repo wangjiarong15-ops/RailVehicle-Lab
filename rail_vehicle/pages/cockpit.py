@@ -248,13 +248,22 @@ def render() -> None:
                                   key="cockpit_event")
             margin = st.number_input("事件前后窗口（秒）", min_value=0.0, max_value=3600.0,
                                      value=5.0, step=1.0, key="cockpit_margin")
-            if st.button("回放事件窗口", key="cockpit_event_play"):
+            jump_col, window_col = st.columns(2)
+            if jump_col.button("定位事件起点", key="cockpit_event_jump", width="stretch"):
+                event = events[chosen]
+                st.session_state.pop("cockpit_window", None)
+                rate = st.session_state.get(STATE_KEY, ReplayState()).rate
+                st.session_state[STATE_KEY] = ReplayState(position=_offset(full_track, event["start_timestamp"]), rate=rate)
+                st.rerun()
+            if window_col.button("回放事件窗口", key="cockpit_event_play", width="stretch"):
                 event = events[chosen]
                 window = event_replay_window(full_track, _offset(full_track, event["start_timestamp"]),
                                              _offset(full_track, event["end_timestamp"]), margin)
                 st.session_state["cockpit_window"] = {"track": window, "threshold": threshold, "event": chosen + 1}
-                st.session_state[STATE_KEY] = ReplayState(rate=st.session_state.get(STATE_KEY, ReplayState()).rate)
+                initial = ReplayState(rate=st.session_state.get(STATE_KEY, ReplayState()).rate)
+                st.session_state[STATE_KEY] = control_replay(initial, "play", monotonic(), window.duration)
                 st.rerun()
+            st.caption("定位后暂停在完整批次的事件时间；同一时刻有多条记录时，仪表显示该时刻最后一条。")
         else:
             st.info("当前阈值下没有统计异常事件。")
         if active_window and st.button("返回完整批次", key="cockpit_window_clear"):
