@@ -11,6 +11,7 @@ from pathlib import Path
 DEMO_VEHICLE_CODE = "DEMO-001"
 DEMO_SAMPLE_COUNT = 120
 DEMO_FILE_NAMES = ("demo_run_1.csv", "demo_run_2.csv")
+DEMO_BATCH_IDS = tuple(-(index + 1) for index in range(len(DEMO_FILE_NAMES)))
 CSV_HEADER = (
     "timestamp",
     "vehicle_id",
@@ -132,8 +133,7 @@ def analysis_demo_data():
                    vehicle_length_m=20, mass_kg=40000, axle_count=4, bogie_count=2,
                    max_speed_kmh=160, notes="虚构数据，不代表真实车辆运行记录。")
     batches, samples_by_batch = [], {}
-    for index in range(2):
-        batch_id = -(index + 1)
+    for index, batch_id in enumerate(DEMO_BATCH_IDS):
         samples_by_batch[batch_id] = [
             dict(timestamp=row["timestamp"], **{
                 field: float(row[field]) for field in ("speed_kmh", "lateral_accel", "vertical_accel")})

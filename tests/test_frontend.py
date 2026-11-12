@@ -247,9 +247,11 @@ class FrontendTests(unittest.TestCase):
         with patch.dict(os.environ, {"RAIL_PUBLIC_DEMO": "true"}), patch.object(home, "load_dashboard", side_effect=AssertionError("private database")):
             app = AppTest.from_function(public_home_app).run()
             self.assertFalse(app.exception)
-            self.assertTrue(all(metric.value == "—" for metric in app.metric))
+            self.assertFalse(app.metric)
             self.assertTrue(any("内置虚构演示" in item.value for item in app.caption))
             self.assertEqual(len(app.dataframe), 0)
+            self.assertFalse(app.button(key="launch_demo_bogie").disabled)
+            self.assertFalse(app.button(key="launch_demo_evidence").disabled)
 
     def test_session_history_only_records_executed_unique_analysis(self):
         app = AppTest.from_function(records_app).run()

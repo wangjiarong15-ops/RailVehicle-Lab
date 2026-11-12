@@ -49,12 +49,59 @@ def _cited_event_links(analysis, events, selection):
         st.caption("本次 AI 解读未引用可定位的异常区段。")
 
 
+def _render_demo_evidence():
+    from rail_vehicle.ai.context import build_single_batch_payload
+    from rail_vehicle.anomaly import detect_anomalies
+    from rail_vehicle.demo_data import analysis_demo_data
+    from rail_vehicle.dynamics import analyze_run_data
+
+    st.info("虚构数据证据演示 · 数值由 Python 计算；本演示未生成 AI 解读，也不读取 AI 配置。")
+    vehicle, batches, samples = analysis_demo_data()
+    batch = st.selectbox("虚构证据批次", [item["id"] for item in batches],
+                         format_func=lambda value: f"虚构批次 {-value}", key="ai_demo_batch")
+    if "ai_demo_threshold" not in st.session_state:
+        st.session_state["ai_demo_threshold"] = 1.0
+    threshold = st.number_input("加速度绝对值阈值（m/s²）", min_value=0.0, value=None,
+                                step=0.1, key="ai_demo_threshold")
+    threshold = 1.0 if threshold is None else threshold
+    analysis = analyze_run_data(samples[batch], threshold)
+    anomalies = detect_anomalies(analysis["samples"], threshold)
+    payload = build_single_batch_payload(analysis=analysis, anomalies=anomalies, vehicle=vehicle,
+                                         batch_ref="B1", selected_start=analysis["samples"][0]["timestamp"],
+                                         selected_end=analysis["samples"][-1]["timestamp"])
+    events = {event["evidence_id"]: event for event in payload["anomaly_events"]}
+    catalog = evidence_detail_catalog(payload)
+    facts, guide = st.columns([2, 1])
+    with facts, st.container(border=True):
+        st.subheader("核查 Python 计算的证据")
+        evidence_ids = [*events, *(item for item in catalog if item not in events)]
+        evidence_id = st.selectbox("虚构证据 ID", evidence_ids, key="ai_demo_evidence")
+        rows = catalog[evidence_id]
+        st.dataframe([{"指标": row["指标"], "值 / 单位": f"{row['值']} {row['单位']}".strip()}
+                      for row in rows], hide_index=True, width="stretch")
+        st.caption(f"计算口径：{rows[0]['口径']}")
+        if evidence_id in events:
+            event = events[evidence_id]
+            event_replay_button(label="在三维回放中查看虚构区段", key="ai_demo_bogie_jump",
+                                vehicle_id=vehicle["id"], batch_id=batch, threshold=threshold,
+                                timestamp=event["start_timestamp"], axis=event["type"], fictional=True)
+    with guide, st.container(border=True):
+        st.subheader("如何解释证据")
+        st.write("证据 ID 对应聚合指标或异常区段，可以回查计算口径和样本。")
+        st.caption("超过阈值描述的是数据状态。即使 AI 引用了正确证据，可能原因也需要进一步验证。")
+        st.button("返回演示中心", key="ai_demo_back", on_click=navigate, args=("演示中心",))
+
+
 def render():
     page_title("AI 智能分析中心", "仅解释当前会话中已计算的结构化结果")
     st.caption("AI 内容仅供辅助参考，不构成故障、事故、安全、法规或标准舒适等级结论。")
     public = public_demo_enabled()
     if public:
-        st.info("公开演示模式不读取私人分析上下文，也不调用 AI 服务；请使用各页面的离线演示。")
+        st.info("公开演示模式仅使用内置虚构证据，不调用 AI 服务。")
+        _render_demo_evidence()
+        return
+    if st.toggle("查看离线虚构证据演示", key="ai_center_demo"):
+        _render_demo_evidence()
         return
     available = {kind: item for kind in CONTEXTS if (item := current_context(st.session_state, kind)) is not None}
     if not available:

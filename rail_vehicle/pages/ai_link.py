@@ -26,7 +26,7 @@ def _open_center(kind):
     snapshots = dict(st.session_state.get("ai_center_source_widgets", {}))
     snapshots[kind] = snapshot
     st.session_state["ai_center_source_widgets"] = snapshots
-    navigate("AI 智能分析中心", ai_center_requested_kind=kind)
+    navigate("AI 智能分析中心", ai_center_requested_kind=kind, ai_center_demo=False)
 
 
 def restore_source_widgets(kind):

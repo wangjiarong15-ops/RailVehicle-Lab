@@ -94,6 +94,7 @@ def _render_import() -> None:
     vehicles = list_vehicles()
     if not vehicles:
         st.warning("请先在“车辆参数”页面新增车辆，再导入对应的运行数据。")
+        st.button("前往车辆登记 →", key="import_register_vehicle", on_click=navigate, args=("车辆参数",))
 
     uploaded_file = st.file_uploader(
         "选择运行数据 CSV 文件",
@@ -244,6 +245,7 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
     if not vehicles:
         clear_result(st.session_state, ai_state_key)
         st.info("请先录入车辆并导入运行数据。")
+        st.button("前往车辆登记 →", key="analysis_register_vehicle", on_click=navigate, args=("车辆参数",))
         return
 
     selectors = st.columns(2)
@@ -261,6 +263,7 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
     if not batches:
         clear_result(st.session_state, ai_state_key)
         st.info("该车辆还没有导入运行数据。")
+        st.button("前往 CSV 导入 →", key="analysis_import_data", on_click=navigate, args=("CSV 数据导入",))
         return
 
     batch_id = selectors[1].selectbox(
@@ -571,7 +574,7 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         render_event_review(result["samples"], anomaly_result, {
             "vehicle_id": vehicle_id, "batch_id": batch_id,
             "start": selected_start.isoformat(), "end": selected_end.isoformat(),
-        }, allow_bogie=not demo)
+        }, allow_bogie=True, fictional=demo)
 
     selected_vehicle = next(
         vehicle for vehicle in vehicles if vehicle["id"] == vehicle_id

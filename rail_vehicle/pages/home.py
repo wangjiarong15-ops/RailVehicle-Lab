@@ -8,6 +8,8 @@ from rail_vehicle.dashboard import load_dashboard
 from rail_vehicle.deployment import public_demo_enabled
 from rail_vehicle.dynamics import analyze_run_data
 from rail_vehicle.anomaly import detect_anomalies
+from rail_vehicle.pages.bogie_link import batch_replay_button
+from rail_vehicle.pages.demo_center import render_walkthrough
 from rail_vehicle.ui import navigate, plot_chart, page_title, kpi, chart_container, empty_state, data_table, action_button, status_label, source_caption
 from rail_vehicle.dashboard_chart import (dashboard_chart, dashboard_events, display_timestamp,
                                          DISPLAY_TIMEZONES, EVENTS_PER_PAGE, HOME_PLOT_CONFIG)
@@ -15,16 +17,21 @@ from rail_vehicle.dashboard_chart import (dashboard_chart, dashboard_events, dis
 
 def render():
     public = public_demo_enabled()
+    if public:
+        page_title("平台首页", "离线演示 / 统计、三维回放与证据", primary=True)
+        source_caption(fictional=True)
+        render_walkthrough()
+        action_button("查看进阶实验 →", key="home_演示中心", on_click=navigate, args=("演示中心",))
+        return
     data = None
-    if not public:
-        try:
-            data = load_dashboard()
-        except (sqlite3.Error, OSError):
-            st.warning("暂时无法读取工作空间数据，请检查数据库后刷新。")
+    try:
+        data = load_dashboard()
+    except (sqlite3.Error, OSError):
+        st.warning("暂时无法读取工作空间数据，请检查数据库后刷新。")
     heading, controls = st.columns([4, 1], vertical_alignment="center")
     with heading:
         page_title("平台首页", primary=True)
-        source_caption(fictional=public)
+        source_caption()
     with controls:
         with st.popover("预览设置", width="stretch"):
             threshold = st.number_input("预览加速度阈值（m/s²）", min_value=0., value=1., step=.1, key="home_threshold")
@@ -36,7 +43,7 @@ def render():
                 timezone_name = "UTC"
                 st.warning("当前环境缺少北京时间时区数据，暂按 UTC 显示。")
             st.caption("仅影响最近车辆/批次预览；不改变原始数据。")
-    if not public and data is not None and data["vehicle_count"] == 0:
+    if data is not None and data["vehicle_count"] == 0:
         with st.container(border=True):
             st.subheader("首次使用：三步完成一次分析")
             st.markdown("1. 在 **车辆参数** 中登记车辆，或先体验演示中心的虚构数据。\n"
@@ -69,9 +76,7 @@ def render():
     with left:
         with chart_container("rv-panel-trend"):
             st.subheader("运行趋势与异常区段")
-            if public:
-                empty_state("公开演示工作空间：不连接本地数据库。请从演示中心使用虚构数据。")
-            elif not preview:
+            if not preview:
                 empty_state("暂无可预览的运行数据。导入有效 CSV 后显示速度与双轴加速度。")
             elif not preview["samples"]:
                 empty_state("最近批次超过首页 20,000 点预览上限，请进入运行分析查看完整数据。")
@@ -107,22 +112,25 @@ def render():
             if data and data["imports"]:
                 data_table([dict(批次=row["id"], 文件=row["file_name"], 样本数=row["row_count"], 导入时间=row["imported_at"]) for row in data["imports"]])
             else:
-                st.caption("暂无导入记录。公开演示不读取历史导入数据。" if public else "暂无导入记录，请先导入 CSV。")
+                st.caption("暂无导入记录，请先导入 CSV。")
     with right:
         with chart_container("rv-panel-actions"):
             st.subheader("快捷操作")
             st.caption("从数据到结论，开始一次分析。")
-            actions = [("统计与异常演示", "体验基础统计"), ("动态运行驾驶舱", "运行驾驶舱"), ("演示中心", "演示中心")] if public else [("运行分析", "开始分析"), ("CSV 数据导入", "导入数据"), ("车辆参数", "管理车辆"), ("演示中心", "虚构数据演示")]
+            actions = [("运行分析", "开始分析"), ("CSV 数据导入", "导入数据"),
+                       ("车辆参数", "管理车辆"), ("演示中心", "虚构数据演示")]
             actions.append(("三维转向架仿真", "查看三维转向架"))
             for target, title in actions:
                 action_button(title+" →", key=f"home_{target}", on_click=navigate, args=(target,), width="stretch",
-                              type="primary" if target in {"运行分析", "统计与异常演示"} else "secondary")
+                              type="primary" if target == "运行分析" else "secondary")
         if analysis and anomalies:
             with chart_container("rv-panel-summary"):
                 st.subheader("当前批次摘要")
                 st.metric("平均速度（km/h）", f"{analysis['speed']['mean']:.2f}")
                 st.metric("统计异常点", len(anomalies["points"]))
                 st.caption(f"加速度绝对值 > {threshold:g} m/s²；按通道计数。")
+                batch_replay_button(st, label="回放此批次 →", key="home_latest_bogie",
+                                    vehicle_id=preview["vehicle_id"], batch_id=preview["batch_id"])
         with chart_container("rv-panel-recent"):
             st.subheader("最近分析")
             records = st.session_state.get("recent_analysis_records", [])
@@ -130,7 +138,7 @@ def render():
                 st.markdown("**尚未进行分析**")
                 st.caption("分析结果仅在当前会话中保留，刷新后清空。")
                 action_button("去分析 →", key="home_recent_analysis", on_click=navigate,
-                              args=("统计与异常演示" if public else "运行分析",), width="stretch")
+                              args=("运行分析",), width="stretch")
             for row in records[:3]:
                 st.markdown(f"**{row['分析类型']}**")
                 st.caption(f"{row['数据点数']:,} 个样本 · {row['来源']}")
@@ -141,4 +149,4 @@ def render():
                         st.caption(f"{row['分析类型']} · {row['数据点数']:,} 样本 · {row['来源']} · {row['完成时间']}")
             if records:
                 st.caption("仅记录本会话实际计算，刷新新会话后不保留。")
-        status_label("公开虚构数据演示" if public else "本地分析工作空间")
+        status_label("本地分析工作空间")

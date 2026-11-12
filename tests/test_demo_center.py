@@ -1,6 +1,7 @@
 """Session-only guided demos; no database writes, provider calls or computation."""
 
 from contextlib import ExitStack
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -9,7 +10,7 @@ from unittest.mock import patch
 from streamlit.testing.v1 import AppTest
 
 import rail_vehicle.db as db
-from rail_vehicle.pages import cockpit, demo_center, ml_detection, vehicles, vibration_analysis
+from rail_vehicle.pages import ai_center, bogie, cockpit, demo_center, ml_detection, vehicles, vibration_analysis
 from rail_vehicle.vibration import STATE_KEY as VIBRATION_STATE_KEY
 
 
@@ -28,14 +29,40 @@ class DemoCenterTests(unittest.TestCase):
         self.assertEqual(len(app.exception), 0)
         return app
 
-    def test_portal_is_read_only_and_offers_five_explicit_launches(self):
+    def test_portal_is_read_only_and_offers_all_walkthrough_and_experiment_launches(self):
         with patch.object(ml_detection, "detect_ml_anomalies") as detect, \
              patch.object(vibration_analysis, "analyze_vibration") as analyze:
             app = self.app()
-        self.assertEqual(len([button for button in app.button if button.key and button.key.startswith("launch_demo_")]), 5)
+        self.assertEqual({button.key.removeprefix("launch_demo_") for button in app.button
+                          if button.key and button.key.startswith("launch_demo_")}, set(demo_center.DEMOS))
         self.assertTrue(any("不自动计算" in item.value for item in app.info))
         detect.assert_not_called()
         analyze.assert_not_called()
+
+    def test_public_walkthrough_keeps_second_batch_and_threshold_across_pages(self):
+        with (patch.dict(os.environ, {"RAIL_PUBLIC_DEMO": "true"}),
+              patch.object(bogie, "list_vehicles", side_effect=AssertionError("private database")),
+              patch.object(ai_center.AIConfig, "from_sources", side_effect=AssertionError("private config")),
+              patch.object(ai_center, "create_configured_provider", side_effect=AssertionError("API request"))):
+            app = self.app()
+            app.button(key="launch_demo_statistics").click().run()
+            app.button(key="statistics_demo_calculate").click().run()
+            app.selectbox(key="demo_dynamics_batch_id").set_value(-2).run()
+            app.number_input(key="demo_analysis_threshold").set_value(1.1).run()
+            app.button(key="run_analysis_bogie_jump").click().run()
+            self.assertFalse(app.exception)
+            self.assertEqual(app.selectbox(key="bogie_demo_batch").value, -2)
+            self.assertEqual(app.number_input(key="bogie_threshold").value, 1.1)
+            self.assertTrue(any("已定位到虚构演示" in item.value for item in app.success))
+            app.button(key="bogie_demo_evidence").click().run()
+            self.assertFalse(app.exception)
+            self.assertEqual(app.selectbox(key="ai_demo_batch").value, -2)
+            self.assertEqual(app.number_input(key="ai_demo_threshold").value, 1.1)
+            self.assertTrue(any("未生成 AI 解读" in item.value for item in app.info))
+            app.button(key="ai_demo_bogie_jump").click().run()
+            self.assertFalse(app.exception)
+            self.assertEqual(app.selectbox(key="bogie_demo_batch").value, -2)
+            self.assertTrue(any("已定位到虚构演示" in item.value for item in app.success))
 
     def test_cockpit_callback_selects_fictional_data_without_starting_playback(self):
         with patch.object(cockpit, "list_vehicles", side_effect=AssertionError("must not read history")):

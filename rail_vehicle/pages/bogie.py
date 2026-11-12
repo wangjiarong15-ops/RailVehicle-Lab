@@ -9,12 +9,13 @@ import streamlit as st
 
 from rail_vehicle.bogie import PART_DESCRIPTIONS, PARTS, build_bogie
 from rail_vehicle.bogie_replay import GAP, TEACHING, event_positions, gap_cutoff, illustration_phase, replay_scene
+from rail_vehicle.demo_data import DEMO_BATCH_IDS, analysis_demo_data
 from rail_vehicle.deployment import demo_source_options
-from rail_vehicle.pages.cockpit import _demo_track, build_replay_chart
+from rail_vehicle.pages.cockpit import build_replay_chart
 from rail_vehicle.replay import ReplayState, advance_replay, control_replay, prepare_replay
 from rail_vehicle.run_data import list_batch_samples, list_vehicle_batches
 from rail_vehicle.timestamp_utils import parse_iso_timestamp
-from rail_vehicle.ui import page_title, plot_chart
+from rail_vehicle.ui import navigate, page_title, plot_chart
 from rail_vehicle.vehicle_data import list_vehicles
 
 STATE_KEY = "bogie_playback"
@@ -32,7 +33,11 @@ def _seek(position, row=None):
 
 def _load(source, target):
     if source == DEMO:
-        return (DEMO,), _demo_track
+        if target and target["batch_id"] in DEMO_BATCH_IDS:
+            st.session_state["bogie_demo_batch"] = target["batch_id"]
+        batch = st.selectbox("虚构批次", DEMO_BATCH_IDS, format_func=lambda item: f"虚构批次 {-item}",
+                             key="bogie_demo_batch")
+        return (DEMO, batch), lambda: prepare_replay(analysis_demo_data()[2][batch])
     if source == TEACH:
         return (TEACH,), None
     vehicles = list_vehicles()
@@ -141,9 +146,10 @@ def render():
     target = st.session_state.pop("bogie_evidence_target", None)
     batch_target = st.session_state.pop("bogie_batch_target", None)
     choices = [TEACH, *demo_source_options(HISTORY, DEMO)]
-    requested = (target or batch_target) if HISTORY in choices else None
+    fictional = bool(target and target.get("fictional") is True)
+    requested = target if fictional else (target or batch_target) if HISTORY in choices else None
     if requested:
-        st.session_state["bogie_source"] = HISTORY
+        st.session_state["bogie_source"] = DEMO if fictional else HISTORY
     if target and requested:
         st.session_state["bogie_threshold"] = target["threshold"]
     options, main = st.columns([1, 4])
@@ -179,9 +185,17 @@ def render():
         if threshold is None:
             threshold = 1.0
             st.caption("输入为空，使用默认阈值 1.0 m/s²。")
+        if source == DEMO and track is not None:
+            st.button("核查虚构证据 →", key="bogie_demo_evidence", on_click=navigate,
+                      args=("AI 智能分析中心",), kwargs={
+                          "ai_center_demo": True, "ai_demo_batch": selection[1],
+                          "ai_demo_threshold": threshold,
+                      })
     if target and requested:
         row = None
-        if track is not None and selection == (HISTORY, target["vehicle_id"], target["batch_id"]):
+        expected = ((DEMO, target["batch_id"]) if fictional else
+                    (HISTORY, target["vehicle_id"], target["batch_id"]))
+        if track is not None and selection == expected:
             timestamp = parse_iso_timestamp(target["timestamp"])
             if timestamp.tzinfo is None:
                 timestamp = timestamp.replace(tzinfo=timezone.utc)
@@ -191,7 +205,8 @@ def render():
                         if field and abs(track.samples[i][field]) > threshold), None)
         if row is not None:
             _seek(track.offsets[row], row)
-            st.success("已定位到所选统计证据的异常样本。")
+            st.success("已定位到虚构演示的异常样本。" if fictional else
+                       "已定位到所选统计证据的异常样本。")
         else:
             st.warning("当前批次未找到对应的异常样本，请回到运行分析重新核查证据。")
     with main:
