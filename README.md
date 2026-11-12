@@ -179,6 +179,16 @@ AI 是可选增强能力。AI 调用失败或结果校验失败时，基础分�
 
 ![多车辆基础统计与相对时间对比](docs/screenshots/fleet-comparison.png)
 
+## 三维转向架仿真
+
+从首页快捷操作或左侧导航打开。选择“独立教学动画”即可离线观察双轴转向架，旋转、缩放、切换视角、隐藏或高亮零部件，并对照正常运动。选择“内置虚构演示”可体验完整回放；导入 CSV 后可改选历史车辆和批次。回放支持播放、暂停、重置、倍速、时间轴定位、逐帧步进和超阈值区段定位。
+
+曲线和仪表显示观测值（虚构演示除外）。加速度只决定超阈值提示和预设示意场景，动画相位由回放时间驱动，不能用来估算真实位移、轮轨力或诊断故障。两次采样间沿用最近观测值；若间隔超过该批次中位采样间隔的 3 倍，模型停在中立示意并提示无当时观测。蛇行、悬挂和轴承场景是独立教学示意。
+
+可从车辆档案、单车辆 CSV 导入成功提示或运行分析的异常回查打开三维回放。AI 智能分析中心也可将单批次异常证据按批次、时间和原阈值定位到三维页面。证据跳转不需要调用 AI。
+
+三维视图使用现有 Plotly，浏览器需支持 WebGL，无需 CDN 或新增 Python 依赖。
+
 ## 动态运行驾驶舱（V0.4）
 
 启动后，在左侧“功能导航”选择“动态运行驾驶舱”：
@@ -460,16 +470,18 @@ RailVehicle-Lab 当前定位为本地运行的教学、竞赛演示和分析原�
 
 ## 运行测试
 
-使用 Python 标准库的 `unittest` 运行完整测试套件，覆盖车辆管理、数据库、CSV 校验与导入、动力学指标、时间筛选、异常检测、批次对比、PDF 报告，以及 AI 配置、上下文、提示词、Provider、输出校验和页面辅助逻辑：
+使用 pytest 运行完整套件。它会收集原有 unittest 测试和 pytest 编写的页面集成测试，包括 CSV、SQLite、PDF、回放与 AI 证据跳转：
 
 ```powershell
-python -m unittest discover -s tests -v
+python -m pip install -e ".[ml,signal,test]"
+python -m pytest -q
 ```
 
 也可以使用虚拟环境解释器运行：
 
 ```powershell
-.venv\Scripts\python.exe -m unittest discover -s tests -v
+.venv\Scripts\python.exe -m pip install -e ".[ml,signal,test]"
+.venv\Scripts\python.exe -m pytest -q
 ```
 
 安装 `.[ml]` 后也会运行真实本地 Isolation Forest 实验及其页面测试；未安装时相应可选测试明确跳过，依赖缺失时的降级测试仍会运行。测试不调用真实 AI API。

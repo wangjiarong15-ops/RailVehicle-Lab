@@ -4,6 +4,7 @@ import streamlit as st
 from rail_vehicle.ui import page_title
 import sqlite3
 from rail_vehicle.ui import navigate
+from rail_vehicle.pages.bogie_link import batch_replay_button
 from rail_vehicle.ai.center_state import clear_all_contexts
 
 from rail_vehicle.vehicle_data import (
@@ -185,7 +186,7 @@ def render() -> None:
     by_id = {vehicle["id"]: vehicle for vehicle in matches}
     if st.session_state.get("vehicle_selected_id") not in by_id:
         st.session_state.pop("vehicle_selected_id", None)
-    selection, edit, import_data, analysis = st.columns([3, 1, 1, 1], vertical_alignment="bottom")
+    selection, edit, import_data, analysis, replay = st.columns([3, 1, 1, 1, 1], vertical_alignment="bottom")
     selected_id = selection.selectbox("当前车辆", list(by_id), format_func=lambda value: f"{by_id[value]['vehicle_code']} · {by_id[value]['vehicle_type']}", key="vehicle_selected_id")
     selected = by_id[selected_id]
     edit.button("编辑车辆", key="vehicle_edit_open", width="stretch", on_click=_open_editor, args=(selected,))
@@ -193,6 +194,7 @@ def render() -> None:
                        args=("CSV 数据导入",))
     analysis.button("进入分析 →", key="vehicle_analyze", width="stretch", on_click=navigate,
                     args=("运行分析",), kwargs={"dynamics_vehicle_id": selected_id})
+    batch_replay_button(replay, label="三维回放 →", key="vehicle_bogie", vehicle_id=selected_id)
     with st.expander("查看车辆详情", expanded=False):
         st.table([{ "参数": label, "值": str(selected.get(field, "")) } for field, label in VEHICLE_FIELDS.items() if field != "notes"])
         st.text(selected.get("notes", "") or "未填写备注")

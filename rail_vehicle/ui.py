@@ -185,7 +185,7 @@ def record_analysis(kind, selection, count, *, fictional=False):
 GROUPS = (
     ("总览", (("平台首页", ":material/dashboard:"),)),
     ("数据工作台", (("车辆参数", ":material/train:"), ("CSV 数据导入", ":material/upload_file:"), ("运行分析", ":material/monitoring:"))),
-    ("运行与智能分析", (("动态运行驾驶舱", ":material/speed:"), ("机器学习异常检测", ":material/model_training:"),
+    ("运行与智能分析", (("动态运行驾驶舱", ":material/speed:"), ("三维转向架仿真", ":material/view_in_ar:"), ("机器学习异常检测", ":material/model_training:"),
                         ("振动与平稳性分析", ":material/vibration:"), ("多车辆运行对比", ":material/compare_arrows:"),
                         ("AI 智能分析中心", ":material/smart_toy:"))),
     ("演示与实验", (("统计与异常演示", ":material/query_stats:"), ("演示中心", ":material/play_circle:"))),

@@ -35,6 +35,59 @@ def center_app():
     render()
 
 
+def bogie_handoff_app():
+    import streamlit as st
+    from rail_vehicle.pages import ai_center, bogie
+    if st.session_state.get("navigation_page") == "三维转向架仿真":
+        bogie.render()
+    else:
+        ai_center.render()
+
+
+def test_validated_ai_event_opens_matching_bogie_sample_without_second_call(monkeypatch):
+    from rail_vehicle.pages import bogie
+    from tests.test_ai_ui import valid_response
+
+    rows = [dict(timestamp=f"2026-01-01T00:00:0{i}Z", speed_kmh=20+i, lateral_accel=value,
+                 vertical_accel=0) for i, value in enumerate([0, -2, -3])]
+    vehicle = dict(id=9, vehicle_code="虚构测试", vehicle_type="测试", mass_kg=90000,
+                   axle_count=8, bogie_count=4, max_speed_kmh=160)
+    payload = build_single_batch_payload(
+        analysis=analyze_run_data(rows, 1), anomalies=detect_anomalies(rows, 1), vehicle=vehicle,
+        batch_ref="B1", selected_start=rows[0]["timestamp"], selected_end=rows[-1]["timestamp"])
+    event = payload["anomaly_events"][0]
+    output = valid_response(payload)
+    metadata = next(item for item in collect_evidence_metadata(payload) if item["evidence_id"] == event["evidence_id"])
+    output["observations"] = [{"text": "该区段横向加速度超过阈值。", "evidence_ids": [event["evidence_id"]],
+                              "claim_scope": {k: metadata[k] for k in ("category", "axis", "batch_refs")}}]
+    provider = FakeProvider(output)
+    monkeypatch.setenv("RAIL_PUBLIC_DEMO", "false")
+    monkeypatch.setattr(bogie, "list_vehicles", lambda: [vehicle])
+    monkeypatch.setattr(bogie, "list_vehicle_batches", lambda vid: [dict(id=17, file_name="fictional.csv")])
+    monkeypatch.setattr(bogie, "list_batch_samples", lambda vid, bid: rows if (vid, bid) == (9, 17) else [])
+    monkeypatch.setattr(ai_center.AIConfig, "from_sources",
+                        lambda: AIConfig(enabled=True, model="mock", api_key="test-placeholder"))
+    monkeypatch.setattr(ai_center, "create_configured_provider", lambda config: provider)
+    app = AppTest.from_function(bogie_handoff_app, default_timeout=20)
+    state = {}
+    register_context(state, "single", payload, dict(vehicle_id=9, batch_id=17, threshold=1.))
+    for key, value in state.items():
+        app.session_state[key] = value
+    app.run()
+    assert not app.exception
+    assert provider.calls == 0
+    app.button(key="ai_center_generate").click().run()
+    assert not app.exception
+    assert app.session_state["ai_single_batch_result"]["scope_validation"] == "verified"
+    assert len(app.session_state["ai_center_history"]) == 1
+    app.button(key="ai_center_cited_event_jump").click().run()
+    assert not app.exception
+    assert app.session_state["navigation_page"] == "三维转向架仿真"
+    assert app.metric[0].value == "21.0"
+    assert any("已定位" in message.value for message in app.success)
+    assert provider.calls == 1
+
+
 def navigation_app():
     import streamlit as st
     from rail_vehicle.pages.ai_center import render

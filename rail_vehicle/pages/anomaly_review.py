@@ -8,6 +8,7 @@ from rail_vehicle.ui import plot_chart
 from rail_vehicle.ai.ui import selection_fingerprint
 from rail_vehicle.anomaly import EVENT_DURATION_NOTE
 from rail_vehicle.anomaly_review import event_window
+from rail_vehicle.pages.bogie_link import event_replay_button
 
 
 def event_chart(window, threshold):
@@ -34,7 +35,7 @@ def event_chart(window, threshold):
     return figure
 
 
-def render_event_review(samples, anomalies, selection):
+def render_event_review(samples, anomalies, selection, *, allow_bogie=False):
     if not anomalies["events"]:
         st.session_state.pop("anomaly_review_event", None)
         st.session_state.pop("anomaly_review_fingerprint", None)
@@ -50,6 +51,11 @@ def render_event_review(samples, anomalies, selection):
         seconds = st.slider("事件前后窗口（秒）", 0, 60, 5, key="anomaly_review_seconds")
         window = event_window(samples, anomalies, index, seconds)
         event = window["event"]
+        if allow_bogie:
+            event_replay_button(label="在三维回放中查看此区段", key="run_analysis_bogie_jump",
+                                vehicle_id=selection["vehicle_id"], batch_id=selection["batch_id"],
+                                threshold=anomalies["threshold"], timestamp=event["start_timestamp"],
+                                axis="lateral" if event["field"] == "lateral_accel" else "vertical")
         st.table([{"类型": event["type"], "开始": event["start_timestamp"], "结束": event["end_timestamp"],
                    "异常样本数": event["sample_count"], "绝对峰值（m/s²）": event["maximum_absolute_value"]}])
         st.caption("紫色虚线为所选事件起止边界；红色标记为窗口内同轴既有异常点，也可能属于相邻事件。"

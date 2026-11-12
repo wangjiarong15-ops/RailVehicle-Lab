@@ -30,6 +30,7 @@ from rail_vehicle.anomaly import EVENT_DURATION_NOTE, detect_anomalies
 from rail_vehicle.pages.anomaly_review import render_event_review
 from rail_vehicle.pages.sampling_quality import render_sampling_quality
 from rail_vehicle.pages.ai_link import render_center_link, restore_source_widgets
+from rail_vehicle.pages.bogie_link import batch_replay_button
 from rail_vehicle.ai.center_state import clear_context
 from rail_vehicle.ui import plot_chart, record_analysis, source_caption, workflow_caption, navigate
 from rail_vehicle.time_filter import filter_samples_by_time_range
@@ -184,9 +185,12 @@ def _render_import() -> None:
                         code = next(iter(validation.sampling_by_vehicle))
                         matching_vehicle = next((vehicle for vehicle in vehicles if vehicle["vehicle_code"] == code), None)
                         if matching_vehicle is not None:
-                            st.button("分析本次导入 →", key="import_analyze_latest", on_click=navigate,
-                                      args=("运行分析",), kwargs={"dynamics_vehicle_id": matching_vehicle["id"],
-                                                               "dynamics_batch_id": batch_id})
+                            analysis, replay = st.columns(2)
+                            analysis.button("分析本次导入 →", key="import_analyze_latest", on_click=navigate,
+                                            args=("运行分析",), kwargs={"dynamics_vehicle_id": matching_vehicle["id"],
+                                                                     "dynamics_batch_id": batch_id})
+                            batch_replay_button(replay, label="回放本次导入 →", key="import_bogie_latest",
+                                                vehicle_id=matching_vehicle["id"], batch_id=batch_id)
                     elif validation.distinct_vehicle_count > 1:
                         st.caption("该批次包含多辆车，请在运行分析中选择需要查看的车辆。")
 
@@ -567,7 +571,7 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         render_event_review(result["samples"], anomaly_result, {
             "vehicle_id": vehicle_id, "batch_id": batch_id,
             "start": selected_start.isoformat(), "end": selected_end.isoformat(),
-        })
+        }, allow_bogie=not demo)
 
     selected_vehicle = next(
         vehicle for vehicle in vehicles if vehicle["id"] == vehicle_id

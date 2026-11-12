@@ -13,7 +13,40 @@ from rail_vehicle.ai.ui import (ai_configuration_message, clear_result, invalida
                                render_validated_result, request_ai_analysis, selection_fingerprint,
                                status_message)
 from rail_vehicle.deployment import public_demo_enabled
+from rail_vehicle.pages.bogie_link import event_replay_button
 from rail_vehicle.ui import navigate, page_title
+
+
+def _render_history():
+    with st.expander("本会话 AI 分析记录"):
+        history = st.session_state.get("ai_center_history", ())
+        if not history:
+            st.caption("本会话还没有通过校验的 AI 解读。")
+        for label, metadata in history:
+            st.write(f"{label} · {metadata['provider']} / {metadata['model']}")
+            st.caption(metadata["generated_at"])
+        if history:
+            st.caption("仅保留最近 10 次通过校验的生成记录。")
+
+
+def _event_button(event, selection, key, label):
+    event_replay_button(label=label, key=key, vehicle_id=selection["vehicle_id"],
+                        batch_id=selection["batch_id"], threshold=selection["threshold"],
+                        timestamp=event["start_timestamp"], axis=event["type"])
+
+
+def _cited_event_links(analysis, events, selection):
+    claims = [analysis["summary"]]
+    for section in ("observations", "possible_causes", "further_checks", "limitations"):
+        claims.extend(analysis[section])
+    cited = {evidence_id for claim in claims for evidence_id in claim["evidence_ids"]}
+    matches = {event["evidence_id"]: event for event in events if event["evidence_id"] in cited}
+    if matches:
+        evidence_id = st.selectbox("AI 解读引用的异常区段", list(matches), key="ai_center_cited_event")
+        _event_button(matches[evidence_id], selection, "ai_center_cited_event_jump", "回放 AI 引用的统计区段")
+        st.caption("定位依据为原统计区段。高亮表示关联结构，不能确认部件故障。")
+    else:
+        st.caption("本次 AI 解读未引用可定位的异常区段。")
 
 
 def render():
@@ -26,8 +59,7 @@ def render():
     available = {kind: item for kind in CONTEXTS if (item := current_context(st.session_state, kind)) is not None}
     if not available:
         st.info("当前会话没有可用的分析结果。请先在运行分析、振动、机器学习或多车辆页面完成分析。")
-        if public:
-            st.caption("公开演示模式禁止调用 AI 服务。")
+        _render_history()
         return
     left, middle, right = st.columns([1.0, 1.8, 1.8])
     with left:
@@ -43,6 +75,8 @@ def render():
         st.button("返回分析页面", on_click=navigate, args=(destination,))
         item = available[kind]
         payload, selection = item["payload"], item["selection"]
+        can_jump = kind == "single" and all(key in selection for key in ("vehicle_id", "batch_id", "threshold"))
+        events = payload.get("anomaly_events", []) if can_jump else []
         key = CONTEXTS[kind][2]
         st.caption("只保存在当前会话；更改源页面的选择或参数后，需重新确认当前结果。")
         try:
@@ -91,6 +125,9 @@ def render():
                 result["ai_metadata"] = dict(provider=config.provider, model=config.model,
                                              generated_at=datetime.now(timezone.utc).isoformat(), status="success")
                 st.session_state[key] = result
+                history = st.session_state.get("ai_center_history", ())
+                st.session_state["ai_center_history"] = (
+                    (CONTEXTS[kind][0], result["ai_metadata"].copy()), *history)[:10]
             else:
                 message = status_message(result)
                 if result.get("code") == "incomplete_response" and not isinstance(result.get("diagnostics"), dict):
@@ -107,6 +144,8 @@ def render():
                 st.warning("AI 结果尚未完整验证，未展示。")
             elif not render_validated_result(saved, payload, st):
                 clear_result(st.session_state, key)
+            elif can_jump:
+                _cited_event_links(saved["analysis"], events, selection)
         else:
             st.caption("尚未生成 AI 解读；右侧可离线核查当前计算指标。")
     with right:
@@ -126,7 +165,12 @@ def render():
                              column_config={"指标": st.column_config.TextColumn("指标", width=110)})
                 st.caption(f"类别：{rows[0]['类别']}；轴向：{rows[0]['轴向']}；批次：{rows[0]['批次范围']}")
                 st.caption(f"计算口径：{rows[0]['口径']}")
+                event = next((event for event in events if event["evidence_id"] == evidence_id), None)
+                if event:
+                    _event_button(event, selection, "ai_center_evidence_jump", "在三维回放中查看此区段")
+                    st.caption("跳转使用原始统计证据的时间和阈值。")
             else:
                 st.info("当前分析没有可展示的证据。")
         except (ValueError, TypeError, KeyError):
             st.warning("当前证据目录无法读取，请返回分析页面重新计算。")
+    _render_history()

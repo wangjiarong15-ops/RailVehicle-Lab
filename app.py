@@ -13,6 +13,7 @@ from rail_vehicle.pages import cockpit, ml_detection, run_analysis, vehicles, vi
 from rail_vehicle.pages import demo_center, fleet_comparison
 from rail_vehicle.pages import home
 from rail_vehicle.pages import ai_center
+from rail_vehicle.pages import bogie
 from rail_vehicle.ui import apply_design, render_navigation, initialize_theme, page_title
 
 
@@ -31,6 +32,9 @@ def main() -> None:
     if page != "动态运行驾驶舱":
         # Returning to the cockpit starts paused, never advances while hidden.
         st.session_state.pop(cockpit.STATE_KEY, None)
+    if page != "三维转向架仿真":
+        st.session_state.pop(bogie.STATE_KEY, None)
+        st.session_state.pop(bogie.FRAME_KEY, None)
     if page == "平台首页":
         home.render()
     elif page == "车辆参数":
@@ -42,6 +46,8 @@ def main() -> None:
         run_analysis.render()
     elif page == "动态运行驾驶舱":
         cockpit.render()
+    elif page == "三维转向架仿真":
+        bogie.render()
     elif page == "机器学习异常检测":
         ml_detection.render()
     elif page == "振动与平稳性分析":

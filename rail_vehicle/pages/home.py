@@ -113,6 +113,7 @@ def render():
             st.subheader("快捷操作")
             st.caption("从数据到结论，开始一次分析。")
             actions = [("统计与异常演示", "体验基础统计"), ("动态运行驾驶舱", "运行驾驶舱"), ("演示中心", "演示中心")] if public else [("运行分析", "开始分析"), ("CSV 数据导入", "导入数据"), ("车辆参数", "管理车辆"), ("演示中心", "虚构数据演示")]
+            actions.append(("三维转向架仿真", "查看三维转向架"))
             for target, title in actions:
                 action_button(title+" →", key=f"home_{target}", on_click=navigate, args=(target,), width="stretch",
                               type="primary" if target in {"运行分析", "统计与异常演示"} else "secondary")
