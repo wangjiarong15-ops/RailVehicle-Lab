@@ -35,10 +35,14 @@ class StatisticsDemoTests(unittest.TestCase):
         vehicle, batches, data = analysis_demo_data()
         self.assertIn("虚构", vehicle["vehicle_type"])
         self.assertEqual([batch["sample_count"] for batch in batches], [120, 120])
-        for rows in data.values():
+        for batch, expected in ((-1, [3, 2]), (-2, [3, 2, 2, 2])):
+            rows = data[batch]
             detected = detect_anomalies(rows, 1)
-            self.assertEqual([event["sample_count"] for event in detected["events"]], [3, 2])
-            self.assertEqual(len(detected["points"]), 5)
+            self.assertEqual([event["sample_count"] for event in detected["events"]], expected)
+            self.assertEqual(len(detected["points"]), sum(expected))
+            paired = [index for index, row in enumerate(rows)
+                      if abs(row["lateral_accel"]) > 1 and abs(row["vertical_accel"]) > 1]
+            self.assertEqual(paired, [] if batch == -1 else [93, 94])
             self.assertNotIn("vehicle_id", rows[0])
         data[-1][0]["speed_kmh"] = -1
         self.assertGreater(analysis_demo_data()[2][-1][0]["speed_kmh"], 0)

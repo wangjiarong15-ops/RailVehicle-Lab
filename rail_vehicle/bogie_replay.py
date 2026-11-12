@@ -1,12 +1,21 @@
 """Map observed signals to explicitly illustrative bogie scenes."""
 
+from bisect import bisect_left, bisect_right
 from collections import defaultdict, deque
-from dataclasses import dataclass
-from math import tau
+from dataclasses import dataclass, replace
+from math import isfinite, tau
 from statistics import median
 
 from rail_vehicle.anomaly import detect_anomalies
-from rail_vehicle.replay import ReplayTrack, replay_long_gap_at
+from rail_vehicle.replay import ReplayState, ReplayTrack, control_replay, replay_long_gap_at
+
+
+EVENT_FILTERS = {
+    "axes": "横向与垂向（分轴统计）",
+    "lateral": "横向超阈值",
+    "vertical": "垂向超阈值",
+    "combined": "双轴同点超阈值",
+}
 
 
 @dataclass(frozen=True)
@@ -61,6 +70,141 @@ def event_positions(track: ReplayTrack, threshold: float):
                 by_field[(field, row["timestamp"])].append(index)
             preceding[field] = active
     return [(event, by_field[(event["field"], event["start_timestamp"])].popleft()) for event in events]
+
+
+@dataclass(frozen=True)
+class EventSpanIndex:
+    """Index detected runs by row, preserving distinct samples with the same timestamp."""
+
+    channels: tuple
+
+    @classmethod
+    def from_events(cls, events):
+        by_field = {"lateral_accel": [], "vertical_accel": []}
+        for event, start in events:
+            by_field[event["field"]].append((start, start + event["sample_count"] - 1))
+        return cls(tuple((field, tuple(spans), tuple(end for _, end in spans))
+                         for field, spans in by_field.items()))
+
+    def window(self, offsets, first, last, limit):
+        """Clip spans to already displayed rows, never extend a band to future samples."""
+        visible = []
+        for field, spans, ends in self.channels:
+            begin = bisect_left(ends, first)
+            for start, end in spans[begin:begin + limit]:
+                if start > last:
+                    break
+                visible.append((offsets[max(first, start)], field, offsets[min(last, end)]))
+        # Python's stable sort preserves chronological row order for duplicate timestamps.
+        visible.sort(key=lambda span: (span[0], span[1]))
+        return tuple((field, start, end) for start, field, end in visible[:limit])
+
+    def simultaneous_spans(self):
+        """Intersect row spans, so unrelated samples sharing a timestamp stay separate."""
+        lateral, vertical = (channel[1] for channel in self.channels)
+        i = j = 0
+        while i < len(lateral) and j < len(vertical):
+            left, right = lateral[i], vertical[j]
+            start, end = max(left[0], right[0]), min(left[1], right[1])
+            if start <= end:
+                yield start, end
+            if left[1] <= right[1]:
+                i += 1
+            if right[1] <= left[1]:
+                j += 1
+
+
+@dataclass(frozen=True)
+class ReplayEventList:
+    entries: tuple
+    starts: tuple[int, ...]
+
+    @classmethod
+    def from_entries(cls, entries):
+        ordered = tuple(sorted(entries, key=lambda item: (item[1], item[0]["field"])))
+        return cls(ordered, tuple(row for _, row in ordered))
+
+    def neighbors(self, current_row):
+        """Skip duplicate start rows across channels; never wrap to another end of the batch."""
+        previous = bisect_left(self.starts, current_row) - 1
+        following = bisect_right(self.starts, current_row)
+        if previous >= 0:
+            previous = bisect_left(self.starts, self.starts[previous])
+        return (previous if previous >= 0 else None,
+                following if following < len(self.entries) else None)
+
+
+def replay_event_catalog(track, events, index):
+    """Add a distinct simultaneous-observation view without changing the per-axis detector."""
+    grouped = {"axes": events, "lateral": [], "vertical": [], "combined": []}
+    for event, start in events:
+        key = "lateral" if event["field"] == "lateral_accel" else "vertical"
+        grouped[key].append((event, start))
+    for start, end in index.simultaneous_spans():
+        peaks = {}
+        for field in ("lateral_accel", "vertical_accel"):
+            peaks[field] = max((track.samples[row][field] for row in range(start, end + 1)), key=abs)
+        grouped["combined"].append((dict(type=EVENT_FILTERS["combined"], field="combined",
+                                         start_timestamp=track.samples[start]["timestamp"],
+                                         end_timestamp=track.samples[end]["timestamp"],
+                                         duration_seconds=track.offsets[end]-track.offsets[start],
+                                         sample_count=end-start+1, peaks=peaks), start))
+    return {key: ReplayEventList.from_entries(entries) for key, entries in grouped.items()}
+
+
+@dataclass(frozen=True)
+class EventLoop:
+    label: str
+    start: float
+    end: float
+    first_row: int
+    last_row: int
+
+    def index_at(self, track, position):
+        if position <= self.start and track.offsets[self.first_row] == self.start:
+            return self.first_row
+        return min(self.last_row, track.index_at(position))
+
+
+def event_loop(track, event, first_row, before, after):
+    """Retain absolute batch time and clip contextual margins to actual batch bounds."""
+    if not all(isfinite(margin) and margin >= 0 for margin in (before, after)):
+        raise ValueError("区段前后的时间必须为非负数。")
+    last_row = first_row + event["sample_count"] - 1
+    start = max(0., track.offsets[first_row] - before)
+    end = min(track.duration, track.offsets[last_row] + after)
+    if end <= start:
+        return None
+    first = bisect_left(track.offsets, start) if before else first_row
+    last = bisect_right(track.offsets, end) - 1 if after else last_row
+    return EventLoop(event["type"], start, end, first, last)
+
+
+def advance_event_loop(state, now, window, *, wrap=True):
+    if not state.playing:
+        return state
+    if state.last_tick is None:
+        return replace(state, last_tick=now)
+    # Show the ending sample before wrapping, even when the playback tick overshoots it.
+    if wrap and state.position >= window.end:
+        position = window.start
+    else:
+        position = min(window.end, max(window.start, state.position) + max(0., now - state.last_tick) * state.rate)
+    return replace(state, position=position, last_tick=now)
+
+
+def control_event_loop(state, action, now, window, *, rate=None):
+    if action == "reset":
+        return ReplayState(position=window.start, rate=state.rate)
+    state = advance_event_loop(state, now, window, wrap=False)
+    relative = replace(state, position=max(0., min(window.end, state.position) - window.start))
+    updated = control_replay(relative, action, now, window.end-window.start, rate=rate)
+    if action == "play" and updated.playing:
+        updated = replace(updated, last_tick=None)
+    # The generic controller stops at the end; loop rate changes keep playback running.
+    if action == "rate" and state.playing:
+        updated = replace(updated, playing=True, last_tick=now)
+    return replace(updated, position=min(window.end, window.start + updated.position))
 
 
 def gap_cutoff(track: ReplayTrack):

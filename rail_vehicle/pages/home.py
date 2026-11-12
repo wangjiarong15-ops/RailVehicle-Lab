@@ -9,6 +9,7 @@ from rail_vehicle.deployment import public_demo_enabled
 from rail_vehicle.dynamics import analyze_run_data
 from rail_vehicle.anomaly import detect_anomalies
 from rail_vehicle.pages.bogie_link import batch_replay_button
+from rail_vehicle.pages.data_workflow import analysis_button, import_button
 from rail_vehicle.pages.demo_center import render_walkthrough
 from rail_vehicle.ui import navigate, plot_chart, page_title, kpi, chart_container, empty_state, data_table, action_button, status_label, source_caption
 from rail_vehicle.dashboard_chart import (dashboard_chart, dashboard_events, display_timestamp,
@@ -117,20 +118,25 @@ def render():
         with chart_container("rv-panel-actions"):
             st.subheader("快捷操作")
             st.caption("从数据到结论，开始一次分析。")
-            actions = [("运行分析", "开始分析"), ("CSV 数据导入", "导入数据"),
-                       ("车辆参数", "管理车辆"), ("演示中心", "虚构数据演示")]
-            actions.append(("三维转向架仿真", "查看三维转向架"))
+            action_button("开始分析 →", key="home_运行分析", on_click=navigate, args=("运行分析",),
+                          width="stretch", type="primary")
+            import_button(st, label="导入数据 →", key="home_CSV 数据导入")
+            actions = [("车辆参数", "管理车辆"), ("演示中心", "虚构数据演示"),
+                       ("三维转向架仿真", "查看三维转向架")]
             for target, title in actions:
-                action_button(title+" →", key=f"home_{target}", on_click=navigate, args=(target,), width="stretch",
-                              type="primary" if target == "运行分析" else "secondary")
-        if analysis and anomalies:
+                action_button(title+" →", key=f"home_{target}", on_click=navigate, args=(target,), width="stretch")
+        if preview:
             with chart_container("rv-panel-summary"):
                 st.subheader("当前批次摘要")
-                st.metric("平均速度（km/h）", f"{analysis['speed']['mean']:.2f}")
-                st.metric("统计异常点", len(anomalies["points"]))
-                st.caption(f"加速度绝对值 > {threshold:g} m/s²；按通道计数。")
+                st.caption(f"{preview['vehicle_code']} · 批次 #{preview['batch_id']}")
+                if analysis and anomalies:
+                    st.metric("平均速度（km/h）", f"{analysis['speed']['mean']:.2f}")
+                    st.metric("统计异常点", len(anomalies["points"]))
+                    st.caption(f"加速度绝对值 > {threshold:g} m/s²；按通道计数。")
+                analysis_button(st, label="分析此批次 →", key="home_latest_analysis",
+                                vehicle_id=preview["vehicle_id"], batch_id=preview["batch_id"])
                 batch_replay_button(st, label="回放此批次 →", key="home_latest_bogie",
-                                    vehicle_id=preview["vehicle_id"], batch_id=preview["batch_id"])
+                                    vehicle_id=preview["vehicle_id"], batch_id=preview["batch_id"], threshold=threshold)
         with chart_container("rv-panel-recent"):
             st.subheader("最近分析")
             records = st.session_state.get("recent_analysis_records", [])

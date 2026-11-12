@@ -25,5 +25,8 @@ test = ["pytest>=8,<10"]
 [tool.setuptools.packages.find]
 include = ["rail_vehicle*"]
 
+[tool.setuptools.package-data]
+rail_vehicle = ["assets/bogie_viewer/*.*", "assets/bogie_viewer/vendor/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

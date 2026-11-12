@@ -1,0 +1,160 @@
+import * as THREE from "three";
+import {cameraRig} from "./camera.js";
+import {createAssembly} from "./geometry.js";
+import {inspection} from "./interaction.js";
+import {materials, studio} from "./lighting.js";
+import {motionClock} from "./motion.js";
+
+export async function mount() {
+  const response = await fetch("./assembly.json");
+  if (!response.ok) throw new Error("Missing bogie assembly");
+  const data = await response.json();
+  if (data.format !== 1) throw new Error("Unsupported bogie assembly");
+  const workbench = document.querySelector("#workbench");
+  const surface = document.querySelector("#surface");
+  const message = document.querySelector("#message");
+  const viewControl = document.querySelector("#view");
+  const renderer = new THREE.WebGLRenderer({antialias: true, alpha: true, powerPreference: "high-performance"});
+  const gl = renderer.getContext();
+  const gpuInfo = gl.getExtension("WEBGL_debug_renderer_info");
+  const gpu = gpuInfo ? gl.getParameter(gpuInfo.UNMASKED_RENDERER_WEBGL) : "";
+  const software = /swiftshader|llvmpipe|warp|basic render/i.test(gpu);
+  const pixelRatio = Math.min(window.devicePixelRatio || 1, 1.65);
+  renderer.setPixelRatio(pixelRatio);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
+  renderer.shadowMap.autoUpdate = false;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.08;
+  const canvas = renderer.domElement;
+  canvas.setAttribute("aria-label", "可旋转的三维转向架");
+  canvas.setAttribute("role", "img");
+  surface.append(canvas);
+  const scene = new THREE.Scene();
+  const illumination = studio(scene, renderer);
+  const finishes = materials();
+  const assembly = createAssembly(scene, data, finishes);
+  const clock = motionClock();
+  let args, serverArgs, localView, selection = null, appearance = "", angle = 0, width = 0, height = 0;
+  let raf, frames = 0, dirty = true, alive = true, shadowPose = "", shadowDirty = true;
+  const invalidate = () => { dirty = true; };
+  const rig = cameraRig(canvas, invalidate);
+  const reset = () => { if (args) rig.reset(args.view, args); };
+  function select(part) {
+    selection = part;
+    picker.select(part);
+    assembly.appearance(args, part);
+    workbench.dataset.selected = part ?? "";
+    invalidate();
+  }
+  const picker = inspection(canvas, data.parts, assembly, rig, select, reset);
+
+  function size() {
+    const w = surface.clientWidth, h = surface.clientHeight;
+    if (!w || !h || (w === width && h === height)) return;
+    const first = !width;
+    width = w;
+    height = h;
+    renderer.setSize(w, h);
+    rig.resize(w, h);
+    if (first && args) reset();
+    invalidate();
+  }
+  const observer = new ResizeObserver(size);
+  observer.observe(surface);
+  size();
+
+  function frame(now) {
+    if (!alive) return;
+    raf = requestAnimationFrame(frame);
+    if (!args || document.hidden) return;
+    const pose = clock.tick(now);
+    rig.controls.update();
+    if (!(dirty || pose.running || pose.settling)) return;
+    angle = pose.angle;
+    assembly.pose(angle, pose.lateral, pose.vertical, pose.yaw);
+    const nextShadowPose = [pose.lateral, pose.vertical, pose.yaw].map((value) => value.toFixed(3)).join(",");
+    // The rotating steel parts are axially symmetric. Reuse their shadow in normal running.
+    if (shadowDirty || shadowPose !== nextShadowPose) {
+      renderer.shadowMap.needsUpdate = true;
+      shadowPose = nextShadowPose;
+      shadowDirty = false;
+    }
+    renderer.render(scene, rig.camera);
+    picker.labels(args, width, height);
+    dirty = false;
+    // Lightweight diagnostics for checking interaction and renderer performance.
+    Object.assign(workbench.dataset, {
+      frames: ++frames, phase: angle.toFixed(4), zoom: rig.camera.zoom.toFixed(4),
+      camera: rig.camera.position.toArray().map((x) => x.toFixed(3)).join(","),
+      triangles: renderer.info.render.triangles, mode: args.mode,
+      playing: String(args.playing),
+      parts: args.visible.length, highlighted: args.highlight.join("、"),
+      pose: [pose.lateral, pose.vertical, pose.yaw].map((value) => value.toFixed(4)).join(","),
+    });
+  }
+  function dispose() {
+    if (!alive) return;
+    alive = false;
+    cancelAnimationFrame(raf);
+    observer.disconnect();
+    viewControl.removeEventListener("change", chooseView);
+    rig.controls.dispose();
+    picker.dispose();
+    const disposable = new Set(Object.values(finishes).flat());
+    scene.traverse(({geometry, material}) => {
+      if (geometry) disposable.add(geometry);
+      for (const item of Array.isArray(material) ? material : [material]) if (item) disposable.add(item);
+    });
+    for (const resource of disposable) resource.dispose();
+    illumination.dispose();
+    renderer.dispose();
+    renderer.forceContextLoss();
+  }
+  window.addEventListener("pagehide", (event) => { if (!event.persisted) dispose(); }, {once: true});
+  canvas.addEventListener("webglcontextlost", () => {
+    if (!alive) return;
+    dispose();
+    workbench.dataset.status = "unavailable";
+    message.hidden = false;
+    message.textContent = "三维绘图已中断。请重新打开本页或使用左侧 Plotly 兼容模式。";
+  });
+  message.hidden = true;
+  workbench.dataset.status = "ready";
+  workbench.dataset.renderer = software ? "software" : "default";
+  viewControl.disabled = false;
+  viewControl.addEventListener("change", chooseView);
+  raf = requestAnimationFrame(frame);
+
+  function chooseView() {
+    localView = viewControl.value;
+    apply(serverArgs);
+  }
+  function apply(next) {
+    if (!alive) return;
+    const previous = args;
+    const view = localView || next.view;
+    args = {...next, view, rails: next.rails && view !== "底视图"};
+    if (software && previous?.playing !== args.playing) renderer.setPixelRatio(pixelRatio * (args.playing ? .66 : 1));
+    const reframe = !previous || previous.view !== args.view || previous.revision !== args.revision
+      || Boolean(previous.spread) !== Boolean(args.spread) || previous.rails !== args.rails;
+    const newAppearance = JSON.stringify([args.visible, args.highlight, args.focus, args.rails, args.spread]);
+    if (newAppearance !== appearance) {
+      appearance = newAppearance;
+      const part = !previous || previous.focus !== args.focus ? args.focus : selection;
+      select(args.visible.includes(part) ? part : null);
+      illumination.platform.visible = args.rails;
+      shadowDirty = true;
+    }
+    workbench.dataset.view = args.view;
+    viewControl.value = args.view;
+    if (reframe) reset();
+    invalidate();
+  }
+  return function update(next) {
+    if (!serverArgs || serverArgs.view !== next.view || serverArgs.revision !== next.revision) localView = null;
+    serverArgs = next;
+    clock.receive(next, performance.now());
+    apply(next);
+  };
+}

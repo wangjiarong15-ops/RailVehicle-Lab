@@ -103,3 +103,38 @@ def init_db(db_path: Path | str = DB_PATH) -> None:
             "CREATE INDEX IF NOT EXISTS idx_run_samples_vehicle_timestamp "
             "ON run_samples(vehicle_id, timestamp)"
         )
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_run_samples_batch_vehicle ON run_samples(batch_id, vehicle_id)"
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS ai_analysis_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                vehicle_id INTEGER NOT NULL,
+                batch_id INTEGER NOT NULL,
+                generated_at TEXT NOT NULL,
+                provider TEXT NOT NULL,
+                analysis_type TEXT NOT NULL DEFAULT 'single_batch',
+                data_source TEXT NOT NULL DEFAULT 'history',
+                input_fingerprint TEXT NOT NULL,
+                selection_fingerprint TEXT NOT NULL,
+                selection_json TEXT NOT NULL,
+                evidence_json TEXT NOT NULL,
+                analysis_json TEXT NOT NULL,
+                UNIQUE (generated_at, input_fingerprint, selection_fingerprint)
+            )
+            """
+        )
+        history_migrations = {
+            "analysis_type": "TEXT NOT NULL DEFAULT 'single_batch'",
+            "data_source": "TEXT NOT NULL DEFAULT 'history'",
+        }
+        history_columns = {row["name"] for row in connection.execute("PRAGMA table_info(ai_analysis_history)")}
+        if history_migrations.keys() - history_columns:
+            # Check again after taking the write lock in case another session upgraded first.
+            connection.execute("BEGIN IMMEDIATE")
+            history_columns = {row["name"] for row in connection.execute("PRAGMA table_info(ai_analysis_history)")}
+            for name, definition in history_migrations.items():
+                if name not in history_columns:
+                    connection.execute(f"ALTER TABLE ai_analysis_history ADD COLUMN {name} {definition}")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_ai_history_type_id ON ai_analysis_history(analysis_type, id)")

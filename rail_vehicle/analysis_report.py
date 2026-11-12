@@ -237,11 +237,17 @@ def build_analysis_report_data(
     ai_selection_fingerprint: str | None = None,
     sampling_expected_interval_seconds: float | None = None,
     sampling_gap_multiplier: float = 3.0,
+    replay_rows: tuple[int, int] | list[int] | None = None,
 ) -> dict[str, Any]:
     """Assemble a stable report payload from the current filtered analysis."""
     samples = analysis["samples"]
     if not samples:
         raise ValueError("没有筛选后的运行数据，无法生成分析报告。")
+    if replay_rows is not None:
+        from rail_vehicle.replay_evidence import valid_row_span
+
+        if not valid_row_span(replay_rows, len(samples)):
+            raise ValueError("回放窗口的样本行与报告统计数量不一致。")
     if generated_at is None:
         generated_at = datetime.now().astimezone()
 
@@ -271,6 +277,7 @@ def build_analysis_report_data(
             "end": str(samples[-1]["timestamp"]),
         },
         "sample_count": analysis["sample_count"],
+        **({"replay_rows": tuple(replay_rows)} if replay_rows is not None else {}),
         "speed": dict(analysis["speed"]),
         "lateral_accel": dict(analysis["lateral_accel"]),
         "vertical_accel": dict(analysis["vertical_accel"]),
@@ -542,6 +549,10 @@ def generate_analysis_report_pdf(report: dict[str, Any]) -> bytes:
                 small_style, header_style,
             )
         )
+
+        if replay_rows := report.get("replay_rows"):
+            first, last = replay_rows
+            story.append(_paragraph(f"三维回放窗口：按批次时间排序的第 {first:,}–{last:,} 条观测。", body_style))
 
         story.append(_paragraph("二、运行速度统计", heading_style))
         speed = report["speed"]

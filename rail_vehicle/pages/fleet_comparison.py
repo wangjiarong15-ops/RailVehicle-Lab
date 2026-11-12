@@ -137,5 +137,8 @@ def render():
     st.caption("各车从首个保留样本对齐为 0 秒；保留真实时间间隔。散点不插值，不代表同一线路位置或同步测量。筛选后的跨度包含未保留样本形成的空档，并非累计运行时长。传感器安装、轴向、载荷和线路条件需人工核实。")
     st.caption("匿名映射（仅本地展示）：" + "；".join(f"B{index} = {row['label']} / 批次 {row['batch_id']}" for index, row in enumerate(results, 1)))
     selection = dict(source="demo" if source == "内置虚构对比" else "history")
+    if selection["source"] == "history":
+        selection["entries"] = [dict(vehicle_id=entry["vehicle"]["id"], batch_id=entry["batch_id"])
+                                for entry in entries]
     ai_context, ai_result = render_experiment_ai(saved, fingerprint, selection, "fleet")
     render_export(saved, fingerprint, selection, "fleet", ai_context=ai_context, ai_result=ai_result)

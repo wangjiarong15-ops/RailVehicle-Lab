@@ -56,7 +56,7 @@ def render_event_review(samples, anomalies, selection, *, allow_bogie=False, fic
                                 vehicle_id=selection["vehicle_id"], batch_id=selection["batch_id"],
                                 threshold=anomalies["threshold"], timestamp=event["start_timestamp"],
                                 axis="lateral" if event["field"] == "lateral_accel" else "vertical",
-                                fictional=fictional)
+                                fictional=fictional, row_span=selection.get("row_span"))
         st.table([{"类型": event["type"], "开始": event["start_timestamp"], "结束": event["end_timestamp"],
                    "异常样本数": event["sample_count"], "绝对峰值（m/s²）": event["maximum_absolute_value"]}])
         st.caption("紫色虚线为所选事件起止边界；红色标记为窗口内同轴既有异常点，也可能属于相邻事件。"

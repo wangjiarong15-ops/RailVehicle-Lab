@@ -42,11 +42,13 @@ class BogiePageTests(unittest.TestCase):
         with patch.dict(os.environ, {"RAIL_PUBLIC_DEMO": "true"}):
             app = AppTest.from_string("from rail_vehicle.pages.bogie import render; render()").run()
             self.assertFalse(app.exception)
-            self.assertEqual(len(app.get("plotly_chart")), 1)
-            app.selectbox[0].set_value("轴承异常示意").run()
+            self.assertEqual(len(app.get("component_instance")), 1)
+            app.selectbox(key="bogie_teaching").set_value("轴承异常示意").run()
             app.checkbox[0].check().run()
             app.toggle(key="bogie_labels").set_value(True).run()
             self.assertFalse(app.exception)
+            self.assertEqual(len(app.get("component_instance")), 2)
+            app.selectbox(key="bogie_renderer").set_value("Plotly 兼容模式").run()
             self.assertEqual(len(app.get("plotly_chart")), 2)
             app.radio(key="bogie_source").set_value("内置虚构演示").run()
             self.assertFalse(app.exception)
@@ -57,6 +59,9 @@ class BogiePageTests(unittest.TestCase):
                                 for warning in app.warning))
             next(button for button in app.button if button.label == "下一帧").click().run()
             self.assertFalse(app.exception)
+            app.selectbox(key="bogie_renderer").set_value("Three.js 工作台").run()
+            self.assertGreaterEqual(len(app.get("component_instance")), 1)
+            self.assertEqual(len(app.get("plotly_chart")), 1)  # synchronized signals
 
 
 if __name__ == "__main__":

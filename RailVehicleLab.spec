@@ -5,7 +5,8 @@ from PyInstaller.utils.hooks import collect_all
 
 root = Path(SPECPATH)
 datas = [(str(root / "app.py"), "."), (str(root / "demo_app.py"), "."),
-         (str(root / "packaging" / "portable_config.toml"), ".")]
+         (str(root / "packaging" / "portable_config.toml"), "."),
+         (str(root / "rail_vehicle" / "assets" / "bogie_viewer"), "rail_vehicle/assets/bogie_viewer")]
 tracked = subprocess.check_output(["git", "ls-files", "--", "rail_vehicle/*.py"], cwd=str(root), text=True, encoding="utf-8").splitlines()
 if not tracked:
     raise RuntimeError("Build requires the Git-tracked application sources.")

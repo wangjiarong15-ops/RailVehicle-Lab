@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="./viewer.css">
+  <script type="importmap">{"imports":{"three":"./vendor/three.module.min.js"}}</script>
+  <title>三维转向架工作台</title>
+</head>
+<body>
+  <main id="workbench" aria-label="三维转向架工作台">
+    <header>
+      <div><strong>双轴转向架</strong><span>通用工程示意</span></div>
+      <select id="view" aria-label="视窗视角" disabled>
+        <option>整体视图</option><option>侧视图</option><option>正视图</option>
+        <option>俯视图</option><option>底视图</option>
+      </select>
+      <button id="focus" disabled type="button">聚焦零件</button>
+      <button id="reset" disabled type="button">恢复视角</button>
+    </header>
+    <div id="stage">
+      <div id="surface"></div>
+      <div id="labels" aria-hidden="true"></div>
+      <div id="axes" aria-hidden="true"><b>X</b> 纵向 <b>Y</b> 横向 <b>Z</b> 垂向</div>
+      <p id="message" role="status">正在载入本地三维模型…</p>
+    </div>
+    <footer>
+      <span id="inspection" aria-live="polite">点击零件查看名称、作用和安装位置</span>
+      <span class="legend"><i></i> 检查 <i></i> 异常</span>
+    </footer>
+  </main>
+  <script type="module">
+    const send = (type, data = {}) => parent.postMessage({isStreamlitMessage: true, type, ...data}, "*");
+    let args, startup, update;
+    const error = () => {
+      document.querySelector("#message").textContent =
+        "无法开启 WebGL 三维视图。请在左侧「渲染方式」选择 Plotly 兼容模式，运行曲线和回放仍可使用。";
+      document.querySelector("#workbench").dataset.status = "unavailable";
+    };
+    window.addEventListener("message", (event) => {
+      if (event.source !== parent || event.data?.type !== "streamlit:render") return;
+      args = event.data.args;
+      let viewport = screen.availHeight;
+      try { viewport = parent.innerHeight; } catch {}
+      const height = Math.max(260, Math.min(args.height, Math.round(viewport * .62)));
+      const root = document.querySelector("#workbench");
+      if (root.style.height !== height + "px") {
+        root.style.height = height + "px";
+        send("streamlit:setFrameHeight", {height});
+      }
+      if (update) update(args);
+      else startup ??= import("./viewer.js").then(({mount}) => mount()).then((apply) => {
+        update = apply;
+        update(args);
+      }).catch(error);
+    });
+    send("streamlit:componentReady", {apiVersion: 1});
+  </script>
+</body>
+</html>

@@ -86,6 +86,8 @@ def demo_csv_content(batch_index: int) -> str:
             speed += 1.5
             lateral *= 0.8
             vertical *= 1.1
+            if sample_index in (93, 94):
+                lateral, vertical = ((1.6, -1.8), (-1.7, 1.5))[sample_index - 93]
 
         timestamp = (start + timedelta(seconds=sample_index)).isoformat(
             timespec="seconds"

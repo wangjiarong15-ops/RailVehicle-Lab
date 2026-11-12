@@ -363,6 +363,19 @@ def list_import_batches(db_path: Path | str = DB_PATH) -> list[dict[str, Any]]:
     return [dict(row) for row in rows]
 
 
+def list_batch_vehicles(batch_id: int, db_path: Path | str = DB_PATH) -> list[dict[str, Any]]:
+    """Return actual vehicles and their row counts in a batch, without loading samples."""
+    with get_connection(db_path) as connection:
+        rows = connection.execute(
+            """SELECT v.id, v.vehicle_code, COUNT(*) AS sample_count
+               FROM run_samples AS s JOIN vehicles AS v ON v.id = s.vehicle_id
+               WHERE s.batch_id = ? GROUP BY v.id, v.vehicle_code
+               ORDER BY v.vehicle_code COLLATE NOCASE, v.id""",
+            (batch_id,),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
 def list_vehicle_batches(
     vehicle_id: int, db_path: Path | str = DB_PATH
 ) -> list[dict[str, Any]]:

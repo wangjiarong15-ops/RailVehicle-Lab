@@ -3,6 +3,7 @@
 import csv
 import io
 import sqlite3
+from bisect import bisect_left
 from dataclasses import replace
 from datetime import timezone
 from time import monotonic
@@ -73,12 +74,16 @@ def _demo_track() -> ReplayTrack:
     return prepare_replay(list(csv.DictReader(io.StringIO(demo_csv_content(0)))))
 
 
-def build_replay_chart(track: ReplayTrack, index: int, position: float, threshold: float):
+def build_replay_chart(track: ReplayTrack, index: int, position: float, threshold: float,
+                       *, event_index=None, playhead=False, window=None):
     """Show observed samples only, bounded to the latest 60 seconds / 1,000 rows."""
-    first = max(0, track.index_at(max(0, position - 60)), index - 999)
+    # At a repeated timestamp, keep rows through the explicitly selected sample only.
+    first = min(index, max(bisect_left(track.offsets, max(0, position - 60)), index - 999,
+                           window.first_row if window else 0))
     rows = track.samples[first:index + 1]
     offsets = track.offsets[first:index + 1]
     figure = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.09)
+    shapes = []
     channels = (
         ("speed_kmh", "速度（km/h）", "#2563eb"),
         ("lateral_accel", "横向加速度（m/s²）", "#0891b2"),
@@ -98,19 +103,29 @@ def build_replay_chart(track: ReplayTrack, index: int, position: float, threshol
                 name=f"{label}超阈值",
             ), row=row_index, col=1)
             for value in (-threshold, threshold):
-                figure.add_hline(y=value, line_dash="dash", line_color="#dc2626",
-                                 row=row_index, col=1)
-    for event in detect_anomalies(rows, threshold)["events"][:CHART_EVENT_LIMIT]:
-        row_index = 2 if event["field"] == "lateral_accel" else 3
-        start, end = _offset(track, event["start_timestamp"]), _offset(track, event["end_timestamp"])
+                shapes.append(dict(type="line", xref=f"x{row_index} domain", yref=f"y{row_index}",
+                                   x0=0, x1=1, y0=value, y1=value, line=dict(dash="dash", color="#dc2626")))
+    if event_index is None:
+        spans = ((event["field"], _offset(track, event["start_timestamp"]), _offset(track, event["end_timestamp"]))
+                 for event in detect_anomalies(rows, threshold)["events"][:CHART_EVENT_LIMIT])
+    else:
+        spans = event_index.window(track.offsets, first, index, CHART_EVENT_LIMIT)
+    for field, start, end in spans:
+        row_index = 2 if field == "lateral_accel" else 3
+        location = dict(xref=f"x{row_index}", yref=f"y{row_index} domain", x0=start, x1=end, y0=0, y1=1)
         if start == end:
-            figure.add_vline(x=start, line_color="#dc2626", opacity=.5, row=row_index, col=1)
+            shapes.append(dict(type="line", **location, line=dict(color="#dc2626"), opacity=.5))
         else:
-            figure.add_vrect(x0=start, x1=end, fillcolor="#dc2626", opacity=.13,
-                             line_width=0, row=row_index, col=1)
-    figure.update_xaxes(range=[max(0, position - 60), max(10, position + 1)])
+            shapes.append(dict(type="rect", **location, fillcolor="#dc2626", opacity=.13, line=dict(width=0)))
+    if playhead:
+        observed = track.offsets[index]
+        for suffix in ("", "2", "3"):
+            shapes.append(dict(type="line", xref=f"x{suffix}", yref=f"y{suffix} domain", x0=observed,
+                               x1=observed, y0=0, y1=1, line=dict(color="#39c4ce", dash="dash")))
+    x_range = [window.start, window.end] if window else [max(0, position - 60), max(10, position + 1)]
+    figure.update_xaxes(range=x_range)
     figure.update_xaxes(title_text="相对运行时间（秒）", row=3, col=1)
-    figure.update_layout(height=570, showlegend=False, margin=dict(l=20, r=20, t=15, b=20))
+    figure.update_layout(height=570, showlegend=False, margin=dict(l=20, r=20, t=15, b=20), shapes=shapes)
     return figure
 
 

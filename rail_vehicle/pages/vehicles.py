@@ -1,11 +1,13 @@
 """Vehicle parameter entry, browsing, and editing page."""
 
-import streamlit as st
-from rail_vehicle.ui import page_title
 import sqlite3
-from rail_vehicle.ui import navigate
+
+import streamlit as st
+
 from rail_vehicle.pages.bogie_link import batch_replay_button
+from rail_vehicle.pages.data_workflow import analysis_button, import_button
 from rail_vehicle.ai.center_state import clear_all_contexts
+from rail_vehicle.ui import page_title
 
 from rail_vehicle.vehicle_data import (
     DuplicateVehicleCodeError,
@@ -149,7 +151,11 @@ def _vehicle_dialog(vehicle=None):
         submitted = st.form_submit_button("保存修改" if editing else "保存车辆", type="primary")
     if submitted:
         try:
-            update_vehicle(vehicle["id"], values) if editing else add_vehicle(values)
+            if editing:
+                saved_id = vehicle["id"]
+                update_vehicle(saved_id, values)
+            else:
+                saved_id = add_vehicle(values)
         except (ValueError, DuplicateVehicleCodeError, VehicleNotFoundError) as exc:
             st.error(str(exc))
         except (sqlite3.Error, OSError):
@@ -158,6 +164,7 @@ def _vehicle_dialog(vehicle=None):
             if editing:
                 clear_all_contexts(st.session_state)
             st.session_state["vehicle_flash"] = "车辆档案已保存。"
+            st.session_state["vehicle_focus_target"] = saved_id
             _close_editor()
             st.rerun()
 
@@ -172,6 +179,13 @@ def render() -> None:
     except (sqlite3.Error, OSError):
         st.error("暂时无法读取车辆档案，请检查数据库后重试。")
         return
+    focus_id = st.session_state.pop("vehicle_focus_target", None)
+    focus = next((vehicle for vehicle in vehicles if vehicle["id"] == focus_id), None)
+    if focus:
+        previous_query = st.session_state.get("vehicle_search", "").strip().casefold()
+        if previous_query not in focus["vehicle_code"].casefold() and previous_query not in focus["vehicle_type"].casefold():
+            st.session_state["vehicle_search"] = ""
+        st.session_state["vehicle_selected_id"] = focus_id
     search, action = st.columns([4, 1], vertical_alignment="bottom")
     query = search.text_input("搜索车辆", placeholder="输入车辆编号或车型", key="vehicle_search").strip().casefold()
     action.button("＋ 新增车辆", type="primary", key="vehicle_add", width="stretch", on_click=_open_editor)
@@ -190,10 +204,8 @@ def render() -> None:
     selected_id = selection.selectbox("当前车辆", list(by_id), format_func=lambda value: f"{by_id[value]['vehicle_code']} · {by_id[value]['vehicle_type']}", key="vehicle_selected_id")
     selected = by_id[selected_id]
     edit.button("编辑车辆", key="vehicle_edit_open", width="stretch", on_click=_open_editor, args=(selected,))
-    import_data.button("导入数据 →", key="vehicle_import", width="stretch", on_click=navigate,
-                       args=("CSV 数据导入",))
-    analysis.button("进入分析 →", key="vehicle_analyze", width="stretch", on_click=navigate,
-                    args=("运行分析",), kwargs={"dynamics_vehicle_id": selected_id})
+    import_button(import_data, label="导入数据 →", key="vehicle_import", vehicle_id=selected_id)
+    analysis_button(analysis, label="进入分析 →", key="vehicle_analyze", vehicle_id=selected_id)
     batch_replay_button(replay, label="三维回放 →", key="vehicle_bogie", vehicle_id=selected_id)
     with st.expander("查看车辆详情", expanded=False):
         st.table([{ "参数": label, "值": str(selected.get(field, "")) } for field, label in VEHICLE_FIELDS.items() if field != "notes"])

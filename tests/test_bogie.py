@@ -11,8 +11,9 @@ from rail_vehicle.replay import prepare_replay
 class BogieTests(unittest.TestCase):
     def test_motion_is_prescribed_and_deterministic(self):
         self.assertEqual(motion("正常运行", 1), (0, 0, 0))
-        self.assertAlmostEqual(motion("垂向振动", math.pi / 2)[1], 0.12)
-        self.assertAlmostEqual(motion("横向振动", math.pi / 2)[0], 0.16)
+        self.assertEqual(motion("垂向振动", math.pi / 2), (0, .065, 0))
+        self.assertEqual(motion("横向振动", math.pi / 2), (.075, 0, 0))
+        self.assertEqual(motion("蛇行运动示意", 0), (0, 0, .049))
 
     def test_visibility_and_highlight_include_solid_wheels(self):
         fig = build_bogie(visible=["轮对"], highlight="轮对")

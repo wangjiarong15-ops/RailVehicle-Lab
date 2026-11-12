@@ -1,13 +1,15 @@
-"""Opt-in AI interpretation of validated, session-only analysis contexts."""
+"""Opt-in AI interpretation and local review of saved evidence snapshots."""
 
 from dataclasses import replace
 from datetime import datetime, timezone
+from sqlite3 import Error as DatabaseError
 
 import streamlit as st
 
 from rail_vehicle.ai.center_state import CONTEXTS, current_context
 from rail_vehicle.ai.config import AIConfig
 from rail_vehicle.ai.evidence_view import evidence_detail_catalog
+from rail_vehicle.ai.history import delete_history, list_history, load_history, save_history
 from rail_vehicle.ai.openai_provider import create_configured_provider
 from rail_vehicle.ai.ui import (ai_configuration_message, clear_result, invalidate_stale_result,
                                render_validated_result, request_ai_analysis, selection_fingerprint,
@@ -15,6 +17,9 @@ from rail_vehicle.ai.ui import (ai_configuration_message, clear_result, invalida
 from rail_vehicle.deployment import public_demo_enabled
 from rail_vehicle.pages.bogie_link import event_replay_button
 from rail_vehicle.ui import navigate, page_title
+
+
+_HISTORY_LABELS = {analysis_type: label for label, analysis_type, _ in CONTEXTS.values()}
 
 
 def _render_history():
@@ -32,21 +37,150 @@ def _render_history():
 def _event_button(event, selection, key, label):
     event_replay_button(label=label, key=key, vehicle_id=selection["vehicle_id"],
                         batch_id=selection["batch_id"], threshold=selection["threshold"],
-                        timestamp=event["start_timestamp"], axis=event["type"])
+                        timestamp=event["start_timestamp"], axis=event["type"], row_span=selection.get("row_span"))
 
 
-def _cited_event_links(analysis, events, selection):
+def _cited_event_links(analysis, events, selection, *, key_prefix="ai_center"):
     claims = [analysis["summary"]]
     for section in ("observations", "possible_causes", "further_checks", "limitations"):
         claims.extend(analysis[section])
     cited = {evidence_id for claim in claims for evidence_id in claim["evidence_ids"]}
     matches = {event["evidence_id"]: event for event in events if event["evidence_id"] in cited}
     if matches:
-        evidence_id = st.selectbox("AI 解读引用的异常区段", list(matches), key="ai_center_cited_event")
-        _event_button(matches[evidence_id], selection, "ai_center_cited_event_jump", "回放 AI 引用的统计区段")
+        evidence_id = st.selectbox("AI 解读引用的异常区段", list(matches), key=f"{key_prefix}_cited_event")
+        _event_button(matches[evidence_id], selection, f"{key_prefix}_cited_event_jump", "回放 AI 引用的统计区段")
         st.caption("定位依据为原统计区段。高亮表示关联结构，不能确认部件故障。")
     else:
         st.caption("本次 AI 解读未引用可定位的异常区段。")
+
+
+def _render_archived_scope(payload, selection, record):
+    kind = payload["analysis_type"]
+    if record["data_source"] == "demo":
+        st.info("此记录来自内置虚构实验，不是实际车辆测量。")
+    if kind == "single_batch":
+        st.caption(f"保存时的分析范围：{selection['selected_start']} 至 {selection['selected_end']}")
+        st.caption(f"加速度阈值：{selection['threshold']:g} m/s²")
+        if "row_span" in selection:
+            first, last = selection["row_span"]
+            st.caption(f"三维回放窗口：批次第 {first:,}–{last:,} 条观测。")
+    mapping = []
+    if kind == "batch_comparison":
+        mapping = [(selection["vehicle_id"], batch) for batch in selection["batch_ids"]]
+    elif record["data_source"] == "history" and kind != "single_batch":
+        local = selection["selection"]
+        if kind == "ml_experiment":
+            mapping = [(local["vehicle"], local["reference"]), (local["vehicle"], local["target"])]
+        elif kind == "vibration_experiment":
+            mapping = [(local["vehicle"], local["batch"])]
+        elif kind == "fleet_comparison":
+            mapping = [(entry["vehicle_id"], entry["batch_id"]) for entry in local["entries"]]
+    if mapping:
+        with st.expander("匿名批次对应的本机记录"):
+            st.dataframe([{"证据批次": f"B{index}", "车辆 ID": vehicle, "批次 ID": batch}
+                          for index, (vehicle, batch) in enumerate(mapping, 1)], hide_index=True)
+    ranges = payload.get("experiment", {}).get("ranges", ())
+    if ranges:
+        with st.expander("保存时的实验时间范围"):
+            st.dataframe([{"证据批次": row["batch_ref"], "开始": row["start"], "结束": row["end"]}
+                          for row in ranges], hide_index=True)
+
+
+def _render_archived_evidence(payload, record_id):
+    catalog = evidence_detail_catalog(payload)
+    if not catalog:
+        return
+    with st.expander("查看全部已保存证据"):
+        st.caption("这些是保存时的 Python 计算结果，包括 AI 没有引用的指标。")
+        evidence_id = st.selectbox("快照证据 ID", list(catalog), key=f"ai_history_evidence_{record_id}")
+        st.dataframe(catalog[evidence_id], hide_index=True, width="stretch")
+
+
+def _render_local_history():
+    st.subheader("本机保存的 AI 解读")
+    st.caption("这里展示保存当时的证据快照。查看或删除不会调用 AI；三维跳转会在当前批次中重新查找对应样本。")
+    history_filter = st.selectbox("筛选分析类型", ["all", *_HISTORY_LABELS],
+                                  format_func=lambda value: _HISTORY_LABELS.get(value, "全部类型"),
+                                  key="ai_history_filter")
+    analysis_type = None if history_filter == "all" else history_filter
+    page_key = f"ai_local_history_page_{history_filter}"
+    try:
+        records, page, last = list_history(st.session_state.get(page_key, 0), analysis_type=analysis_type)
+    except (DatabaseError, OSError):
+        st.warning("暂时无法读取本机历史。当前会话的分析和报告不受影响。")
+        return
+    st.session_state[page_key] = page
+    if st.session_state.pop("ai_local_history_deleted", False):
+        st.success("所选历史记录已删除。")
+    if not records:
+        st.info("当前类型没有已保存的解读。" if analysis_type else
+                "本机还没有保存的解读。生成通过校验的 AI 解读后，可点击“保存到本机历史”。")
+        return
+    if last:
+        previous, position, following = st.columns([1, 2, 1])
+        with previous:
+            if st.button("上一页", key="ai_history_prev", disabled=page == 0):
+                st.session_state[page_key] = page - 1
+                st.rerun()
+        position.caption(f"第 {page + 1} / {last + 1} 页")
+        with following:
+            if st.button("下一页", key="ai_history_next", disabled=page == last):
+                st.session_state[page_key] = page + 1
+                st.rerun()
+    by_id = {record["id"]: record for record in records}
+
+    def label(record_id):
+        row = by_id[record_id]
+        date = row["generated_at"][:19].replace("T", " ")
+        kind = _HISTORY_LABELS.get(row["analysis_type"], "未知类型")
+        origin = "虚构实验" if row["data_source"] == "demo" else "历史批次"
+        vehicle = f" · 车辆 #{row['vehicle_id']}" if row["vehicle_id"] else ""
+        batch = f" / 批次 #{row['batch_id']}" if row["batch_id"] else ""
+        return f"#{record_id} · {kind} · {origin}{vehicle}{batch} · {date} UTC"
+
+    record_key = f"ai_history_record_{history_filter}_{page}"
+    if st.session_state.get(record_key) not in by_id:
+        st.session_state[record_key] = next(iter(by_id))
+    record_id = st.selectbox("保存的分析记录", list(by_id), format_func=label, key=record_key)
+    with st.expander("管理此记录"):
+        confirmed = st.checkbox("确认只删除这条 AI 解读及其证据快照", key=f"ai_history_confirm_{record_id}")
+        if st.button("删除所选记录", key=f"ai_history_delete_{record_id}", disabled=not confirmed):
+            try:
+                delete_history(record_id)
+            except (DatabaseError, OSError):
+                st.warning("暂时无法删除，请检查本机数据库权限后重试。")
+            else:
+                st.session_state["ai_local_history_deleted"] = True
+                st.rerun()
+    try:
+        saved = load_history(record_id)
+    except (DatabaseError, OSError, ValueError, TypeError, KeyError, AttributeError, OverflowError):
+        st.warning("这条历史记录无法读取或证据校验未通过，已阻止显示。")
+        return
+    if saved is None:
+        st.info("所选记录已不存在，请选择其他记录。")
+        return
+    payload, selection, result = saved
+    st.caption(f"Provider：{by_id[record_id]['provider']}")
+    _render_archived_scope(payload, selection, by_id[record_id])
+    if render_validated_result(result, payload, st):
+        if payload["analysis_type"] == "single_batch":
+            _cited_event_links(result["analysis"], payload["anomaly_events"], selection,
+                               key_prefix=f"ai_history_{record_id}")
+        else:
+            st.caption("这份证据没有可直接定位的单批次阈值区段，无法跳转至三维样本。")
+        _render_archived_evidence(payload, record_id)
+
+
+def _render_save_history(payload, selection, result):
+    st.caption("保存后可离线回查。仅写入本机 SQLite，包括当前范围、聚合证据和通过校验的解读。")
+    if st.button("保存到本机历史", key="ai_center_save_history"):
+        try:
+            created = save_history(payload, selection, result)
+        except (DatabaseError, OSError, ValueError, TypeError, KeyError, AttributeError, OverflowError):
+            st.warning("本次解读未能写入本机历史。当前会话的解读仍可查看。")
+        else:
+            st.success("已保存到本机历史。" if created else "这次解读已在本机历史中。")
 
 
 def _render_demo_evidence():
@@ -93,7 +227,7 @@ def _render_demo_evidence():
 
 
 def render():
-    page_title("AI 智能分析中心", "仅解释当前会话中已计算的结构化结果")
+    page_title("AI 智能分析中心", "核查计算证据 / 主动生成解读 / 回查本机记录")
     st.caption("AI 内容仅供辅助参考，不构成故障、事故、安全、法规或标准舒适等级结论。")
     public = public_demo_enabled()
     if public:
@@ -102,6 +236,9 @@ def render():
         return
     if st.toggle("查看离线虚构证据演示", key="ai_center_demo"):
         _render_demo_evidence()
+        return
+    if st.toggle("查看本机 AI 历史", key="ai_center_show_history"):
+        _render_local_history()
         return
     available = {kind: item for kind in CONTEXTS if (item := current_context(st.session_state, kind)) is not None}
     if not available:
@@ -191,8 +328,10 @@ def render():
                 st.warning("AI 结果尚未完整验证，未展示。")
             elif not render_validated_result(saved, payload, st):
                 clear_result(st.session_state, key)
-            elif can_jump:
-                _cited_event_links(saved["analysis"], events, selection)
+            else:
+                if can_jump:
+                    _cited_event_links(saved["analysis"], events, selection)
+                _render_save_history(payload, selection, saved)
         else:
             st.caption("尚未生成 AI 解读；右侧可离线核查当前计算指标。")
     with right:

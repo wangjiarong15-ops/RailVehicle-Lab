@@ -31,14 +31,18 @@ from rail_vehicle.pages.anomaly_review import render_event_review
 from rail_vehicle.pages.sampling_quality import render_sampling_quality
 from rail_vehicle.pages.ai_link import render_center_link, restore_source_widgets
 from rail_vehicle.pages.bogie_link import batch_replay_button
+from rail_vehicle.pages.data_workflow import ANALYSIS_REPLAY_SCOPE, ANALYSIS_TARGET, IMPORT_VEHICLE, analysis_button, import_button
 from rail_vehicle.ai.center_state import clear_context
+from rail_vehicle.replay_evidence import ReplayEvidenceScope
 from rail_vehicle.ui import plot_chart, record_analysis, source_caption, workflow_caption, navigate
 from rail_vehicle.time_filter import filter_samples_by_time_range
 from rail_vehicle.run_data import (
     MAX_CSV_SIZE_MB,
     PREVIEW_LIMIT,
+    REQUIRED_COLUMNS,
     import_run_data,
     list_batch_samples,
+    list_batch_vehicles,
     list_import_batches,
     list_vehicle_batches,
     validate_run_csv,
@@ -67,6 +71,72 @@ def _render_ai_interpretation(
     render_center_link(kind, payload, selection)
 
 
+def _batch_actions(batch_id, vehicles, *, scope):
+    if not vehicles:
+        st.caption("该批次没有可打开的车辆样本。")
+        return
+    by_id = {vehicle["id"]: vehicle for vehicle in vehicles}
+    if len(by_id) == 1:
+        vehicle_id = next(iter(by_id))
+        st.caption(f"车辆 {by_id[vehicle_id]['vehicle_code']} · 批次 #{batch_id}")
+    else:
+        st.caption("该批次包含多辆车，请选择要分析或回放的车辆。")
+
+        def vehicle_label(vehicle_id):
+            vehicle = by_id[vehicle_id]
+            return f"{vehicle['vehicle_code']} · {vehicle['sample_count']:,} 条"
+
+        vehicle_id = st.selectbox("选择批次中的车辆", list(by_id), index=None, format_func=vehicle_label,
+                                  key=f"import_{scope}_vehicle_{batch_id}")
+        if vehicle_id is None:
+            return
+    analysis, replay = st.columns(2)
+    if scope == "receipt":
+        analysis_label, replay_label = "分析本次导入 →", "回放本次导入 →"
+        suffix = "latest" if len(by_id) == 1 else "selected"
+    else:
+        analysis_label, replay_label, suffix = "分析历史批次 →", "回放历史批次 →", "history"
+    analysis_button(analysis, label=analysis_label, key=f"import_analyze_{suffix}",
+                    vehicle_id=vehicle_id, batch_id=batch_id)
+    batch_replay_button(replay, label=replay_label, key=f"import_bogie_{suffix}",
+                        vehicle_id=vehicle_id, batch_id=batch_id)
+
+
+def _render_import_history():
+    st.subheader("历史导入记录")
+    try:
+        batches = list_import_batches()
+    except (sqlite3.Error, OSError):
+        st.warning("暂时无法读取历史导入记录，请检查数据库。")
+        return
+    if not batches:
+        st.info("还没有导入记录。")
+        return
+    query = st.text_input("查找导入记录", placeholder="输入文件名或批次编号", key="import_history_search").strip().casefold()
+    matches = [batch for batch in batches if query in batch["file_name"].casefold() or
+               (query and query.removeprefix("#") == str(batch["id"]))]
+    if not matches:
+        st.info("没有匹配的导入记录。")
+        return
+    st.dataframe([{"批次编号": row["id"], "文件名": row["file_name"], "数据行数": row["row_count"],
+                   "导入时间": row["imported_at"]} for row in matches[:20]], hide_index=True, width="stretch")
+    if len(matches) > 20:
+        st.caption(f"找到 {len(matches):,} 个批次，表格显示最近 20 个；下拉框可选全部匹配记录。")
+    by_id = {row["id"]: row for row in matches}
+    key = "import_history_batch"
+    if st.session_state.get(key) not in by_id:
+        st.session_state.pop(key, None)
+    batch_id = st.selectbox("打开历史批次", list(by_id), index=None, key=key,
+                            format_func=lambda value: f"#{value} · {by_id[value]['file_name']}")
+    if batch_id is not None:
+        try:
+            vehicles = list_batch_vehicles(batch_id)
+        except (sqlite3.Error, OSError):
+            st.warning("暂时无法读取该批次中的车辆。")
+        else:
+            _batch_actions(batch_id, vehicles, scope="history")
+
+
 def _render_import() -> None:
     workflow_caption("① 上传 CSV　→　② 检查格式与采样　→　③ 确认导入并分析")
     st.caption("上传 CSV 后先检查数据；只有整份文件通过校验后才能写入数据库。")
@@ -91,7 +161,26 @@ def _render_import() -> None:
             language="csv",
         )
 
-    vehicles = list_vehicles()
+    try:
+        vehicles = list_vehicles()
+    except (sqlite3.Error, OSError):
+        st.error("暂时无法读取已登记车辆，请检查数据库后再导入。")
+        return
+    if receipt := st.session_state.get("import_last_receipt"):
+        with st.container(border=True):
+            st.caption("本会话最近一次导入")
+            st.success(f"导入成功：批次 #{receipt['batch_id']}，共保存 {receipt['row_count']:,} 行。")
+            _batch_actions(receipt["batch_id"], receipt["vehicles"], scope="receipt")
+    target = st.session_state.get(IMPORT_VEHICLE)
+    focused_vehicle = next((vehicle for vehicle in vehicles if vehicle["id"] == target), None)
+    if focused_vehicle:
+        with st.container(border=True):
+            st.caption("从车辆档案进入：CSV 的 `vehicle_id` 请填写对应的车辆编号。当前车辆编号：")
+            st.code(focused_vehicle["vehicle_code"], language=None)
+            st.caption("这只是填写提示。上传时仍按 CSV 内实际车辆编号核对，支持同一文件包含多辆已登记车辆。")
+            st.download_button("下载空白 CSV 表头", (",".join(REQUIRED_COLUMNS) + "\r\n").encode("utf-8"),
+                               file_name="running_data_template.csv", mime="text/csv", key="import_header_template")
+            st.button("清除当前车辆提示", key="import_clear_vehicle", on_click=st.session_state.pop, args=(IMPORT_VEHICLE, None))
     if not vehicles:
         st.warning("请先在“车辆参数”页面新增车辆，再导入对应的运行数据。")
         st.button("前往车辆登记 →", key="import_register_vehicle", on_click=navigate, args=("车辆参数",))
@@ -100,6 +189,7 @@ def _render_import() -> None:
         "选择运行数据 CSV 文件",
         type=["csv"],
         max_upload_size=MAX_CSV_SIZE_MB,
+        key=f"run_csv_upload_{st.session_state.get('import_upload_revision', 0)}",
     )
     if uploaded_file is not None:
         validation = validate_run_csv(uploaded_file.getvalue(), vehicles)
@@ -120,6 +210,8 @@ def _render_import() -> None:
             for error in validation.errors:
                 st.write(f"- {error}")
         else:
+            if focused_vehicle and focused_vehicle["vehicle_code"] not in validation.sampling_by_vehicle:
+                st.warning("该文件不含当前档案车辆。确认导入后，数据将保存到文件中实际匹配的车辆。")
             metric_columns = st.columns(3)
             metric_columns[0].metric("数据行数", f"{validation.source_row_count:,}")
             metric_columns[1].metric(
@@ -179,41 +271,17 @@ def _render_import() -> None:
                 except (sqlite3.Error, OSError):
                     st.error("导入未完成，请先检查历史导入记录，再检查数据库目录的可写权限及磁盘空间。")
                 else:
-                    st.success(
-                        f"导入成功：批次 #{batch_id}，共保存 {validation.source_row_count:,} 行。"
-                    )
-                    if validation.distinct_vehicle_count == 1 and len(validation.sampling_by_vehicle) == 1:
-                        code = next(iter(validation.sampling_by_vehicle))
-                        matching_vehicle = next((vehicle for vehicle in vehicles if vehicle["vehicle_code"] == code), None)
-                        if matching_vehicle is not None:
-                            analysis, replay = st.columns(2)
-                            analysis.button("分析本次导入 →", key="import_analyze_latest", on_click=navigate,
-                                            args=("运行分析",), kwargs={"dynamics_vehicle_id": matching_vehicle["id"],
-                                                                     "dynamics_batch_id": batch_id})
-                            batch_replay_button(replay, label="回放本次导入 →", key="import_bogie_latest",
-                                                vehicle_id=matching_vehicle["id"], batch_id=batch_id)
-                    elif validation.distinct_vehicle_count > 1:
-                        st.caption("该批次包含多辆车，请在运行分析中选择需要查看的车辆。")
+                    by_code = {vehicle["vehicle_code"]: vehicle["id"] for vehicle in vehicles}
+                    members = [dict(id=by_code[code], vehicle_code=code, sample_count=review["sample_count"])
+                               for code, review in validation.sampling_by_vehicle.items() if code in by_code]
+                    st.session_state["import_last_receipt"] = dict(batch_id=batch_id, row_count=validation.source_row_count,
+                                                                  vehicles=members)
+                    # Clear the uploaded file so a widget rerun cannot submit it twice.
+                    st.session_state["import_upload_revision"] = st.session_state.get("import_upload_revision", 0) + 1
+                    st.rerun()
 
     st.divider()
-    st.subheader("历史导入记录")
-    batches = list_import_batches()
-    if not batches:
-        st.info("还没有导入记录。")
-    else:
-        st.dataframe(
-            [
-                {
-                    "批次编号": batch["id"],
-                    "文件名": batch["file_name"],
-                    "数据行数": batch["row_count"],
-                    "导入时间": batch["imported_at"],
-                }
-                for batch in batches
-            ],
-            hide_index=True,
-            width="stretch",
-        )
+    _render_import_history()
 
 
 def _format_stats_table(metrics: dict, acceleration: bool = False) -> list[dict]:
@@ -227,9 +295,37 @@ def _format_stats_table(metrics: dict, acceleration: bool = False) -> list[dict]
     return rows
 
 
+def _clear_replay_scope(vehicle_id, batch_id):
+    st.session_state.pop(ANALYSIS_REPLAY_SCOPE, None)
+    for prefix in ("analysis_start_date", "analysis_start_time", "analysis_end_date", "analysis_end_time"):
+        st.session_state.pop(f"{prefix}_{vehicle_id}_{batch_id}", None)
+
+
+def _analysis_time_range(timestamps, vehicle_id, batch_id):
+    # The whole-second controls include the entire final second.
+    batch_start = min(timestamps).replace(tzinfo=None, microsecond=0)
+    batch_end = max(timestamps).replace(tzinfo=None, microsecond=0)
+    with st.expander("分析时间范围（UTC） · 调整筛选", expanded=False):
+        start_col, end_col = st.columns(2)
+        with start_col:
+            start_date = st.date_input("开始日期", value=batch_start.date(), key=f"analysis_start_date_{vehicle_id}_{batch_id}")
+            start_time = st.time_input("开始时间", value=batch_start.time(), step=timedelta(seconds=1),
+                                       key=f"analysis_start_time_{vehicle_id}_{batch_id}")
+        with end_col:
+            end_date = st.date_input("结束日期", value=batch_end.date(), key=f"analysis_end_date_{vehicle_id}_{batch_id}")
+            end_time = st.time_input("结束时间", value=batch_end.time(), step=timedelta(seconds=1),
+                                     key=f"analysis_end_time_{vehicle_id}_{batch_id}")
+    return (datetime.combine(start_date, start_time).replace(tzinfo=timezone.utc),
+            datetime.combine(end_date, end_time).replace(tzinfo=timezone.utc) + timedelta(microseconds=999_999))
+
+
 def _render_dynamics_analysis(*, demo: bool = False) -> None:
+    target = None
     if not demo:
         restore_source_widgets("single")
+        target = st.session_state.pop(ANALYSIS_TARGET, None)
+        if target:
+            st.session_state.pop(ANALYSIS_REPLAY_SCOPE, None)
     ai_state_key = "demo_single_batch_result" if demo else "ai_single_batch_result"
     if not demo:
         clear_context(st.session_state, "single")
@@ -241,17 +337,31 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
     if demo:
         from rail_vehicle.demo_data import analysis_demo_data
         demo_vehicle, demo_batches, demo_samples = analysis_demo_data()
-    vehicles = [demo_vehicle] if demo else list_vehicles()
+    try:
+        vehicles = [demo_vehicle] if demo else list_vehicles()
+    except (sqlite3.Error, OSError):
+        clear_result(st.session_state, ai_state_key)
+        st.warning("暂时无法读取车辆，请检查数据库后重试。")
+        return
     if not vehicles:
         clear_result(st.session_state, ai_state_key)
         st.info("请先录入车辆并导入运行数据。")
         st.button("前往车辆登记 →", key="analysis_register_vehicle", on_click=navigate, args=("车辆参数",))
         return
 
+    vehicle_ids = [vehicle["id"] for vehicle in vehicles]
+    if target:
+        if target["vehicle_id"] in vehicle_ids:
+            st.session_state["dynamics_vehicle_id"] = target["vehicle_id"]
+        else:
+            st.session_state.pop("dynamics_vehicle_id", None)
+            st.session_state.pop("dynamics_batch_id", None)
+            st.warning("入口指定的车辆已不可用，请手动选择车辆。")
+            target = None
     selectors = st.columns(2)
     vehicle_id = selectors[0].selectbox(
         "选择车辆",
-        options=[vehicle["id"] for vehicle in vehicles],
+        options=vehicle_ids,
         format_func=lambda selected_id: next(
             f"{vehicle['vehicle_code']} · {vehicle['vehicle_type']}"
             for vehicle in vehicles
@@ -259,16 +369,32 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         ),
         key="demo_dynamics_vehicle_id" if demo else "dynamics_vehicle_id",
     )
-    batches = demo_batches if demo else list_vehicle_batches(vehicle_id)
+    try:
+        batches = demo_batches if demo else list_vehicle_batches(vehicle_id)
+    except (sqlite3.Error, OSError):
+        clear_result(st.session_state, ai_state_key)
+        st.warning("暂时无法读取该车辆的批次。")
+        return
     if not batches:
         clear_result(st.session_state, ai_state_key)
         st.info("该车辆还没有导入运行数据。")
-        st.button("前往 CSV 导入 →", key="analysis_import_data", on_click=navigate, args=("CSV 数据导入",))
+        import_button(st, label="前往 CSV 导入 →", key="analysis_import_data", vehicle_id=vehicle_id)
         return
 
+    batch_ids = [batch["id"] for batch in batches]
+    if target:
+        requested_batch = target["batch_id"]
+        if requested_batch in batch_ids:
+            st.session_state["dynamics_batch_id"] = requested_batch
+        else:
+            st.session_state.pop("dynamics_batch_id", None)
+            if requested_batch is not None:
+                st.warning("指定批次不属于这辆车或已不可用，请手动选择批次。")
+    elif not demo and st.session_state.get("dynamics_batch_id") not in batch_ids:
+        st.session_state.pop("dynamics_batch_id", None)
     batch_id = selectors[1].selectbox(
         "选择虚构批次" if demo else "选择历史导入批次",
-        options=[batch["id"] for batch in batches],
+        options=batch_ids,
         format_func=lambda selected_id: next(
             f"{batch['file_name']} · {batch['imported_at']} · "
             f"{batch['sample_count']:,} 行"
@@ -277,7 +403,12 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         ),
         key="demo_dynamics_batch_id" if demo else "dynamics_batch_id",
     )
-    samples = demo_samples[batch_id] if demo else list_batch_samples(vehicle_id, batch_id)
+    try:
+        samples = demo_samples[batch_id] if demo else list_batch_samples(vehicle_id, batch_id)
+    except (sqlite3.Error, OSError):
+        clear_result(st.session_state, ai_state_key)
+        st.warning("暂时无法读取所选批次的样本。")
+        return
     if not samples:
         clear_result(st.session_state, ai_state_key)
         st.info("所选批次没有可分析的运行数据。")
@@ -297,72 +428,64 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         clear_result(st.session_state, ai_state_key)
         st.error("所选批次包含无效时间戳，无法进行时间筛选。")
         return
-    # The time controls have one-second precision. Floor the defaults to a
-    # second and include that full second at the end so fractional timestamps
-    # at either batch boundary remain part of the default complete range.
-    batch_start = min(timestamps).replace(tzinfo=None, microsecond=0)
-    batch_end = max(timestamps).replace(tzinfo=None, microsecond=0)
-    with st.expander("分析时间范围（UTC） · 调整筛选", expanded=False):
-        start_col, end_col = st.columns(2)
-        with start_col:
-            start_date = st.date_input(
-                "开始日期",
-                value=batch_start.date(),
-                key=f"analysis_start_date_{vehicle_id}_{batch_id}",
-            )
-            start_time = st.time_input(
-                "开始时间",
-                value=batch_start.time(),
-                step=timedelta(seconds=1),
-                key=f"analysis_start_time_{vehicle_id}_{batch_id}",
-            )
-        with end_col:
-            end_date = st.date_input(
-                "结束日期",
-                value=batch_end.date(),
-                key=f"analysis_end_date_{vehicle_id}_{batch_id}",
-            )
-            end_time = st.time_input(
-                "结束时间",
-                value=batch_end.time(),
-                step=timedelta(seconds=1),
-                key=f"analysis_end_time_{vehicle_id}_{batch_id}",
-            )
-
-    selected_start = datetime.combine(start_date, start_time).replace(
-        tzinfo=timezone.utc
-    )
-    selected_end = (
-        datetime.combine(end_date, end_time).replace(tzinfo=timezone.utc)
-        + timedelta(seconds=1, microseconds=-1)
-    )
-    if selected_start > selected_end:
-        clear_result(st.session_state, ai_state_key)
-        st.warning("开始时间不能晚于结束时间，请调整筛选范围。")
-        return
-    try:
-        filtered_samples = filter_samples_by_time_range(
-            samples, selected_start, selected_end
-        )
-    except ValueError as exc:
-        clear_result(st.session_state, ai_state_key)
-        st.error(str(exc))
-        return
+    threshold_key = "demo_analysis_threshold" if demo else "analysis_threshold"
+    batch_identity = (vehicle_id, batch_id)
+    if target and (target["vehicle_id"], target["batch_id"]) == batch_identity:
+        candidate = target.get("scope")
+        if isinstance(candidate, ReplayEvidenceScope):
+            if candidate.matches(timestamps):
+                st.session_state[ANALYSIS_REPLAY_SCOPE] = (batch_identity, candidate)
+                st.session_state[threshold_key] = target["threshold"]
+            else:
+                st.warning("三维窗口与当前批次的观测记录不匹配，请回到三维页重新选择窗口。")
+    replay_scope = None
+    stored_scope = None if demo else st.session_state.get(ANALYSIS_REPLAY_SCOPE)
+    if stored_scope:
+        if stored_scope[0] == batch_identity and stored_scope[1].matches(timestamps):
+            replay_scope = stored_scope[1]
+        else:
+            st.session_state.pop(ANALYSIS_REPLAY_SCOPE, None)
+    replay_rows = None
+    if replay_scope:
+        selected_start, selected_end = replay_scope.first_timestamp, replay_scope.last_timestamp
+        replay_rows = [replay_scope.first_row + 1, replay_scope.last_row + 1]
+        filtered_samples = samples[replay_scope.first_row:replay_scope.last_row + 1]
+        st.info(f"三维回放窗口 · 批次第 {replay_scope.first_row + 1:,}–{replay_scope.last_row + 1:,} 条观测。"
+                "按样本行筛选，保留同一时间戳下的具体观测。")
+        st.button("返回整批分析", key="analysis_clear_replay_scope", on_click=_clear_replay_scope,
+                  args=(vehicle_id, batch_id))
+    else:
+        selected_start, selected_end = _analysis_time_range(timestamps, vehicle_id, batch_id)
+        if selected_start > selected_end:
+            clear_result(st.session_state, ai_state_key)
+            st.warning("开始时间不能晚于结束时间，请调整筛选范围。")
+            return
+        try:
+            filtered_samples = filter_samples_by_time_range(samples, selected_start, selected_end)
+        except ValueError as exc:
+            clear_result(st.session_state, ai_state_key)
+            st.error(str(exc))
+            return
     if not filtered_samples:
         clear_result(st.session_state, ai_state_key)
         st.info("所选时间范围内没有运行数据，请调整开始或结束时间。")
         return
 
     parameter_columns = st.columns([1, 2], vertical_alignment="bottom")
+    st.session_state.setdefault(threshold_key, 1.0)
     threshold = parameter_columns[0].number_input(
         "加速度绝对值阈值（m/s²）",
         min_value=0.0,
-        value=1.0,
+        value=None,
         step=0.1,
-        key="demo_analysis_threshold" if demo else "analysis_threshold",
+        key=threshold_key,
         help="同一阈值用于统计占比和异常识别；绝对值严格大于阈值时标为数据异常点。",
     )
-    parameter_columns[1].caption(f"当前范围：{selected_start:%Y-%m-%d %H:%M:%S} — {selected_end:%Y-%m-%d %H:%M:%S} UTC")
+    threshold = 1.0 if threshold is None else threshold
+    if replay_scope:
+        parameter_columns[1].caption(f"当前范围：{selected_start.isoformat()} — {selected_end.isoformat()}")
+    else:
+        parameter_columns[1].caption(f"当前范围：{selected_start:%Y-%m-%d %H:%M:%S} — {selected_end:%Y-%m-%d %H:%M:%S} UTC")
 
     try:
         result = analyze_run_data(filtered_samples, threshold)
@@ -371,6 +494,10 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         st.error(str(exc))
         return
     anomaly_result = detect_anomalies(result["samples"], threshold)
+    if not demo:
+        batch_replay_button(st, label="在三维中回放整个批次 →", key="analysis_replay_batch",
+                            vehicle_id=vehicle_id, batch_id=batch_id, threshold=threshold)
+        st.caption("三维入口保留当前阈值；回放使用整批样本，不继承此处的时间筛选。")
 
     try:
         sampling_summary = analyze_sampling_times(filtered_samples)
@@ -574,6 +701,7 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         render_event_review(result["samples"], anomaly_result, {
             "vehicle_id": vehicle_id, "batch_id": batch_id,
             "start": selected_start.isoformat(), "end": selected_end.isoformat(),
+            **({"row_span": replay_rows} if replay_rows else {}),
         }, allow_bogie=True, fictional=demo)
 
     selected_vehicle = next(
@@ -594,6 +722,8 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         "selected_end": selected_end.isoformat(),
         "threshold": threshold,
     }
+    if replay_rows:
+        ai_selection["row_span"] = replay_rows
     record_analysis("单批次统计分析", {"selection": ai_selection, "facts": ai_payload},
                     result["sample_count"], fictional=demo)
     with report_tab:
@@ -650,6 +780,7 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
                         if sampling_review["baseline_source"] == "specified" else None
                     ),
                     sampling_gap_multiplier=sampling_review["gap_multiplier"],
+                    **({"replay_rows": replay_rows} if replay_rows else {}),
                 )
                 pdf_bytes = generate_analysis_report_pdf(report_data)
             except Exception as exc:
@@ -686,7 +817,7 @@ def render_statistics_demo() -> None:
     page_title("统计与异常演示")
     st.info("内置虚构数据 · 两个 120 条记录的批次，未导入数据库，不代表真实车辆。"
             "仅演示基础动力学统计与规则异常，不判断车辆故障或运行安全。")
-    st.caption("默认阈值 1 m/s²：第 30–32 秒有横向变化，第 70–71 秒有垂向变化。"
+    st.caption("默认阈值 1 m/s²：第 30–32 秒有横向变化，第 70–71 秒有垂向变化；虚构批次 2 在第 93–94 秒有双轴同点变化。"
                "点击计算后可筛选 UTC 时间、调整阈值、回查事件并导出带虚构来源标识的 PDF；不会读取 AI 配置。")
     if st.button("计算虚构运行分析", key="statistics_demo_calculate", type="primary"):
         st.session_state["statistics_demo_started"] = True
