@@ -61,7 +61,7 @@ def install_default_config(home, bundle):
         pass
 
 
-def run(demo=False, port=8501):
+def run(demo=False, port=8501, *, open_browser=True):
     if not 1 <= port <= 65535:
         raise ValueError("Invalid port.")
     home = user_home()
@@ -114,16 +114,17 @@ def run(demo=False, port=8501):
                         return
                 except OSError:
                     time.sleep(.2)
-        threading.Thread(target=open_when_ready, daemon=True).start()
+        if open_browser:
+            threading.Thread(target=open_when_ready, daemon=True).start()
         bootstrap.run(str(script), False, [], flags)
         logger.info("Portable service stopped")
         logger.removeHandler(handler)
         handler.close()
 
 
-def show_failure(message):
+def show_failure(message, *, dialog=True):
     print(message, file=sys.stderr, flush=True)
-    if getattr(sys, "frozen", False) and sys.platform == "win32":
+    if dialog and getattr(sys, "frozen", False) and sys.platform == "win32":
         ctypes.windll.user32.MessageBoxW(None, message, "RailVehicle-Lab", 0x10)
 
 
@@ -131,14 +132,15 @@ def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--demo", action="store_true")
     parser.add_argument("--port", type=int, default=8501)
+    parser.add_argument("--no-browser", action="store_true", help="Start the local service without opening a browser or dialog.")
     args = parser.parse_args(argv)
     try:
-        run(args.demo, args.port)
+        run(args.demo, args.port, open_browser=not args.no_browser)
         return 0
     except KeyboardInterrupt:
         return 130
     except PortableError as exc:
-        show_failure(str(exc))
+        show_failure(str(exc), dialog=not args.no_browser)
         return 1
     except Exception:
         # No raw exception, secret, request or user data in the log or message.
@@ -150,7 +152,9 @@ def main(argv=None):
         safe_frames = [f"{f.name}:{f.lineno}" for f in frames if f.name.replace("_", "").isalnum()]
         if safe_frames:
             print("Startup diagnostic: " + " > ".join(safe_frames), file=sys.stderr, flush=True)
-        show_failure(f"Startup failed ({kind}" + (f": {safe_module}" if safe_module else "") + "). Check the local port, package files and user directory permissions.")
+        show_failure(f"Startup failed ({kind}" + (f": {safe_module}" if safe_module else "") +
+                     "). Check the local port, package files and user directory permissions.",
+                     dialog=not args.no_browser)
         return 1
 
 

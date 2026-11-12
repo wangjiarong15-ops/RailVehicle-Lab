@@ -7,7 +7,7 @@ from time import monotonic
 
 import streamlit as st
 
-from rail_vehicle.bogie import PARTS, build_bogie
+from rail_vehicle.bogie import PART_DESCRIPTIONS, PARTS, build_bogie
 from rail_vehicle.bogie_replay import GAP, TEACHING, event_positions, gap_cutoff, illustration_phase, replay_scene
 from rail_vehicle.deployment import demo_source_options
 from rail_vehicle.pages.cockpit import _demo_track, build_replay_chart
@@ -55,7 +55,7 @@ def _load(source, target):
     return (HISTORY, vehicle, batch), lambda: prepare_replay(list_batch_samples(vehicle, batch))
 
 
-def _display(track, duration, threshold, cutoff, teaching, comparison, visible, selected, view):
+def _display(track, duration, threshold, cutoff, teaching, comparison, visible, selected, view, labels):
     state = st.session_state[STATE_KEY]
     now = monotonic()
     if track is None and state.playing and state.last_tick is not None:
@@ -80,17 +80,31 @@ def _display(track, duration, threshold, cutoff, teaching, comparison, visible, 
     highlight = selected if selected != "无" else scene.parts
     phase = 0 if scene is GAP else illustration_phase(state.position)
     model, panel = st.columns([3, 1.25])
-    with model:
-        try:
-            plot_chart(build_bogie(scene.mode, phase, visible, highlight, view),
-                       width="stretch", key="bogie_model")
-            if comparison and scene.mode != "正常运行":
-                st.caption("同一相位的正常运动参照 · 教学示意")
-                plot_chart(build_bogie("正常运行", phase, visible, "无", view),
-                           width="stretch", key="bogie_reference")
-        except (TypeError, ValueError, RuntimeError):
-            st.error("三维视图暂时无法加载，仍可查看运行信号。")
-    with panel:
+    with model, st.container(border=True, key="bogie_model_card"):
+        st.subheader("三维结构")
+        st.caption("拖动旋转 · 滚轮缩放 · 悬停查看名称")
+        compare = comparison and bool(scene.parts)
+        if not visible:
+            st.info("请至少选择一个部件。回放和读值仍会更新。")
+        else:
+            try:
+                if compare:
+                    active, reference = st.columns(2)
+                    active.caption("当前场景")
+                    reference.caption("同一相位 · 正常参照")
+                else:
+                    active = st.container()
+                height = 340 if compare else 500
+                with active:
+                    plot_chart(build_bogie(scene.mode, phase, visible, highlight, view, labels=labels, height=height),
+                               width="stretch", key="bogie_model", config={"scrollZoom": True})
+                if compare:
+                    with reference:
+                        plot_chart(build_bogie("正常运行", phase, visible, "无", view, height=height),
+                                   width="stretch", key="bogie_reference", config={"scrollZoom": True})
+            except (TypeError, ValueError, RuntimeError):
+                st.error("三维视图暂时无法加载，仍可查看运行信号。")
+    with panel, st.container(border=True, key="bogie_status_card"):
         if track is not None:
             st.subheader("间隔前最后一次观测" if scene is GAP else "当前观测样本")
             st.caption(f"{sample['timestamp']} · 第 {index + 1:,}/{len(track.samples):,} 条")
@@ -106,13 +120,19 @@ def _display(track, duration, threshold, cutoff, teaching, comparison, visible, 
         if track is not None or scene.parts:
             st.caption(scene.impact)
             st.write("建议：" + scene.check)
+        if selected != "无":
+            st.caption(f"部件说明 · {selected}：{PART_DESCRIPTIONS[selected]}")
+            if selected not in visible:
+                st.caption("该部件已隐藏，可在左侧重新显示。")
         st.progress(state.position / duration if duration else 1.0,
                     text=f"{state.position:.2f} / {duration:.2f} 秒")
     if track is not None:
-        st.caption("曲线为观测样本；两次采样之间沿用最近样本，不补算数据。")
-        chart = build_replay_chart(track, index, state.position, threshold)
-        chart.add_vline(x=track.offsets[index], line_color="#39c4ce", line_dash="dash")
-        plot_chart(chart, width="stretch", key="bogie_curves")
+        with st.container(border=True, key="bogie_signal_card"):
+            st.subheader("运行信号")
+            st.caption("青色线为当前观测；红色菱形为超阈值样本。两次采样之间不补算数据。")
+            chart = build_replay_chart(track, index, state.position, threshold)
+            chart.add_vline(x=track.offsets[index], line_color="#39c4ce", line_dash="dash")
+            plot_chart(chart, width="stretch", key="bogie_curves")
 
 
 def render():
@@ -128,12 +148,15 @@ def render():
         st.session_state["bogie_threshold"] = target["threshold"]
     options, main = st.columns([1, 4])
     with options:
+        st.subheader("场景与结构")
         source = st.radio("数据来源", choices, key="bogie_source")
         teaching = st.selectbox("教学场景", list(TEACHING), disabled=source != TEACH)
-        view = st.selectbox("观察视角", ["整体视图", "侧视图", "正视图", "俯视图"])
-        selected = st.selectbox("手动高亮部件", ["无", *PARTS])
-        visible = st.multiselect("显示部件", PARTS, default=list(PARTS))
-        comparison = st.checkbox("对照正常运动")
+        with st.expander("视角与部件"):
+            view = st.selectbox("观察视角", ["整体视图", "侧视图", "正视图", "俯视图"])
+            selected = st.selectbox("手动高亮部件", ["无", *PARTS])
+            visible = st.multiselect("显示部件", PARTS, default=list(PARTS))
+            comparison = st.checkbox("对照正常运动")
+            labels = st.toggle("显示部件标注", key="bogie_labels")
         if source == DEMO:
             st.caption("虚构数据，非实际测量。")
         try:
@@ -176,16 +199,17 @@ def render():
         duration = track.duration if track is not None else 2.4
         if source != TEACH and track is None:
             st.caption("暂无可回放的样本；仍可观察教学模型。")
-        controls = st.columns([1, 1, 1, 2])
-        action = None
-        if controls[0].button("播放", disabled=state.playing or duration == 0):
-            action = "play"
-        if controls[1].button("暂停", disabled=not state.playing):
-            action = "pause"
-        if controls[2].button("重置"):
-            action = "reset"
-        rate = controls[3].selectbox("播放速度", [0.5, 1., 2., 4.], index=1,
-                                     format_func=lambda x: f"{x:g}×")
+        with st.container(horizontal=True, vertical_alignment="bottom"):
+            action = None
+            if st.button("播放", icon=":material/play_arrow:", type="primary",
+                         disabled=state.playing or duration == 0):
+                action = "play"
+            if st.button("暂停", icon=":material/pause:", disabled=not state.playing):
+                action = "pause"
+            if st.button("重置", icon=":material/restart_alt:"):
+                action = "reset"
+            rate = st.selectbox("播放速度", [0.5, 1., 2., 4.], index=1, width=110,
+                                format_func=lambda x: f"{x:g}×")
         if rate != state.rate:
             state = control_replay(state, "rate", monotonic(), duration, rate=rate)
         if action:
@@ -228,4 +252,4 @@ def render():
         with view_slot:
             st.fragment(run_every=(0.15 if track is None else 0.4) if state.playing else None)(_display)(
                 track, duration, threshold, st.session_state.get("bogie_gap_cutoff"),
-                teaching, comparison, visible, selected, view)
+                teaching, comparison, visible, selected, view, labels)

@@ -1,4 +1,7 @@
-param([string]$Tools = "tmp/pdfs/portable-build-tools")
+param(
+    [string]$Tools = "tmp/pdfs/portable-build-tools",
+    [string]$Python = ".venv/Scripts/python.exe"
+)
 $ErrorActionPreference = 'Stop'
 Set-Location (Join-Path $PSScriptRoot '..')
 $railCommit = (git rev-parse HEAD).Trim()
@@ -6,7 +9,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Cannot determine Git commit.' }
 $railDirty = @(git status --porcelain --untracked-files=no)
 if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect Git status.' }
 $railClean = ($railDirty.Count -eq 0)
-$railPython = (Resolve-Path '.venv/Scripts/python.exe').Path
+$railPython = (Resolve-Path -LiteralPath $Python).Path
 $railTools = (Resolve-Path $Tools).Path
 $railParent = Join-Path (Get-Location).Path 'tmp/pdfs'
 New-Item -ItemType Directory -Force -Path $railParent | Out-Null

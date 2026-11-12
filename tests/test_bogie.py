@@ -22,6 +22,13 @@ class BogieTests(unittest.TestCase):
         self.assertTrue(all((trace.color if trace.type == "mesh3d" else trace.line.color) == "#ffca45"
                             for trace in fig.data))
 
+    def test_orthographic_view_labels_only_visible_parts(self):
+        figure = build_bogie(visible=["构架", "轴箱"], labels=True, view="俯视图")
+        self.assertEqual(figure.layout.scene.camera.projection.type, "orthographic")
+        self.assertEqual(figure.data[-1].mode, "markers+text")
+        self.assertEqual(tuple(figure.data[-1].text), ("构架", "轴箱"))
+        self.assertFalse(build_bogie(visible=[], labels=True).data)
+
     def test_threshold_uses_signed_magnitude_and_same_sample(self):
         for lateral, vertical, expected in [(1, -1, NORMAL), (-2, 0, LATERAL),
                                              (0, 2, VERTICAL), (-2, -3, COMBINED)]:

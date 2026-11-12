@@ -3,6 +3,7 @@ RailVehicle-Lab Windows directory build (experimental)
 Run RailVehicleLab.exe for the full application; double-click Start-Demo.bat for the fictional-data-only demonstration.
 Open http://127.0.0.1:8501 in a browser. The console window must remain open; press Ctrl+C to stop.
 If the port is occupied, run RailVehicleLab.exe --port 8502 from a terminal.
+For browser automation or manual connection, pass --no-browser to start only the local service.
 Only one portable instance can run at once.
 
 Database, configuration and launcher log: %LOCALAPPDATA%\RailVehicle-Lab\

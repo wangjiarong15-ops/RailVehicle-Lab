@@ -8,6 +8,15 @@ import plotly.graph_objects as go
 PARTS = ("构架", "轮对", "一系悬挂", "二系悬挂", "轴箱", "电机与传动", "制动装置")
 COLORS = {"构架": "#69839a", "轮对": "#b0bec5", "一系悬挂": "#39c4ce",
           "二系悬挂": "#4f9fff", "轴箱": "#eaa851", "电机与传动": "#9a83c9", "制动装置": "#e07d62"}
+PART_DESCRIPTIONS = {
+    "构架": "连接两组轮对与悬挂，为电机、制动等装置提供安装位置。",
+    "轮对": "每组轮对由一根车轴和两个车轮组成；轮面短线用于观察转动。",
+    "一系悬挂": "位于轴箱和构架之间，示意图中用螺旋弹簧表示。",
+    "二系悬挂": "位于构架与车体之间；本模型仅画出构架上的安装位置。",
+    "轴箱": "支承车轴端部，内部轴承的位置由橙色轴箱示意。",
+    "电机与传动": "示意电机、齿轮箱及其与轮对的布置关系。",
+    "制动装置": "在轮对附近示意制动部件的布置，不表示特定制动系统。",
+}
 
 
 def motion(mode, phase):
@@ -18,7 +27,8 @@ def motion(mode, phase):
             0.10 * math.cos(phase) if mode == "蛇行运动示意" else 0)
 
 
-def build_bogie(mode="正常运行", phase=0.0, visible=PARTS, highlight="无", view="整体视图"):
+def build_bogie(mode="正常运行", phase=0.0, visible=PARTS, highlight="无", view="整体视图",
+                *, labels=False, height=500):
     lateral, vertical, yaw = motion(mode, phase)
     traces = []
 
@@ -88,12 +98,27 @@ def build_bogie(mode="正常运行", phase=0.0, visible=PARTS, highlight="无", 
     for x in (-1.0, 1.0):
         cylinder("电机与传动", x, 0, .57, .19, .53)
         box("电机与传动", (x*1.27,.19,.53), (.3,.22,.24))
+    if labels:
+        anchors = {
+            "构架": transform(-.55, -.9, 1.25), "轮对": (1.54, 1.14, .30),
+            "一系悬挂": (1.4, -1.29, .86), "二系悬挂": transform(.15, .65, 1.46),
+            "轴箱": (-1.4, 1.4, .61), "电机与传动": (-1.0, 0, .85),
+            "制动装置": (-1.89, -1.10, .70),
+        }
+        shown = [(part, anchors[part]) for part in PARTS if part in visible]
+        if shown:
+            names, points = zip(*shown)
+            x, y, z = zip(*points)
+            traces.append(go.Scatter3d(x=x, y=y, z=z, mode="markers+text", text=names,
+                                      textposition="top center", marker=dict(size=3, color="#f5b65a"),
+                                      hoverinfo="skip", showlegend=False, name="构件标注"))
     cameras = {"整体视图": dict(x=2.0,y=2.1,z=1.4), "侧视图": dict(x=0,y=2.7,z=0),
                "正视图": dict(x=2.7,y=0,z=0), "俯视图": dict(x=0,y=0,z=2.7)}
     fig = go.Figure(data=traces)
     fig.update_layout(scene=dict(aspectmode="data", camera=dict(eye=cameras[view],
+        projection=dict(type="perspective" if view == "整体视图" else "orthographic"),
         up=dict(x=0,y=1,z=0) if view == "俯视图" else dict(x=0,y=0,z=1)), uirevision=view,
         xaxis=dict(visible=False,range=[-2,2]), yaxis=dict(visible=False,range=[-1.7,1.7]),
-        zaxis=dict(visible=False,range=[0,1.8])), height=580, margin=dict(l=0,r=0,t=0,b=0),
+        zaxis=dict(visible=False,range=[0,1.8])), height=height, margin=dict(l=0,r=0,t=0,b=0),
         paper_bgcolor="rgba(0,0,0,0)")
     return fig
