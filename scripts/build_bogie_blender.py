@@ -11,7 +11,9 @@ from mathutils import Vector
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from rail_vehicle.bogie_geometry import AXLE_X, AXLE_Z, WHEEL_Y, Assembly, connection_anchors
+from rail_vehicle.bogie_geometry import (
+    AXLE_X, AXLE_Z, RAILHEAD_WIDTH, RAILHEAD_Z, TREAD_BAND, WHEEL_Y, Assembly, connection_anchors,
+)
 from rail_vehicle.bogie_model_spec import DIMENSIONS, model_contract
 
 DEFAULT_OUTPUT = ROOT / "rail_vehicle/assets/bogie_viewer/bogie.glb"
@@ -138,8 +140,8 @@ def wheel(p, side):
     p.profile((0,0,0),(0,side,0),[
         (-.122,0,"steel"),(-.122,.137,"cast"),(-.104,.220,"cast"),
         (-.103,.391,"steel"),(-.105,.423,"polished"),(-.097,.449,"polished"),
-        (-.085,flange,"polished"),(-.071,.447,"polished"),(-.058,tread,"polished"),
-        (.074,.413,"polished"),(.094,.402,"steel"),(.098,.381,"steel"),
+        (-.085,flange,"polished"),(-.071,.447,"polished"),(TREAD_BAND[0],tread,"polished"),
+        (TREAD_BAND[1],tread,"polished"),(.074,.413,"polished"),(.094,.402,"steel"),(.098,.381,"steel"),
         (.077,.361,"cast"),(.062,.231,"cast"),(.077,.180,"steel"),
         (.120,.133,"polished"),(.126,.113,"cast"),(.126,0,"cast"),
     ], sides=72)
@@ -154,15 +156,30 @@ def axle(p):
 
 
 def axlebox(p, side):
-    p.box((0,0,.021),(.305,.241,.274),"cast",.033)
-    p.box((0,0,.165),(.345,.265,.059),"paint_edge",.012)
-    p.profile((0,0,0),(0,side,0),[(.108,0,"steel"),(.108,.131,"steel"),
-              (.125,.146,"steel"),(.146,.144,"cast"),(.153,.118,"polished"),
-              (.166,.094,"cast"),(.166,0,"cast")])
+    # Taper the casting towards the axle centre and tie the spring platform
+    # into its shoulders with two ribs, clear of the outer end-cover bolts.
+    p.outline(0,.241,((-.109,-.113),(.106,-.113),(.151,-.067),(.153,.102),
+                     (.112,.154),(-.112,.154),(-.153,.102),(-.151,-.067)),"cast",.020)
+    for y in (-.075,.075):
+        p.outline(y,.044,((-.146,.074),(.146,.074),(.166,.148),(-.166,.148)),"cast",.008)
+    p.box((0,0,.167),(.345,.265,.045),"paint_edge",.009)
+    for x in (-.132,.132):
+        for y in (-.096,.096):
+            p.cylinder((x,y,.185),(x,y,.199),.012,"steel",6)
+    # Attach the two link eyes at their existing guide and damper pivots.
+    for x, z in ((-.13,.48-AXLE_Z),(.17,.55-AXLE_Z)):
+        p.cylinder((x,-.065,z),(x,.065,z),.036,"cast",12)
+        p.cylinder((x,-.070,z),(x,.070,z),.017,"steel",12)
+    p.profile((0,0,0),(0,side,0),[(.100,0,"cast"),(.100,.126,"cast"),
+              (.115,.141,"cast"),(.129,.145,"steel"),(.142,.145,"steel"),
+              (.142,.136,"rubber"),(.149,.136,"rubber"),(.149,.138,"cast"),
+              (.160,.135,"cast"),(.170,.106,"cast"),(.170,.100,"polished"),
+              (.174,.094,"polished"),(.174,.080,"cast"),(.169,.075,"cast"),(.169,0,"cast")], sides=32)
     for i in range(6):
         angle = i*tau/6
-        x,z = .122*cos(angle),.122*sin(angle)
-        p.cylinder((x,side*.142,z),(x,side*.164,z),.013,"steel",6)
+        x,z = .119*cos(angle),.119*sin(angle)
+        p.cylinder((x,side*.157,z),(x,side*.166,z),.014,"cast",10)
+        p.cylinder((x,side*.164,z),(x,side*.178,z),.0105,"steel",6)
 
 
 def air_spring(p):
@@ -178,45 +195,89 @@ def air_spring(p):
 
 
 def motor(p):
+    # The axis and output nose stay aligned with the existing flexible coupling.
     p.profile((0,0,0),(0,1,0),[(-.428,0,"cast"),(-.428,.138,"cast"),
-              (-.395,.168,"steel"),(-.357,.190,"motor"),(.185,.191,"motor"),
-              (.237,.172,"steel"),(.275,.122,"cast"),(.320,.082,"steel"),(.320,0,"steel")])
+              (-.412,.163,"cast"),(-.388,.170,"steel"),(-.388,.186,"cast"),
+              (-.357,.186,"cast"),(-.347,.178,"motor"),(.174,.178,"motor"),
+              (.184,.195,"cast"),(.218,.195,"cast"),(.236,.172,"steel"),
+              (.237,.150,"cast"),(.275,.122,"cast"),(.320,.082,"steel"),(.320,0,"steel")], 36)
     for index in range(12):
         angle = tau*index/12
-        x,z = .186*cos(angle),.186*sin(angle)
-        p.cylinder((x,-.30,z),(x,.16,z),.016,"cast",8)
-    p.box((0,0,.201),(.28,.34,.093),"paint_edge",.011)
-    p.box((.12,-.19,.130),(.142,.18,.108),"motor",.012)
+        c, s = cos(angle), sin(angle)
+        # Tapered cast ribs grow out of the barrel; their ends stop short of the
+        # service flanges so the separate motor covers are legible.
+        rib = tuple((r*c-t*s, r*s+t*c) for r,t in ((.171,-.014),(.205,-.009),
+                                                  (.205,.009),(.171,.014)))
+        p.outline(-.082,.492,rib,"motor",.003)
+    for index in range(6):
+        angle = (index + .5)*tau/6
+        x,z = .163*cos(angle),.163*sin(angle)
+        p.cylinder((x,.229,z),(x,.247,z),.010,"steel",6)
+    # Motor-mounted terminal enclosure with gasket, lid and two cable glands.
+    p.box((0,-.164,.187),(.196,.192,.095),"motor",.013)
+    p.box((0,-.164,.237),(.204,.201,.016),"rubber",.004)
+    p.box((0,-.164,.250),(.209,.205,.018),"cast",.005)
+    for x in (-.077,.077):
+        p.cylinder((x,-.164,.256),(x,-.164,.265),.008,"steel",6)
+    for x in (-.050,.050):
+        p.cylinder((x,-.255,.209),(x,-.294,.209),.016,"cast",8)
+        p.cylinder((x,-.292,.209),(x,-.307,.209),.011,"rubber",8)
 
 
 def gearbox(p):
-    p.outline(0,.255,((-.174,-.102),(-.103,-.174),(.109,-.171),(.180,-.095),
-                      (.166,.103),(.077,.159),(-.091,.148),(-.182,.061)),"motor",.026)
-    p.cylinder((0,.109,AXLE_Z-.47),(0,.165,AXLE_Z-.47),.142,"cast",40)
-    p.cylinder((0,.162,AXLE_Z-.47),(0,.179,AXLE_Z-.47),.093,"steel",32)
+    shell = ((-.174,-.102),(-.103,-.174),(.109,-.171),(.180,-.095),
+             (.166,.103),(.077,.159),(-.091,.148),(-.182,.061))
+    flange = tuple((x*1.075,z*1.075) for x,z in shell)
+    p.outline(-.067,.122,shell,"motor",.017)
+    p.outline(.066,.117,shell,"motor",.016)
+    p.outline(-.013,.021,flange,"cast",.003)
+    p.outline(.013,.021,flange,"cast",.003)
+    p.outline(0,.005,flange,"rubber",0)
+    for x,z in ((-.142,-.128),(.138,-.127),(-.126,.119),(.128,.119)):
+        p.box((x,0,z),(.059,.046,.045),"cast",.005)
+        p.cylinder((x,.018,z),(x,.037,z),.010,"steel",6)
+    # The axle cover ends before the neighbouring brake disc hub begins.
+    z = AXLE_Z-.47
+    p.profile((0,0,z),(0,1,0),[(.109,0,"cast"),(.109,.137,"cast"),
+              (.132,.142,"cast"),(.143,.132,"cast"),(.143,.095,"steel"),
+              (.155,.089,"cast"),(.155,0,"cast")], 36)
     for i in range(8):
         angle = i*tau/8
-        x,z = .116*cos(angle),AXLE_Z-.47+.116*sin(angle)
-        p.cylinder((x,.163,z),(x,.183,z),.013,"steel",6)
+        x = .116*cos(angle)
+        zz = z + .116*sin(angle)
+        p.cylinder((x,.140,zz),(x,.153,zz),.011,"steel",6)
+    # This collar follows the inboard drive connection; mirror only its
+    # longitudinal direction, keeping the original axle pivot and brake side.
+    inboard = 1 if p.node.location.x < 0 else -1
+    p.cylinder((inboard*.121,-.05,.080),(inboard*.180,-.05,.080),.076,"cast",24)
+    p.cylinder((inboard*.176,-.05,.080),(inboard*.192,-.05,.080),.057,"steel",24)
 
 
 def disc(p):
-    p.profile((0,0,0),(0,1,0),[(-.052,0,"cast"),(-.052,.115,"cast"),(-.028,.126,"bronze"),
-              (-.028,.228,"steel"),(-.023,.241,"steel"),(.023,.241,"steel"),(.028,.229,"steel"),
-              (.028,.127,"bronze"),(.052,.115,"cast"),(.052,0,"cast")])
+    p.profile((0,0,0),(0,1,0),[(-.052,0,"cast"),(-.052,.115,"cast"),(-.028,.126,"cast"),
+              (-.028,.156,"polished"),(-.028,.228,"steel"),(-.023,.241,"steel"),
+              (.023,.241,"steel"),(.028,.229,"polished"),(.028,.156,"cast"),
+              (.028,.127,"cast"),(.052,.115,"cast"),(.052,0,"cast")], 40)
 
 
 def caliper(p):
-    p.box((0,0,.014),(.245,.144,.087),"bronze",.015)
+    # The bridge clears the disc rim while the pads flank the friction faces.
+    p.box((0,0,.060),(.245,.169,.084),"bronze",.015)
     for side in (-1,1):
-        p.box((0,side*.068,-.038),(.172,.046,.105),"cast",.012)
+        p.box((0,side*.077,.002),(.178,.054,.119),"cast",.012)
+        p.box((0,side*.043,-.024),(.143,.016,.058),"rubber",.004)
+    outer = -1 if p.node.name.endswith("_l") else 1
+    p.cylinder((0,outer*.089,.025),(0,outer*.109,.025),.038,"cast",20)
+    p.cylinder((0,outer*.108,.025),(0,outer*.114,.025),.024,"steel",16)
     for x in (-.078,.078):
-        p.cylinder((x,0,.052),(x,0,.076),.019,"steel",6)
+        p.cylinder((x,0,.098),(x,0,.118),.017,"steel",6)
 
 
 def track(p):
+    # Resting reference plane at the nominal tread, with room for the inboard flange.
     for y in (-WHEEL_Y,WHEEL_Y):
-        p.box((0,y,-.043),(4.20,.106,.070),"steel",.006)
+        p.box((0,y,RAILHEAD_Z-.010),(4.20,RAILHEAD_WIDTH,.020),"polished",.003)
+        p.box((0,y,RAILHEAD_Z-.045),(4.20,.106,.066),"steel",.006)
         p.box((0,y,-.094),(4.20,.052,.052),"cast",.005)
         p.box((0,y,-.128),(4.20,.135,.028),"cast",.004)
     for x in (-1.85,-1.25,-.65,0,.65,1.25,1.85):

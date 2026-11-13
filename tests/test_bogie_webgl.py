@@ -2,11 +2,12 @@
 
 import json
 from math import dist, isfinite
+from struct import Struct
 
 from rail_vehicle.bogie_viewer import ASSETS, webgl_available
 from rail_vehicle.bogie_geometry import AXLE_X, AXLE_Z, WHEEL_Y
 from scripts.export_bogie_webgl import serialized_mesh
-from scripts.validate_bogie_glb import validate
+from scripts.validate_bogie_glb import read_glb, validate
 from rail_vehicle.bogie_model_spec import model_contract
 from rail_vehicle.bogie_geometry import connection_anchors
 import pytest
@@ -54,4 +55,33 @@ def test_truncated_glb_is_rejected(tmp_path):
     broken = tmp_path / "bogie.glb"
     broken.write_bytes((ASSETS / "bogie.glb").read_bytes()[:-16])
     with pytest.raises(ValueError, match="header"):
+        validate(broken)
+
+
+@pytest.mark.parametrize(("axis", "change", "message"), [
+    (1, lambda value: value - .008, "Nominal tread and rail top do not align"),
+    (2, lambda value: value - .030 if value > .7 else value + .030 if value < -.7 else value,
+     "Wheel spin envelope intersects rail"),
+])
+def test_glb_wheel_track_check_uses_exported_vertices(tmp_path, axis, change, message):
+    source = ASSETS / "bogie.glb"
+    doc, binary, _ = read_glb(source)
+    raw = bytearray(source.read_bytes())
+    binary_start = len(raw) - len(binary)
+    track = next(node for node in doc["nodes"] if node["name"] == "reference_track")
+    mesh = doc["meshes"][doc["nodes"][track["children"][0]]["mesh"]]
+    point = Struct("<fff")
+    for index in {primitive["attributes"]["POSITION"] for primitive in mesh["primitives"]}:
+        accessor = doc["accessors"][index]
+        view = doc["bufferViews"][accessor["bufferView"]]
+        first = binary_start + view.get("byteOffset", 0) + accessor.get("byteOffset", 0)
+        stride = view.get("byteStride", point.size)
+        for offset in range(first, first + accessor["count"] * stride, stride):
+            coordinates = list(point.unpack_from(raw, offset))
+            coordinates[axis] = change(coordinates[axis])
+            point.pack_into(raw, offset, *coordinates)
+    # Keep node origins and the metadata bounds unchanged to catch vertex regressions.
+    broken = tmp_path / "rail-profile.glb"
+    broken.write_bytes(raw)
+    with pytest.raises(ValueError, match=message):
         validate(broken)

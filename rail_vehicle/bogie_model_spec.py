@@ -1,12 +1,12 @@
 """Assembly contract for the generic two-axle demonstration bogie (metres, Z up)."""
 
-from rail_vehicle.bogie_geometry import AXLE_X, AXLE_Z, BOX_Y, FRAME_Y, WHEEL_Y, connection_anchors
+from rail_vehicle.bogie_geometry import AXLE_X, AXLE_Z, BOX_Y, FRAME_Y, TREAD_RADIUS, WHEEL_Y, connection_anchors
 
 VERSION = 1
 LAYERS = ("frame", "wheel", "fixed", "links")
 DIMENSIONS = {
     "wheelbase": AXLE_X[1] - AXLE_X[0], "axle_height": AXLE_Z,
-    "wheel_centres": 2 * WHEEL_Y, "tread_radius": .420, "flange_radius": .456,
+    "wheel_centres": 2 * WHEEL_Y, "tread_radius": TREAD_RADIUS, "flange_radius": .456,
     "axlebox_centres": 2 * BOX_Y, "side_beam_centres": 2 * FRAME_Y,
     "frame_length": 3.72, "side_beam_width": .235,
 }

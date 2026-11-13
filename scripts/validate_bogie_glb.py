@@ -2,7 +2,7 @@
 
 import argparse
 import json
-from math import dist, isfinite
+from math import dist, hypot, isfinite
 from pathlib import Path
 import struct
 import sys
@@ -14,6 +14,8 @@ from rail_vehicle.bogie_model_spec import model_contract
 ASSETS = ROOT / "rail_vehicle/assets/bogie_viewer"
 MAX_BYTES = 2_500_000
 MAX_TRIANGLES = 48_000
+CONTACT_TOLERANCE_M = .001
+TRANSFORM_KEYS = {"translation", "scale", "rotation", "matrix"}
 
 
 def require(condition, message):
@@ -31,17 +33,93 @@ def read_glb(path):
     bin_size, bin_type = struct.unpack_from("<I4s", raw, start)
     require(bin_type == b"BIN\0" and bin_size % 4 == 0 and start+8+bin_size == len(raw),
             "Invalid BIN chunk")
-    return json.loads(raw[20:start]), bin_size, len(raw)
+    return json.loads(raw[20:start]), memoryview(raw)[start + 8:], len(raw)
+
+
+def _read_geometry_accessor(doc, binary, index, components):
+    accessor = doc["accessors"][index]
+    require("sparse" not in accessor, "Sparse assembly geometry is unsupported")
+    format_code = components.get(accessor["componentType"])
+    require(format_code is not None, "Invalid assembly geometry component type")
+    record = struct.Struct("<" + format_code)
+    view = doc["bufferViews"][accessor["bufferView"]]
+    stride = view.get("byteStride", record.size)
+    offset = accessor.get("byteOffset", 0)
+    count = accessor["count"]
+    require(stride >= record.size and 0 <= offset and count > 0 and
+            offset + stride * (count - 1) + record.size <= view["byteLength"], "Geometry exceeds its buffer view")
+    offset += view.get("byteOffset", 0)
+    return [record.unpack_from(binary, offset + i * stride) for i in range(count)]
+
+
+def _rest_triangles(doc, binary, part, surface):
+    require(not TRANSFORM_KEYS.intersection(surface), f"Surface must align with part axes: {part['name']}")
+    x, up, depth = part.get("translation", (0, 0, 0))
+    for primitive in doc["meshes"][surface["mesh"]]["primitives"]:
+        positions = [(x + px, -depth - pz, up + py) for px, py, pz in _read_geometry_accessor(
+            doc, binary, primitive["attributes"]["POSITION"], {5126: "fff"})]
+        require(all(isfinite(v) for point in positions for v in point), "Non-finite wheel or track vertex")
+        indices = [item[0] for item in _read_geometry_accessor(
+            doc, binary, primitive["indices"], {5121: "B", 5123: "H", 5125: "I"})]
+        require(max(indices) < len(positions), "Wheel or track index outside its mesh")
+        for index in range(0, len(indices), 3):
+            yield tuple(positions[i] for i in indices[index:index + 3])
+
+
+def _plane_points(faces, axis, coordinate):
+    """Yield the corners of each triangle/plane intersection in model metres."""
+    for face in faces:
+        if not face:
+            continue
+        for a, b in zip(face, (*face[1:], face[0])):
+            delta_a, delta_b = a[axis] - coordinate, b[axis] - coordinate
+            if abs(delta_a) < 1e-7:
+                yield a
+            if delta_a * delta_b < 0:
+                fraction = delta_a / (delta_a - delta_b)
+                yield tuple(u + fraction * (v - u) for u, v in zip(a, b))
+
+
+def _vertical_slice(faces, x, y):
+    sections = (tuple(_plane_points((face,), 0, x)) for face in faces)
+    return (p[2] for p in _plane_points(sections, 1, y))
+
+
+def _validate_wheel_track_fit(doc, binary, parts, contract):
+    """Check nominal pose and spin envelope of the illustration, not wheel/rail mechanics."""
+    track = tuple(_rest_triangles(doc, binary, *parts["reference_track"]))
+    track_stations = {p[1] for face in track for p in face}
+    tread_height = contract["dimensions"]["axle_height"] - contract["dimensions"]["tread_radius"]
+    for name in ("wheel_a_l", "wheel_a_r", "wheel_b_l", "wheel_b_r"):
+        wheel = tuple(_rest_triangles(doc, binary, *parts[name]))
+        wheel_stations = {p[1] for face in wheel for p in face}
+        x, y, z = contract["parts"][name]["origin"]
+        top = max(_vertical_slice(track, x, y), default=-1.)
+        tread = min(_vertical_slice(wheel, x, y), default=1.)
+        require(abs(top - tread_height) <= CONTACT_TOLERANCE_M and abs(tread - top) <= CONTACT_TOLERANCE_M,
+                f"Nominal tread and rail top do not align: {name}")
+        side = 1 if y > 0 else -1
+        inner_flange = [p[2] for face in wheel for p in face if side * (p[1] - y) < 0]
+        require(inner_flange and min(inner_flange) < top - .02, f"Missing inboard flange: {name}")
+        # A triangle's slice endpoints move linearly between its vertex stations.
+        # Maximum rail height and radius are convex there, so check their sum at
+        # interval ends. Taking the highest rail across X bounds any spin about Y.
+        first, last = min(wheel_stations), max(wheel_stations)
+        stations = wheel_stations | {station for station in track_stations if first <= station <= last}
+        for station in stations:
+            rail = max((p[2] for p in _plane_points(track, 1, station)), default=-1.)
+            radius = max((hypot(px - x, pz - z) for px, _, pz in _plane_points(wheel, 1, station)), default=0.)
+            require(rail <= z - radius + CONTACT_TOLERANCE_M, f"Wheel spin envelope intersects rail: {name}")
 
 
 def validate(path):
-    doc, bin_size, size = read_glb(path)
+    doc, binary, size = read_glb(path)
     contract = model_contract()
     require(doc["asset"]["version"] == "2.0" and not doc.get("extensionsRequired"), "Requires base glTF 2.0")
     require(not any(doc.get(key) for key in ("images", "animations", "skins", "cameras")),
             "Expected self-contained PBR geometry with application-controlled animation")
     buffer, = doc["buffers"]
-    require("uri" not in buffer and 0 <= bin_size-buffer["byteLength"] <= 3, "Expected one embedded buffer")
+    require("uri" not in buffer and 0 <= len(binary)-buffer["byteLength"] <= 3, "Expected one embedded buffer")
     for view in doc["bufferViews"]:
         require(view["buffer"] == 0 and 0 <= view.get("byteOffset", 0) <= buffer["byteLength"]-view["byteLength"],
                 "Buffer view exceeds embedded geometry")
@@ -50,20 +128,20 @@ def validate(path):
     root = nodes[root_index]
     require(root["name"] == "rail_bogie" and root.get("extras") ==
             {"rail_contract": contract["version"], "rail_units": "m"}, "Wrong assembly root or units")
+    require(not TRANSFORM_KEYS.intersection(root), "Assembly root must use scene origin")
     layers = {nodes[i]["name"]: nodes[i] for i in root["children"]}
     require(set(layers) == {"rail_" + layer for layer in contract["layers"]}, "Wrong assembly layers")
     visited = {root_index, *root["children"]}
     expected = contract["parts"]
-    ids, mesh_indices = set(), set()
+    parts, mesh_indices = {}, set()
     for layer, node in layers.items():
-        require(not {"translation", "scale", "rotation", "matrix"}.intersection(node), "Layer must use scene origin")
+        require(not TRANSFORM_KEYS.intersection(node), "Layer must use scene origin")
         for index in node["children"]:
             item = nodes[index]
             name = item["name"]
-            require(index not in visited and name in expected and name not in ids, f"Unexpected part {name}")
+            require(index not in visited and name in expected and name not in parts, f"Unexpected part {name}")
             spec = expected[name]
             visited.add(index)
-            ids.add(name)
             require(layer == "rail_" + spec["parent"] and item.get("extras") ==
                     {"rail_part": name, "rail_group": spec["group"]}, f"Wrong parent or tags: {name}")
             x, up, depth = item.get("translation", (0,0,0))
@@ -74,8 +152,9 @@ def validate(path):
             require(surface not in visited and "mesh" in nodes[surface] and not nodes[surface].get("children"),
                     f"Invalid surface: {name}")
             visited.add(surface)
+            parts[name] = item, nodes[surface]
             mesh_indices.add(nodes[surface]["mesh"])
-    require(ids == set(expected) and len(visited) == len(nodes), "Incomplete assembly")
+    require(parts.keys() == expected.keys() and len(visited) == len(nodes), "Incomplete assembly")
     require(mesh_indices == set(range(len(doc["meshes"]))), "Orphan mesh")
     triangles = 0
     for mesh in doc["meshes"]:
@@ -93,7 +172,8 @@ def validate(path):
                     "Invalid triangle index count")
             triangles += indices["count"]//3
     require(0 < triangles <= MAX_TRIANGLES, "Model exceeds triangle budget")
-    return dict(parts=len(ids), meshes=len(mesh_indices), triangles=triangles, bytes=size)
+    _validate_wheel_track_fit(doc, binary, parts, contract)
+    return dict(parts=len(parts), meshes=len(mesh_indices), triangles=triangles, bytes=size)
 
 
 if __name__ == "__main__":

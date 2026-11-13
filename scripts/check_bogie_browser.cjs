@@ -12,13 +12,17 @@ const output = process.argv[3];
 const executablePath = process.env.RAIL_BROWSER_PATH;
 const args = process.env.RAIL_SOFTWARE_WEBGL ? ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"] : [];
 const button = (page, name) => page.getByRole("button", {name, exact: true});
-const option = async (page, key, name) => {
+const option = async (page, key, name, {force = false} = {}) => {
   const select = page.locator(".st-key-" + key).getByTestId("stSelectbox");
   const input = select.locator("input");
-  if (await input.inputValue() === name) return;
+  if (!force && await input.inputValue() === name) return;
   const choice = page.locator("[role=option]").filter({hasText: name});
   await input.click();
   if (await input.getAttribute("aria-autocomplete") === "list") {
+    if (force) {
+      await input.fill("");
+      await input.press("ArrowDown");
+    }
     await input.fill(name);
     await input.press("ArrowDown");
     await input.press("Enter");
@@ -26,8 +30,8 @@ const option = async (page, key, name) => {
   }
   await choice.click();
 };
-async function until(read, check, reason) {
-  for (let i = 0; i < 60; i++) {
+async function until(read, check, reason, attempts = 60) {
+  for (let i = 0; i < attempts; i++) {
     const value = await read();
     if (check(value)) return value;
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -294,7 +298,14 @@ async function audit(browser, width, height, complete = true) {
     await option(page, "bogie_inspection_preset", "传动与制动");
     await until(data, (d) => d.parts === "3" && d.view === "底视图", "Part filter did not hide frame");
     await option(page, "bogie_focus", "电机与传动");
-    await until(data, (d) => d.selected === "电机与传动", "Manual focus did not update");
+    // A rerender after the preset can replace the input during its first edit.
+    // Retry the interaction if the actual viewer did not receive the selection.
+    try {
+      await until(data, (d) => d.selected === "电机与传动", "Waiting for focus after preset", 15);
+    } catch {
+      await option(page, "bogie_focus", "电机与传动", {force: true});
+      await until(data, (d) => d.selected === "电机与传动", "Manual focus did not update");
+    }
     await page.getByText("显示部件标注", {exact: true}).click();
     await frame.locator(".tag").filter({hasText: "电机与传动"}).waitFor();
     await page.getByRole("heading", {name: "三维诊断工作台"}).scrollIntoViewIfNeeded();

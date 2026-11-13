@@ -10,6 +10,10 @@ AXLE_Z = .42
 WHEEL_Y = .88
 BOX_Y = 1.20
 FRAME_Y = 1.16
+TREAD_RADIUS = .420
+TREAD_BAND = (-.058, .012)  # measured outwards from each wheel centre
+RAILHEAD_Z = AXLE_Z - TREAD_RADIUS
+RAILHEAD_WIDTH = .092
 WHEEL_POSE_GAIN = .035  # keep the wheelset close to the reference rails during schematic motion
 _PARTS = ("构架", "轮对", "一系悬挂", "二系悬挂", "轴箱", "电机与传动", "制动装置", "轨道参照")
 
@@ -261,7 +265,8 @@ def _running_gear(a):
     brake = "制动装置"
     # Profile from the inboard face to the outboard face: flange, tread, web, hub.
     profile = ((-.113,0,2), (-.113,.24,1), (-.112,.410,0), (-.101,.456,1),
-               (-.076,.456,1), (-.054,.421,0), (.077,.413,1), (.088,.402,2),
+               (-.076,.456,1), (TREAD_BAND[0],TREAD_RADIUS,0), (TREAD_BAND[1],TREAD_RADIUS,0),
+               (.077,.413,1), (.088,.402,2),
                (.088,.245,2), (.106,.203,1), (.106,.125,0), (.124,.119,0), (.124,0,0))
     for x in AXLE_X:
         a.cylinder(wheel, (x,-1.31,AXLE_Z), (x,1.31,AXLE_Z), .071, tone=2, pose=a.wheel, group=(x,0))
@@ -374,7 +379,8 @@ def _rigid_template():
     _running_gear(a)
     _upper_suspension_and_drive(a)
     for y in (-WHEEL_Y,WHEEL_Y):
-        a.box("轨道参照", (0,y,-.04), (4.20,.105,.064), tone=0)
+        a.box("轨道参照", (0,y,RAILHEAD_Z-.010), (4.20,RAILHEAD_WIDTH,.020), tone=0, bevel=.003)
+        a.box("轨道参照", (0,y,RAILHEAD_Z-.045), (4.20,.106,.066), tone=0)
         a.box("轨道参照", (0,y,-.092), (4.20,.044,.045), tone=1)
         a.box("轨道参照", (0,y,-.126), (4.20,.132,.025), tone=1)
     for x in (-1.85,-1.25,-.65,0,.65,1.25,1.85):
