@@ -8,6 +8,7 @@ import {loadDetailedModel} from "./model-loader.js";
 import {playbackBatches} from "./playback-batches.js";
 import {partBrowser} from "./part-browser.js";
 import {measurement} from "./measurement.js";
+import {sectionPlane} from "./section-plane.js";
 
 export async function mount() {
   const [response, detailed] = await Promise.all([fetch("./assembly.json"), loadDetailedModel()]);
@@ -79,6 +80,15 @@ export async function mount() {
     gauge.clear();
     updateMeasurement();
   }
+  function updateShadows() {
+    renderer.shadowMap.enabled = !section.enabled && !(batches && args?.playing);
+    shadowDirty = true;
+  }
+  const section = sectionPlane(renderer, workbench, () => {
+    clearMeasurement();
+    updateShadows();
+    invalidate();
+  });
   function toggleMeasurement() {
     measuring = !measuring;
     clearMeasurement();
@@ -103,7 +113,7 @@ export async function mount() {
     restoreControl.disabled = !hidden.size;
     invalidate();
   }
-  const picker = inspection(canvas, data.parts, assembly, rig, select, reset, detailed?.parts, {
+  const picker = inspection(canvas, data.parts, assembly, rig, select, reset, detailed?.parts, section, {
     active: () => measuring,
     hit(point) {
       if (measureControl.disabled) return;
@@ -216,6 +226,7 @@ export async function mount() {
     browser?.dispose();
     batches?.dispose();
     gauge.dispose();
+    section.dispose();
     const disposable = new Set(Object.values(finishes).flat());
     scene.traverse(({geometry, material}) => {
       if (geometry) disposable.add(geometry);
@@ -261,7 +272,7 @@ export async function mount() {
     if (software && previous?.playing !== args.playing) {
       const playbackScale = detailed ? .60 : .66;
       renderer.setPixelRatio(pixelRatio * (args.playing ? playbackScale : 1));
-      if (batches) renderer.shadowMap.enabled = !args.playing;
+      updateShadows();
     }
     const isolatedGroup = detailed?.parts.get(isolated)?.spec.group;
     const isolationEnded = Boolean(isolated) &&

@@ -7,7 +7,7 @@ const anchors = {
   "制动装置": ["wheel", [1.30, -.64, .70]],
 };
 
-export function inspection(canvas, descriptions, assembly, rig, onSelect, reset, parts, measure) {
+export function inspection(canvas, descriptions, assembly, rig, onSelect, reset, parts, section, measure) {
   const ray = new THREE.Raycaster(), cursor = new THREE.Vector2();
   ray.layers.enable(1); // Source meshes remain pickable during batched playback.
   const focus = document.querySelector("#focus");
@@ -36,7 +36,8 @@ export function inspection(canvas, descriptions, assembly, rig, onSelect, reset,
     ray.setFromCamera(cursor, rig.camera);
     const measuring = measure.active();
     const hit = ray.intersectObjects(assembly.objects.filter((mesh) =>
-      active(mesh) && (measuring || mesh.userData.part !== "轨道参照")), false)[0];
+      active(mesh) && (measuring || mesh.userData.part !== "轨道参照")), false)
+      .find(({point}) => section.contains(point));
     if (measuring) {
       if (hit) measure.hit(hit.point);
       return;
@@ -51,6 +52,7 @@ export function inspection(canvas, descriptions, assembly, rig, onSelect, reset,
     else for (const mesh of assembly.objects) {
       if (active(mesh) && matches(mesh, selection)) box.expandByObject(mesh);
     }
+    section.clipBounds(box);
     if (!box.isEmpty()) rig.focus(box);
   }
   canvas.addEventListener("pointerdown", start);
@@ -81,8 +83,9 @@ export function inspection(canvas, descriptions, assembly, rig, onSelect, reset,
         const candidate = assembly.objects.find((mesh) => active(mesh) && mesh.userData.part === part);
         if (args.spread && candidate) new THREE.Box3().setFromObject(candidate).getCenter(point);
         else point.set(...coord).applyMatrix4(assembly[parent].matrixWorld);
+        const retained = section.contains(point);
         point.project(rig.camera);
-        tag.hidden = !candidate || Math.abs(point.x) > .95 || Math.abs(point.y) > .9;
+        tag.hidden = !candidate || !retained || Math.abs(point.x) > .95 || Math.abs(point.y) > .9;
         tag.style.left = (point.x + 1) * width / 2 + "px";
         tag.style.top = (1 - point.y) * height / 2 + "px";
       }

@@ -31,6 +31,14 @@ canvas:active { cursor: grabbing; }
 footer { border-top: 1px solid #34485e; justify-content: space-between; color: #c3d5e6; }
 #inspection { min-width: 0; }
 #measure[aria-pressed="true"] { border-color: #7ee6c3; background: #1e4d49; }
+#section-toggle[aria-pressed="true"], #section-flip[aria-pressed="true"] {
+  border-color: #82bbf6; background: #244b75;
+}
+#section-controls { display: flex; flex: 0 0 100%; align-items: center; flex-wrap: wrap; gap: 6px;
+  border-top: 1px solid #34485e; padding-top: 6px; }
+#section-controls[hidden] { display: none; }
+#section-position { flex: 1; min-width: 72px; accent-color: #82bbf6; }
+#section-value { color: #c3d5e6; font-variant-numeric: tabular-nums; }
 #workbench[data-measuring="true"] canvas { cursor: crosshair; }
 #measurement-panel { display: flex; flex: 1; min-width: 0; align-items: center; gap: 7px; }
 #measurement-panel[hidden] { display: none; }

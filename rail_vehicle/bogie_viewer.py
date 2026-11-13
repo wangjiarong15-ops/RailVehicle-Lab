@@ -14,7 +14,7 @@ def webgl_available():
     return all((ASSETS / name).is_file() for name in (
         "index.html", "viewer.js", "viewer.css", "assembly.json", "geometry.js",
         "lighting.js", "camera.js", "interaction.js", "motion.js", "model-loader.js",
-        "playback-batches.js", "part-browser.js", "measurement.js",
+        "playback-batches.js", "part-browser.js", "measurement.js", "section-plane.js",
         "vendor/three.module.min.js", "vendor/three.core.min.js",
         "vendor/OrbitControls.js", "vendor/RoomEnvironment.js",
     ))

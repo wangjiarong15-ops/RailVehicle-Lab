@@ -39,6 +39,64 @@ async function screenshot(page, name) {
   if (output) await page.screenshot({path: join(output, name.replace("webgl", "glb") + ".png")});
 }
 
+async function checkSection(page, frame, canvas, data) {
+  const section = frame.getByRole("button", {name: "剖切视图", exact: true});
+  const axis = frame.getByLabel("剖切轴", {exact: true});
+  const position = frame.getByLabel("剖切位置", {exact: true});
+  const flip = frame.getByRole("button", {name: "翻转保留侧", exact: true});
+  assert.equal(await section.getAttribute("aria-pressed"), "false");
+  const uncut = await canvas.screenshot();
+  const previous = await data();
+  await section.click();
+  await until(data, (d) => d.sectionAxis === "x" && d.sectionPosition !== undefined &&
+    Number(d.sectionPosition) === 0 && d.sectionFlipped === "false" &&
+    Number(d.frames) > Number(previous.frames), "The initial X section did not render");
+  assert.equal(await section.getAttribute("aria-pressed"), "true");
+  assert.equal(await axis.inputValue(), "x");
+  assert.notDeepEqual(await canvas.screenshot(), uncut, "Enabling the section did not change the rendered canvas");
+  await screenshot(page, "bogie-glb-section");
+
+  await axis.selectOption("z");
+  const zSection = await until(data, (d) => d.sectionAxis === "z", "The section axis did not change to Z");
+  await position.press("ArrowRight");
+  const shifted = await until(data, (d) => Number(d.sectionPosition) > Number(zSection.sectionPosition),
+    "Moving the section position did not change the clipping plane");
+  assert.equal(Number(await position.inputValue()), Number(shifted.sectionPosition));
+  const beforeFlip = await canvas.screenshot();
+  const frameBeforeFlip = Number((await data()).frames);
+  await flip.click();
+  await until(data, (d) => d.sectionFlipped === "true" && Number(d.frames) > frameBeforeFlip,
+    "Flipping the section did not render the opposite side");
+  assert.equal(await flip.getAttribute("aria-pressed"), "true");
+  assert.notDeepEqual(await canvas.screenshot(), beforeFlip, "Flipping did not change the rendered canvas");
+
+  await flip.click();
+  await position.press("Home");
+  const minimum = Number(await position.getAttribute("min"));
+  await until(data, (d) => d.sectionFlipped === "false" && Number(d.sectionPosition) === minimum,
+    "The section did not reach its lower limit");
+  const viewport = await canvas.boundingBox();
+  const pickCenter = () => canvas.click({position: {x: viewport.width / 2, y: viewport.height / 2}});
+  await pickCenter();
+  assert.equal((await data()).selected, "", "Picking reached geometry removed by the section plane");
+  const measure = frame.getByRole("button", {name: "两点测距", exact: true});
+  await measure.click();
+  await pickCenter();
+  assert.equal((await data()).measurePoints, "0", "Measurement reached geometry removed by the section plane");
+  await measure.click();
+
+  const frameBeforeClose = Number((await data()).frames);
+  await section.click();
+  await until(data, (d) => d.sectionAxis === "" && Number(d.frames) > frameBeforeClose,
+    "Disabling the section did not restore the full model");
+  assert.equal(await section.getAttribute("aria-pressed"), "false");
+  assert.equal(await axis.isVisible(), false);
+  await pickCenter();
+  assert((await data()).selected, "Picking the same location did not recover after disabling the section");
+  await canvas.click({position: {x: 5, y: 5}});
+  assert.equal((await data()).selected, "", "Clicking the background did not clear the test selection");
+}
+
 async function audit(browser, width, height, complete = true) {
   const page = await browser.newPage({viewport: {width, height}, screen: {width, height}});
   page.setDefaultTimeout(20000);
@@ -69,6 +127,7 @@ async function audit(browser, width, height, complete = true) {
     await page.setViewportSize({width, height});
     await until(() => canvas.boundingBox(), (resized) => Math.abs(resized.height - box.height) < 2, "Viewport did not grow again");
 
+    await checkSection(page, frame, canvas, data);
     const initial = await data();
     await page.mouse.move(box.x + box.width * .56, box.y + box.height * .49);
     await page.mouse.down();
@@ -257,7 +316,7 @@ async function audit(browser, width, height, complete = true) {
     await page.getByText("已定位到虚构演示的异常样本。").waitFor();
     assert.equal(await page.getByTestId("stException").count(), 0);
     assert.deepEqual(errors, []);
-    console.log("Bogie interaction, all seven scenes, Plotly fallback and offline evidence round trip passed");
+    console.log("Bogie section, interaction, all seven scenes, Plotly fallback and offline evidence round trip passed");
   } catch (error) {
     await screenshot(page, "bogie-webgl-error").catch(() => {});
     throw error;
@@ -279,6 +338,13 @@ async function checkFallback(browser, response) {
     await root.waitFor();
     assert.equal(await root.getAttribute("data-parts"), "7");
     assert.equal(await frame.locator("#browse-parts").isVisible(), false);
+    const section = frame.getByRole("button", {name: "剖切视图", exact: true});
+    await section.click();
+    await until(() => root.getAttribute("data-section-axis"), (value) => value === "x",
+      "Procedural fallback could not activate the section plane");
+    await section.click();
+    await until(() => root.getAttribute("data-section-axis"), (value) => value === "",
+      "Procedural fallback could not disable the section plane");
     await page.locator(".st-key-bogie_play button").click();
     await frame.locator('#workbench[data-playing="true"]').waitFor();
     await until(() => root.getAttribute("data-phase"), (phase) => Math.abs(Number(phase)) > .02,
