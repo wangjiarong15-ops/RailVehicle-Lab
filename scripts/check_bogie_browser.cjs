@@ -413,6 +413,9 @@ async function checkBookmarks(browser) {
     const save = frame.getByRole("button", {name: "保存当前视图", exact: true});
     const restore = frame.getByRole("button", {name: "恢复视图", exact: true});
     const remove = frame.getByRole("button", {name: "删除视图", exact: true});
+    const exportViews = frame.getByRole("button", {name: "导出书签", exact: true});
+    const importViews = frame.getByRole("button", {name: "导入书签", exact: true});
+    const status = () => frame.locator("#bookmark-status").textContent();
     const canvas = frame.locator("canvas");
     const view = frame.getByRole("combobox", {name: "视窗视角"});
     const bookmark = "轮对纵剖检查";
@@ -439,6 +442,19 @@ async function checkBookmarks(browser) {
     assert.equal(Number(current.sectionPosition), 0);
     await save.click();
     await savedOption.waitFor({state: "attached"});
+
+    const [download] = await Promise.all([page.waitForEvent("download"), exportViews.click()]);
+    assert.equal(download.suggestedFilename(), "railvehicle-bogie-bookmarks.json");
+    const backup = await readFile(await download.path());
+    const envelope = JSON.parse(backup.toString("utf8"));
+    assert.equal(envelope.format, "railvehicle-bogie-bookmarks");
+    assert.equal(envelope.version, 1);
+    assert.equal(envelope.entries.length, 1);
+    assert.equal(envelope.entries[0].name, bookmark);
+    const snapshot = envelope.entries[0].snapshot;
+    assert.equal(snapshot.view, "侧视图");
+    assert.deepEqual(snapshot.hidden, ["disc_a_l"]);
+    assert.equal(snapshot.section.axis, "x");
 
     await frame.getByRole("button", {name: "恢复隐藏", exact: true}).click();
     await view.selectOption("俯视图");
@@ -471,8 +487,34 @@ async function checkBookmarks(browser) {
     await root.waitFor();
     await toggle.click();
     assert.equal(await savedOption.count(), 0, "The deleted bookmark reappeared after reload");
+
+    const [chooser] = await Promise.all([page.waitForEvent("filechooser"), importViews.click()]);
+    await chooser.setFiles({name: download.suggestedFilename(), mimeType: "application/json", buffer: backup});
+    await savedOption.waitFor({state: "attached"});
+    await saved.selectOption({label: bookmark});
+    await restore.click();
+    await until(data, (d) => d.view === "侧视图" && d.sectionAxis === "x" &&
+      d.hidden === "1" && d.selected === "disc_a_l" && Math.abs(Number(d.zoom) - Number(current.zoom)) < .02,
+    "The imported bookmark did not restore the camera, section and hidden part");
+
+    const file = frame.locator("#bookmark-file");
+    snapshot.view = "俯视图";
+    await file.setInputFiles({name: "same-name.json", mimeType: "application/json",
+      buffer: Buffer.from(JSON.stringify(envelope))});
+    await until(status, (value) => /同名|重复/.test(value), "The duplicate import was not reported");
+    assert.equal(await savedOption.count(), 1);
+
+    await file.setInputFiles({name: "invalid.json", mimeType: "application/json", buffer: Buffer.from("{")});
+    await until(status, (value) => /格式|JSON|无效|无法/.test(value), "The malformed import was not reported");
+    assert.equal(await savedOption.count(), 1);
+    await view.selectOption("俯视图");
+    await saved.selectOption({label: bookmark});
+    await restore.click();
+    await until(data, (d) => d.view === "侧视图" && d.sectionAxis === "x",
+      "The duplicate or malformed import overwrote the existing bookmark");
+
     assert.equal(await page.getByTestId("stException").count(), 0);
-    console.log("Inspection bookmarks passed save, restore, reload persistence and deletion");
+    console.log("Inspection bookmarks passed save, restore, reload persistence, deletion, export and import");
   } finally {
     await page.close();
   }

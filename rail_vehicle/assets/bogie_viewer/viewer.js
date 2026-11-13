@@ -188,11 +188,27 @@ export async function mount() {
   const knownGroups = Object.keys(data.parts);
   const hasPart = (id) => id === null || assembly.partNodes.has(id);
   const hasSelection = (id) => hasPart(id) || knownGroups.includes(id);
+  const bookmarkModel = detailed ? "glb" : "procedural";
+  function validBookmark(state, checkParts) {
+    if (!state || !["glb", "procedural"].includes(state.model) ||
+        !Array.from(viewControl.options).some(({value}) => value === state.view) ||
+        !rig.accepts(state.camera) || !section.accepts(state.section) ||
+        !Array.isArray(state.visible) || state.visible.length > knownGroups.length ||
+        !state.visible.every((group) => knownGroups.includes(group)) || typeof state.rails !== "boolean" ||
+        !Array.isArray(state.hidden) || state.hidden.length > 54) return false;
+    const isPartId = (id) => typeof id === "string" && /^[a-z][a-z0-9_]{0,63}$/.test(id);
+    const acceptsPart = checkParts ? (id) => id !== null && hasPart(id) : isPartId;
+    if (state.model === "procedural") return state.hidden.length === 0 && state.isolated === null &&
+      (state.selection === null || knownGroups.includes(state.selection));
+    return state.hidden.every(acceptsPart) && (state.isolated === null || acceptsPart(state.isolated)) &&
+      (checkParts ? hasSelection(state.selection) :
+        state.selection === null || knownGroups.includes(state.selection) || isPartId(state.selection));
+  }
   const bookmarks = viewBookmarks({
     capture() {
       if (!args || args.playing || args.spread || settling) return null;
       return {
-        model: detailed ? "glb" : "procedural",
+        model: bookmarkModel,
         view: args.view,
         camera: rig.capture(),
         visible: [...args.visible],
@@ -203,14 +219,18 @@ export async function mount() {
         section: section.capture(),
       };
     },
+    validate(state) {
+      if (!validBookmark(state, state?.model === bookmarkModel)) return null;
+      const {model, view, camera, visible, rails, hidden, isolated, selection, section} = state;
+      return {
+        model, view, visible, rails, hidden, isolated, selection,
+        camera: {position: camera.position, target: camera.target, zoom: camera.zoom},
+        section: {enabled: section.enabled, axis: section.axis, position: section.position, flipped: section.flipped},
+      };
+    },
     restore(state) {
-      if (!args || args.playing || args.spread || settling || !state || state.model !== (detailed ? "glb" : "procedural") ||
-          !Array.from(viewControl.options).some(({value}) => value === state.view) ||
-          !rig.accepts(state.camera) || !section.accepts(state.section) ||
-          !Array.isArray(state.visible) || !state.visible.every((group) => knownGroups.includes(group)) ||
-          typeof state.rails !== "boolean" ||
-          !Array.isArray(state.hidden) || !state.hidden.every((id) => id !== null && hasPart(id)) ||
-          !hasPart(state.isolated) || !hasSelection(state.selection)) return false;
+      if (!args || args.playing || args.spread || settling || state?.model !== bookmarkModel ||
+          !validBookmark(state, true)) return false;
       localView = state.view;
       bookmarkDisplay = {visible: [...new Set(state.visible)], rails: state.rails};
       hidden.clear();

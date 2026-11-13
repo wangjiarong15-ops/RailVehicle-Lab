@@ -1,3 +1,5 @@
+import {downloadBookmarkFile, readBookmarkFile} from "./bookmark-transfer.js";
+
 const storageKey = "railvehicle.bogie.viewBookmarks.v1";
 const maxBookmarks = 12;
 const maxNameLength = 32;
@@ -34,7 +36,7 @@ function readBookmarks() {
   }
 }
 
-export function viewBookmarks({capture, restore}) {
+export function viewBookmarks({capture, restore, validate}) {
   const toggle = document.querySelector("#bookmarks-toggle");
   const panel = document.querySelector("#bookmarks-controls");
   const nameInput = document.querySelector("#bookmark-name");
@@ -42,9 +44,14 @@ export function viewBookmarks({capture, restore}) {
   const save = document.querySelector("#bookmark-save");
   const load = document.querySelector("#bookmark-restore");
   const remove = document.querySelector("#bookmark-delete");
+  const exportButton = document.querySelector("#bookmark-export");
+  const importButton = document.querySelector("#bookmark-import");
+  const fileInput = document.querySelector("#bookmark-file");
   const status = document.querySelector("#bookmark-status");
   const listeners = [];
   let entries = [];
+  let importing = false;
+  let disposed = false;
 
   function listen(target, event, handler) {
     target.addEventListener(event, handler);
@@ -75,6 +82,8 @@ export function viewBookmarks({capture, restore}) {
     selection.value = entries.some((entry) => entry.name === selected) ? selected : "";
     selection.disabled = !entries.length;
     save.disabled = Boolean(result.unavailable);
+    importButton.disabled = importing || Boolean(result.unavailable);
+    exportButton.disabled = !entries.length;
     refreshButtons();
     if (result.unavailable) show("当前浏览器无法访问本地书签。");
     else if (result.damaged) show("已忽略无法读取的书签记录。");
@@ -133,6 +142,63 @@ export function viewBookmarks({capture, restore}) {
     return entries.find((entry) => entry.name === name);
   }
 
+  function exportBookmarks() {
+    render(selection.value);
+    if (!entries.length) return;
+    try {
+      downloadBookmarkFile(entries);
+      show("已导出书签文件。");
+    } catch (error) {
+      show(error.message || "无法导出书签文件。");
+    }
+  }
+
+  async function importBookmarks() {
+    const file = fileInput.files[0];
+    fileInput.value = "";
+    if (!file || importing) return;
+    importing = true;
+    importButton.disabled = true;
+    try {
+      const raw = await readBookmarkFile(file);
+      if (disposed) return;
+      const imported = raw.map((item) => {
+        const name = typeof item?.name === "string" ? item.name.trim() : "";
+        const snapshot = validate(item?.snapshot);
+        if (!name || name.length > maxNameLength || !snapshot) {
+          throw new Error("书签名称或视图设置无效，本次文件未导入。");
+        }
+        return {name, snapshot};
+      });
+      // Read after the asynchronous file parse so concurrent tabs' changes are included.
+      const latest = readBookmarks();
+      render(selection.value, latest);
+      if (latest.unavailable) return;
+      const names = new Set(entries.map(({name}) => name));
+      const additions = [];
+      let duplicates = 0, full = 0;
+      for (const entry of imported) {
+        if (names.has(entry.name)) {
+          duplicates++;
+        } else if (entries.length + additions.length === maxBookmarks) {
+          full++;
+        } else {
+          additions.push(entry);
+          names.add(entry.name);
+        }
+      }
+      if (additions.length && !write([...entries, ...additions], additions[0].name)) return;
+      const details = [duplicates ? "同名跳过 " + duplicates + " 个" : "",
+        full ? "容量不足跳过 " + full + " 个" : ""].filter(Boolean);
+      show(["已导入 " + additions.length + " 个书签", ...details].join("，") + "。");
+    } catch (error) {
+      if (!disposed) show(error.message || "无法导入书签文件。");
+    } finally {
+      importing = false;
+      if (!disposed) importButton.disabled = Boolean(readBookmarks().unavailable);
+    }
+  }
+
   toggle.disabled = false;
   render("");
   listen(toggle, "click", () => {
@@ -151,6 +217,9 @@ export function viewBookmarks({capture, restore}) {
   });
   listen(selection, "change", refreshButtons);
   listen(save, "click", storeCurrent);
+  listen(exportButton, "click", exportBookmarks);
+  listen(importButton, "click", () => fileInput.click());
+  listen(fileInput, "change", importBookmarks);
   listen(load, "click", () => {
     const entry = selectedEntry();
     if (!entry) return;
@@ -170,5 +239,8 @@ export function viewBookmarks({capture, restore}) {
     if (event.key === storageKey || event.key === null) render(selection.value);
   });
 
-  return {dispose() { for (const removeListener of listeners) removeListener(); }};
+  return {dispose() {
+    disposed = true;
+    for (const removeListener of listeners) removeListener();
+  }};
 }
