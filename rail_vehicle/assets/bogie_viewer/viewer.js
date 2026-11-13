@@ -71,11 +71,12 @@ export async function mount() {
     exportStatus.hidden = !text;
   }
   function updateExportButton() {
-    exportControl.disabled = !args || args.playing || settling || exportPending || exporting;
+    exportControl.disabled = !args || args.replayRunning || settling || exportPending || exporting;
   }
   function requestExport() {
     if (exportControl.disabled) return;
     exportPending = true;
+    workbench.dataset.exportObservation = "";
     setExportStatus("");
     updateExportButton();
     invalidate();
@@ -95,10 +96,15 @@ export async function mount() {
       part: [part, isolatedName ? "仅显示 " + isolatedName : ""].filter(Boolean).join(" · "),
       section: section.enabled ? document.querySelector("#section-value").textContent : "",
       measurement: gauge.getState().count === 2 ? measurementStatus.textContent : "",
+      observation: args.exportContext,
+      reference: args.reference,
     };
     // Read the framebuffer in this render callback before WebGL clears it.
     exportInspectionPng(canvas, metadata).then(() => {
-      if (alive) setExportStatus("已导出 PNG");
+      if (alive) {
+        workbench.dataset.exportObservation = metadata.observation?.sample_number ?? "";
+        setExportStatus("已导出 PNG");
+      }
     }).catch(() => {
       if (alive) setExportStatus("导出失败，请重试");
     }).finally(() => {
@@ -301,7 +307,7 @@ export async function mount() {
       shadowDirty = false;
     }
     renderer.render(scene, rig.camera);
-    if (exportPending && !args.playing && !settling) saveInspection();
+    if (exportPending && !args.replayRunning && !settling) saveInspection();
     picker.labels(args, width, height);
     dirty = false;
     // Lightweight diagnostics for checking interaction and renderer performance.
@@ -374,7 +380,7 @@ export async function mount() {
     const previous = args;
     const view = localView || next.view;
     args = {...next, ...bookmarkDisplay, view, rails: (bookmarkDisplay?.rails ?? next.rails) && view !== "底视图"};
-    if (args.playing) {
+    if (args.replayRunning) {
       exportPending = false;
       setExportStatus("");
     }

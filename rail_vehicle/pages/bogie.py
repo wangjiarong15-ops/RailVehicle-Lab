@@ -9,6 +9,7 @@ from time import monotonic
 import streamlit as st
 
 from rail_vehicle.bogie import PART_DESCRIPTIONS, PARTS, VIEWS, build_bogie
+from rail_vehicle.bogie_inspection_context import inspection_context
 from rail_vehicle.bogie_replay import (
     EVENT_FILTERS, EventSpanIndex, GAP, TEACHING, advance_event_loop, control_event_loop, event_loop,
     event_positions, gap_cutoff, illustration_phase, replay_event_catalog, replay_scene,
@@ -57,12 +58,13 @@ class Inspection:
 
 
 def _model_view(mode, phase, state, inspection, highlight, height, key, renderer, continuous,
-                *, labels=False, focus=None, exploded=False):
+                *, labels=False, focus=None, exploded=False, export_context=None, reference=False):
     camera = dict(height=height, rails=inspection.rails, camera_revision=inspection.camera_revision)
     if renderer == WEBGL:
         render_webgl(mode=mode, phase=phase, state=state, visible=inspection.visible, highlight=highlight,
                      view=inspection.view, focus=focus, labels=labels, exploded=exploded,
-                     spread=inspection.spread, continuous=continuous and not exploded, key=key, **camera)
+                     spread=inspection.spread, continuous=continuous and not exploded, key=key,
+                     export_context=export_context, reference=reference, **camera)
     else:
         plot_chart(build_bogie(mode, phase, inspection.visible, highlight, inspection.view,
                               labels=labels, exploded=exploded, spread=inspection.spread,
@@ -260,7 +262,8 @@ def _load(source, target):
     return (HISTORY, vehicle, batch), lambda: prepare_replay(list_batch_samples(vehicle, batch))
 
 
-def _display(track, duration, threshold, cutoff, teaching, inspection, event_index, show_signals, window, renderer):
+def _display(track, duration, threshold, cutoff, teaching, inspection, event_index, show_signals,
+             window, renderer, source, batch_id):
     state = st.session_state[STATE_KEY]
     now = monotonic()
     if window:
@@ -276,6 +279,7 @@ def _display(track, duration, threshold, cutoff, teaching, inspection, event_ind
             st.rerun()
     st.session_state[STATE_KEY] = state
     index = None
+    sample = None
     if track is not None:
         index = _current_row(track, state.position, window)
         sample = track.samples[index]
@@ -283,6 +287,12 @@ def _display(track, duration, threshold, cutoff, teaching, inspection, event_ind
     else:
         scene = TEACHING[teaching]
     phase = 0 if scene is GAP else illustration_phase(state.position)
+    export_context = None
+    if renderer == WEBGL and not state.playing:
+        export_context = inspection_context(
+            sample=sample, index=index, total=len(track.samples) if track is not None else 0,
+            threshold=threshold, scene=scene, teaching=teaching, fictional=source == DEMO, batch_id=batch_id,
+        )
     model, panel = st.columns([5, 1.25], gap="small")
     with model, st.container(border=True, key="bogie_model_card"):
         st.caption("拖动旋转 · 滚轮缩放 · " + ("单击检查 · 双击聚焦" if renderer == WEBGL else "悬停查看名称"))
@@ -303,11 +313,11 @@ def _display(track, duration, threshold, cutoff, teaching, inspection, event_ind
                 with active:
                     _model_view(scene.mode, phase, state, inspection, scene.parts, height, "bogie_model",
                                 renderer, scene is not GAP, labels=inspection.labels, focus=inspection.focus,
-                                exploded=inspection.exploded)
+                                exploded=inspection.exploded, export_context=export_context)
                 if compare:
                     with reference:
                         _model_view("正常运行", phase, state, inspection, (), height, "bogie_reference",
-                                    renderer, scene is not GAP)
+                                    renderer, scene is not GAP, export_context=export_context, reference=True)
             except (TypeError, ValueError, RuntimeError):
                 st.error("三维视图暂时无法加载，仍可查看运行信号。")
     with panel, st.container(border=True, key="bogie_status_card"):
@@ -515,4 +525,5 @@ def render():
         with view_slot:
             st.fragment(run_every=(0.15 if track is None else 0.4) if state.playing else None)(_display)(
                 track, duration, threshold, st.session_state.get("bogie_gap_cutoff"),
-                teaching, inspection, event_index, show_signals, window, renderer)
+                teaching, inspection, event_index, show_signals, window, renderer, source,
+                selection[-1] if track is not None else None)

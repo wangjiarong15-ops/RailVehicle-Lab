@@ -39,8 +39,18 @@ async function screenshot(page, name) {
   if (output) await page.screenshot({path: join(output, name.replace("webgl", "glb") + ".png")});
 }
 
-async function checkInspectionExport(page, frame, canvas) {
-  const size = await canvas.evaluate((element) => ({width: element.width, height: element.height}));
+async function downloadInspection(page, frame, canvas) {
+  // Observe the actual strings painted onto the downloaded PNG before browser encoding.
+  await canvas.evaluate(() => {
+    if (!window.bogieExportText) {
+      const fillText = CanvasRenderingContext2D.prototype.fillText;
+      CanvasRenderingContext2D.prototype.fillText = function (text, ...args) {
+        window.bogieExportText.push(String(text));
+        return fillText.call(this, text, ...args);
+      };
+    }
+    window.bogieExportText = [];
+  });
   const [download] = await Promise.all([
     page.waitForEvent("download"),
     frame.getByRole("button", {name: "导出检查图", exact: true}).click(),
@@ -49,6 +59,17 @@ async function checkInspectionExport(page, frame, canvas) {
   const png = await readFile(await download.path());
   assert.deepEqual(png.subarray(0, 8), Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
   assert.equal(png.toString("ascii", 12, 16), "IHDR");
+  await until(() => frame.locator("#export-status").textContent(),
+    (status) => /已导出|导出成功|已下载/.test(status), "The workbench did not report a successful export");
+  const painted = await canvas.evaluate(() => window.bogieExportText);
+  assert(painted.includes("三维转向架检查记录"), "The PNG title was not painted");
+  return {download, png, painted};
+}
+
+async function checkInspectionExport(page, frame, canvas) {
+  const size = await canvas.evaluate((element) => ({width: element.width, height: element.height}));
+  const {download, png, painted} = await downloadInspection(page, frame, canvas);
+  assert(!painted.includes("观测"), "Teaching PNG unexpectedly contained a replay observation");
   assert(png.readUInt32BE(16) >= size.width, "Export shrank the model horizontally");
   assert(png.readUInt32BE(20) > size.height, "Export did not leave space for inspection details");
 
@@ -73,9 +94,19 @@ async function checkInspectionExport(page, frame, canvas) {
     }
   }, png.toString("base64"));
   assert(modelPixels > 80, "The exported PNG does not contain the highlighted model");
-  await until(() => frame.locator("#export-status").textContent(),
-    (status) => /已导出|导出成功|已下载/.test(status), "The workbench did not report a successful export");
   if (output) await download.saveAs(join(output, "railvehicle-bogie-inspection.png"));
+}
+
+async function checkReplayInspectionExport(page, frame, canvas, data) {
+  const {download, painted} = await downloadInspection(page, frame, canvas);
+  const notes = painted.join(" ");
+  await until(data, (state) => state.exportObservation === "32", "PNG was not linked to observation row 32");
+  assert.match(notes, /来源 .*内置虚构演示.*非实际测量.*虚构批次 1/);
+  assert.match(notes, /观测 .*第 32\/120 条.*2026-10-08.*09:30:31/);
+  assert.match(notes, /速度 .*km\/h/);
+  assert.match(notes, /加速度 .*横向 .*1\.800.*m\/s².*垂向 .*m\/s²/);
+  assert.match(notes, /阈值状态 .*横向加速度超阈值.*加速度绝对值阈值 1 m\/s²/);
+  if (output) await download.saveAs(join(output, "railvehicle-bogie-replay-inspection.png"));
 }
 
 async function checkSection(page, frame, canvas, data) {
@@ -350,10 +381,15 @@ async function audit(browser, width, height, complete = true) {
     await page.getByTestId("stPlotlyChart").waitFor();
     await page.getByRole("heading", {name: "三维转向架仿真"}).scrollIntoViewIfNeeded();
     await screenshot(page, "bogie-webgl-replay");
+    await checkReplayInspectionExport(page, frame, canvas, data);
     await page.getByRole("button", {name: /核查虚构证据/}).click();
     await page.getByText(/本演示未生成 AI 解读/).waitFor();
     await page.getByRole("button", {name: "在三维回放中查看虚构区段", exact: true}).click();
     await page.getByText("已定位到虚构演示的异常样本。").waitFor();
+    await page.getByText("独立教学动画", {exact: true}).click();
+    const teaching = await downloadInspection(page, frame, canvas);
+    assert(!teaching.painted.includes("观测"), "The replay observation leaked into a subsequent teaching PNG");
+    assert(!teaching.painted.join(" ").includes("虚构批次 1"), "The teaching PNG retained stale batch context");
     assert.equal(await page.getByTestId("stException").count(), 0);
     assert.deepEqual(errors, []);
     console.log("Bogie section, interaction, all seven scenes, Plotly fallback and offline evidence round trip passed");

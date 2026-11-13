@@ -1,6 +1,21 @@
 const filename = "railvehicle-bogie-inspection.png";
 const font = '"Segoe UI", "Microsoft YaHei", sans-serif';
 
+function observationFields(metadata) {
+  const source = metadata.observation;
+  if (!source) return [];
+  const rows = [["来源", [source.source, source.batch_label].filter(Boolean).join(" · ")]];
+  if (metadata.reference) rows.push(["画面", "正常运动参照 · 观测与阈值状态来自当前场景"]);
+  if (!source.sample_number) return [...rows, ["场景", source.scene_label]];
+  return [
+    ...rows,
+    ["观测", `${source.sample_kind} · 第 ${source.sample_number}/${source.sample_count} 条 · ${source.timestamp}`],
+    ["速度", `${source.speed_kmh.toFixed(1)} km/h`],
+    ["加速度", `横向 ${source.lateral_accel.toFixed(3)} m/s² · 垂向 ${source.vertical_accel.toFixed(3)} m/s²`],
+    ["阈值状态", `${source.scene_label} · 加速度绝对值阈值 ${source.threshold} m/s²`],
+  ];
+}
+
 function wrapText(context, text, maxWidth) {
   const lines = [];
   let line = "";
@@ -51,7 +66,7 @@ export async function exportInspectionPng(canvas, metadata) {
   const imageWidth = width - 2 * padding;
   const imageHeight = Math.round(canvas.height * imageWidth / canvas.width);
   const lineHeight = Math.ceil(24 * scale);
-  const labelWidth = Math.round(80 * scale);
+  const labelWidth = Math.round(95 * scale);
   output.width = width;
   const context = output.getContext("2d");
   if (!context) throw new Error("Could not create the inspection image");
@@ -61,6 +76,7 @@ export async function exportInspectionPng(canvas, metadata) {
     ["零件", metadata.part],
     ["剖切", metadata.section],
     ["测距", metadata.measurement],
+    ...observationFields(metadata),
   ].filter(([, value]) => value);
   const bodyFont = `${Math.round(17 * scale)}px ${font}`;
   context.font = bodyFont;
