@@ -223,11 +223,13 @@ def _render_demo_evidence():
         st.subheader("如何解释证据")
         st.write("证据 ID 对应聚合指标或异常区段，可以回查计算口径和样本。")
         st.caption("超过阈值描述的是数据状态。即使 AI 引用了正确证据，可能原因也需要进一步验证。")
-        st.button("返回演示中心", key="ai_demo_back", on_click=navigate, args=("演示中心",))
+        public = public_demo_enabled()
+        st.button("返回综合工作台" if public else "返回演示中心", key="ai_demo_back", on_click=navigate,
+                  args=("平台首页" if public else "演示中心",))
 
 
 def render():
-    page_title("AI 智能分析中心", "核查计算证据 / 主动生成解读 / 回查本机记录")
+    page_title("AI 分析中心", "核查计算证据 / 主动生成解读 / 回查本机记录")
     st.caption("AI 内容仅供辅助参考，不构成故障、事故、安全、法规或标准舒适等级结论。")
     public = public_demo_enabled()
     if public:
@@ -242,7 +244,8 @@ def render():
         return
     available = {kind: item for kind in CONTEXTS if (item := current_context(st.session_state, kind)) is not None}
     if not available:
-        st.info("当前会话没有可用的分析结果。请先在运行分析、振动、机器学习或多车辆页面完成分析。")
+        st.info("当前会话还没有可核查的分析结果。先选择车辆和运行批次，完成分析后再回来解读证据。")
+        st.button("前往运行分析", key="ai_center_open_analysis", type="primary", on_click=navigate, args=("运行分析",))
         _render_history()
         return
     left, middle, right = st.columns([1.0, 1.8, 1.8])

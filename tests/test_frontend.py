@@ -17,6 +17,12 @@ from rail_vehicle.demo_data import demo_csv_content
 from rail_vehicle.run_data import import_run_data, validate_run_csv, list_import_batches
 from rail_vehicle.vehicle_data import add_vehicle, update_vehicle, list_vehicles
 from rail_vehicle.pages import home, vehicles, run_analysis
+from rail_vehicle.pages.data_workflow import ANALYSIS_TARGET
+
+
+MAIN_NAV = ("综合工作台", "车辆与数据", "三维诊断工作台", "AI 分析中心")
+DATA_ROUTES = ("车辆参数", "CSV 数据导入", "运行分析")
+ADVANCED_ROUTES = ("动态运行驾驶舱", "机器学习异常检测", "振动与平稳性分析", "多车辆运行对比", "演示中心")
 
 
 def home_app():
@@ -96,8 +102,22 @@ class FrontendTests(unittest.TestCase):
         app = self.home(empty)
         self.assertFalse(app.exception)
         self.assertTrue(any("暂无可预览" in item.value for item in app.info))
-        self.assertTrue(any("首次使用" in item.value for item in app.subheader))
+        self.assertTrue(any("登记车辆 → 导入 CSV → 查看运行分析" in item.value for item in app.caption))
         self.assertTrue(any("非实时监测" in item.value for item in app.caption))
+        action = app.button(key="home_车辆参数")
+        self.assertEqual(action.proto.type, "primary")
+        action.click().run()
+        self.assertEqual(app.session_state["navigation_page"], "车辆参数")
+        self.assertNotIn("home_CSV 数据导入", [button.key for button in app.button])
+
+    def test_home_with_registered_vehicles_suggests_csv_import(self):
+        app = self.home()
+        self.assertFalse(app.exception)
+        self.assertNotIn("home_车辆参数", [button.key for button in app.button])
+        action = app.button(key="home_CSV 数据导入")
+        self.assertEqual(action.proto.type, "primary")
+        action.click().run()
+        self.assertEqual(app.session_state["navigation_page"], "CSV 数据导入")
 
     def test_fictional_csv_can_be_validated_without_database_side_effects(self):
         before = self.path.read_bytes()
@@ -159,7 +179,7 @@ class FrontendTests(unittest.TestCase):
         return app.run()
 
     def test_home_preview_uses_full_latest_batch_and_current_threshold(self):
-        self.import_batch()
+        batch = self.import_batch()
         app = self.home()
         self.assertFalse(app.exception)
         values = {metric.label: metric.value for metric in app.metric}
@@ -168,13 +188,20 @@ class FrontendTests(unittest.TestCase):
         self.assertEqual(values["统计异常区段"], "2")
         self.assertEqual(list(app.dataframe[0].value["编号"]), ["#1", "#2"])
         self.assertEqual(len(app.get("plotly_chart")), 1)
-        self.assertEqual(app.button(key="home_运行分析").proto.type, "primary")
-        self.assertEqual(app.button(key="home_车辆参数").proto.type, "secondary")
-        self.assertLess([b.key for b in app.button].index("home_运行分析"),
-                        [b.key for b in app.button].index("home_车辆参数"))
+        self.assertEqual(app.button(key="home_latest_analysis").proto.type, "primary")
+        self.assertFalse({"home_运行分析", "home_车辆参数", "home_CSV 数据导入"} & {b.key for b in app.button})
         self.assertTrue(any(h.value == "当前批次摘要" for h in app.subheader))
         app.number_input(key="home_threshold").set_value(10.).run()
         self.assertEqual({m.label: m.value for m in app.metric}["统计异常区段"], "0")
+        app.button(key="home_latest_analysis").click().run()
+        self.assertEqual(app.session_state["navigation_page"], "运行分析")
+        self.assertEqual(app.session_state["dynamics_vehicle_id"], self.vid)
+        self.assertEqual(app.session_state["dynamics_batch_id"], batch)
+        self.assertEqual(app.session_state[ANALYSIS_TARGET], dict(vehicle_id=self.vid, batch_id=batch, threshold=10.))
+        app.button(key="home_latest_bogie").click().run()
+        self.assertEqual(app.session_state["navigation_page"], "三维转向架仿真")
+        self.assertEqual(app.session_state["bogie_batch_target"],
+                         dict(vehicle_id=self.vid, batch_id=batch, threshold=10.))
 
     def test_oversized_preview_is_not_analyzed_as_partial_batch(self):
         self.import_batch()
@@ -330,17 +357,48 @@ class FrontendTests(unittest.TestCase):
         self.assertEqual(app.session_state["navigation_page"], "运行分析")
         self.assertEqual(app.session_state["dynamics_vehicle_id"], self.vid)
 
-    def test_root_navigation_groups_and_import_entry_preserve_all_pages(self):
-        with patch("rail_vehicle.db.init_db"), patch.object(db, "DB_PATH", self.path), \
+    def test_root_navigation_separates_main_modules_data_and_advanced_options(self):
+        with patch("rail_vehicle.db.init_db"), patch.object(home, "load_dashboard", lambda: load_dashboard(self.path)), \
              patch.object(run_analysis, "list_vehicles", lambda: list_vehicles(self.path)), \
+             patch.object(run_analysis, "list_vehicle_batches", return_value=[]), \
              patch.object(run_analysis, "list_import_batches", lambda: list_import_batches(self.path)):
             app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"), default_timeout=15).run()
             self.assertFalse(app.exception)
             self.assertEqual(app.session_state["navigation_page"], "平台首页")
             self.assertEqual(len(app.sidebar.radio), 0)
-            self.assertEqual(app.button(key="nav_平台首页").proto.type, "primary")
-            for label in ("车辆参数", "运行分析", "CSV 数据导入", "动态运行驾驶舱", "机器学习异常检测", "振动与平稳性分析", "多车辆运行对比", "统计与异常演示", "演示中心"):
-                self.assertIsNotNone(app.button(key=f"nav_{label}"))
+            self.assertEqual(tuple(button.label for button in app.sidebar.button), MAIN_NAV)
+            self.assertEqual(app.sidebar.button(key="nav_综合工作台").proto.type, "primary")
+            advanced = next(section for section in app.expander if "高级选项" in section.label)
+            self.assertTrue({f"nav_{label}" for label in ADVANCED_ROUTES} <= {button.key for button in advanced.button})
+            self.assertFalse({f"nav_{label}" for label in DATA_ROUTES} & {button.key for button in app.button})
+
+            app.sidebar.button(key="nav_车辆与数据").click().run()
+            self.assertEqual(app.session_state["navigation_page"], "运行分析")
+            self.assertEqual(app.sidebar.button(key="nav_车辆与数据").proto.type, "primary")
+            self.assertTrue({f"nav_{label}" for label in DATA_ROUTES} <= {button.key for button in app.main.button})
             app.button(key="nav_CSV 数据导入").click().run()
             self.assertFalse(app.exception)
+            self.assertEqual(app.session_state["navigation_page"], "CSV 数据导入")
+            self.assertEqual(app.sidebar.button(key="nav_车辆与数据").proto.type, "primary")
             self.assertEqual(len(app.file_uploader), 1)
+
+    def test_existing_deep_links_and_new_module_labels_resolve_to_internal_pages(self):
+        for linked, route, module in (
+            ("平台首页", "平台首页", "综合工作台"),
+            ("综合工作台", "平台首页", "综合工作台"),
+            ("CSV 数据导入", "CSV 数据导入", "车辆与数据"),
+            ("车辆与数据", "运行分析", "车辆与数据"),
+            ("三维转向架仿真", "三维转向架仿真", "三维诊断工作台"),
+            ("三维诊断工作台", "三维转向架仿真", "三维诊断工作台"),
+            ("AI 智能分析中心", "AI 智能分析中心", "AI 分析中心"),
+            ("AI 分析中心", "AI 智能分析中心", "AI 分析中心"),
+        ):
+            with self.subTest(linked=linked), patch("rail_vehicle.db.init_db"), \
+                 patch.object(home, "load_dashboard", lambda: load_dashboard(self.path)), \
+                 patch.object(run_analysis, "list_vehicles", return_value=[]):
+                app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"), default_timeout=15)
+                app.query_params["rail_page"] = linked
+                app.run()
+                self.assertFalse(app.exception)
+                self.assertEqual(app.session_state["navigation_page"], route)
+                self.assertEqual(app.sidebar.button(key=f"nav_{module}").proto.type, "primary")

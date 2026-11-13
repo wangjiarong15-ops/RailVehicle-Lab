@@ -54,7 +54,7 @@ def render_center_link(kind, payload, selection, *, guard_key=None, guard_finger
                               or saved.get("scope_validation") != "verified"):
         clear_result(st.session_state, CONTEXTS[kind][2])
         st.warning("AI 结果尚未完整验证，未展示。")
-    st.caption("当前聚合结果已准备好，可在 AI 智能分析中心查看证据并主动生成解读。")
-    st.button("前往 AI 智能分析中心 →", key=f"ai_center_link_{kind}",
+    st.caption("当前聚合结果已准备好，可在 AI 分析中心查看证据并主动生成解读。")
+    st.button("前往 AI 分析中心 →", key=f"ai_center_link_{kind}",
               on_click=_open_center, args=(kind,))
     return payload, st.session_state.get(CONTEXTS[kind][2])

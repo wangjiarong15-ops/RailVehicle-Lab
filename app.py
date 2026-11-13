@@ -14,7 +14,10 @@ from rail_vehicle.pages import demo_center, fleet_comparison
 from rail_vehicle.pages import home
 from rail_vehicle.pages import ai_center
 from rail_vehicle.pages import bogie
-from rail_vehicle.ui import apply_design, render_navigation, initialize_theme, page_title
+from rail_vehicle.ui import (
+    ADVANCED_PAGES, DATA_PAGES, apply_design, initialize_theme, page_title,
+    render_advanced_navigation, render_data_navigation, render_navigation,
+)
 
 
 def main() -> None:
@@ -29,6 +32,10 @@ def main() -> None:
 
     apply_design()
     page = render_navigation(public_demo)
+    if page in DATA_PAGES:
+        render_data_navigation(page)
+    elif page in ADVANCED_PAGES:
+        render_advanced_navigation(page)
     if page != "动态运行驾驶舱":
         # Returning to the cockpit starts paused, never advances while hidden.
         st.session_state.pop(cockpit.STATE_KEY, None)
@@ -58,7 +65,7 @@ def main() -> None:
         ai_center.render()
     elif page == "统计与异常演示":
         run_analysis.render_statistics_demo()
-    else:
+    elif page == "演示中心":
         demo_center.render()
     initialize_theme()
 

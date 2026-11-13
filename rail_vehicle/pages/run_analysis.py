@@ -435,9 +435,10 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         if isinstance(candidate, ReplayEvidenceScope):
             if candidate.matches(timestamps):
                 st.session_state[ANALYSIS_REPLAY_SCOPE] = (batch_identity, candidate)
-                st.session_state[threshold_key] = target["threshold"]
             else:
                 st.warning("三维窗口与当前批次的观测记录不匹配，请回到三维页重新选择窗口。")
+        if "threshold" in target and (candidate is None or ANALYSIS_REPLAY_SCOPE in st.session_state):
+            st.session_state[threshold_key] = target["threshold"]
     replay_scope = None
     stored_scope = None if demo else st.session_state.get(ANALYSIS_REPLAY_SCOPE)
     if stored_scope:

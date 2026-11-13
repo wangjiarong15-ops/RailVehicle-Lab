@@ -17,9 +17,8 @@ const option = async (page, key, name) => {
   const input = select.locator("input");
   if (await input.inputValue() === name) return;
   const choice = page.locator("[role=option]").filter({hasText: name});
-  const trigger = select.getByRole("button", {name: "Open", exact: true});
   await input.click();
-  if (await trigger.count()) {
+  if (await input.getAttribute("aria-autocomplete") === "list") {
     await input.fill(name);
     await input.press("ArrowDown");
     await input.press("Enter");
@@ -178,7 +177,7 @@ async function audit(browser, width, height, complete = true) {
     const address = new URL(url);
     address.searchParams.set("rail_page", "三维转向架仿真");
     await page.goto(address.href);
-    await page.getByRole("heading", {name: "三维转向架仿真"}).waitFor();
+    await page.getByRole("heading", {name: "三维诊断工作台"}).waitFor();
     const frame = page.frameLocator("iframe[title*=bogie_viewer]").first();
     const root = frame.locator("#workbench");
     const canvas = frame.locator("canvas");
@@ -298,7 +297,7 @@ async function audit(browser, width, height, complete = true) {
     await until(data, (d) => d.selected === "电机与传动", "Manual focus did not update");
     await page.getByText("显示部件标注", {exact: true}).click();
     await frame.locator(".tag").filter({hasText: "电机与传动"}).waitFor();
-    await page.getByRole("heading", {name: "三维转向架仿真"}).scrollIntoViewIfNeeded();
+    await page.getByRole("heading", {name: "三维诊断工作台"}).scrollIntoViewIfNeeded();
     await screenshot(page, "bogie-webgl-detail");
     await option(page, "bogie_inspection_preset", "完整转向架");
     if ((await data()).parts !== "7") {
@@ -307,7 +306,7 @@ async function audit(browser, width, height, complete = true) {
     await until(data, (d) => d.parts === "7" && d.view === "整体视图", "Full assembly preset did not restore");
     await page.getByText("分解示意", {exact: true}).click();
     await until(data, (d) => Number(d.spread) > 0, "Exploded view did not activate");
-    await page.getByRole("heading", {name: "三维转向架仿真"}).scrollIntoViewIfNeeded();
+    await page.getByRole("heading", {name: "三维诊断工作台"}).scrollIntoViewIfNeeded();
     await screenshot(page, "bogie-webgl-exploded");
     await page.getByText("分解示意", {exact: true}).click();
     await until(data, (d) => Number(d.spread) === 0, "Reassembly did not finish");
@@ -367,10 +366,12 @@ async function audit(browser, width, height, complete = true) {
       await until(data, (d) => Number(d.phase) === 0, "Reset did not return to initial pose");
     }
 
+    await page.getByText("视角与部件", {exact: true}).click();
     await option(page, "bogie_renderer", "Plotly 兼容模式");
     await page.locator(".gl-container canvas").first().waitFor({state: "attached"});
     await option(page, "bogie_renderer", "Three.js 工作台");
     await frame.locator("#workbench[data-status=ready][data-frames]").waitFor();
+    await page.getByText("视角与部件", {exact: true}).click();
     await page.getByText("内置虚构演示", {exact: true}).click();
     await page.getByText(/定位超阈值区段（/).click();
     await button(page, "定位区段起点").click();
@@ -379,7 +380,7 @@ async function audit(browser, width, height, complete = true) {
     await button(page, "下一帧").click();
     await page.getByText(/第 32\/120 条/).waitFor();
     await page.getByTestId("stPlotlyChart").waitFor();
-    await page.getByRole("heading", {name: "三维转向架仿真"}).scrollIntoViewIfNeeded();
+    await page.getByRole("heading", {name: "三维诊断工作台"}).scrollIntoViewIfNeeded();
     await screenshot(page, "bogie-webgl-replay");
     await checkReplayInspectionExport(page, frame, canvas, data);
     await page.getByRole("button", {name: /核查虚构证据/}).click();

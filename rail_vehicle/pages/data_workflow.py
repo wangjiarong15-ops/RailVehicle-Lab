@@ -13,16 +13,19 @@ def open_analysis(vehicle_id, batch_id=None, *, threshold=None, scope=None):
                 "dynamics_vehicle_id": vehicle_id}
     if batch_id is not None:
         settings["dynamics_batch_id"] = batch_id
+    if threshold is not None:
+        settings[ANALYSIS_TARGET]["threshold"] = threshold
     if scope is not None:
-        settings[ANALYSIS_TARGET].update(threshold=threshold, scope=scope)
+        settings[ANALYSIS_TARGET]["scope"] = scope
     navigate("运行分析", **settings)
 
 
-def analysis_button(container, *, label, key, vehicle_id, batch_id=None, threshold=None, scope=None):
-    container.button(label, key=key, width="stretch", on_click=open_analysis, args=(vehicle_id, batch_id),
+def analysis_button(container, *, label, key, vehicle_id, batch_id=None, threshold=None, scope=None, primary=False):
+    container.button(label, key=key, width="stretch", type="primary" if primary else "secondary",
+                     on_click=open_analysis, args=(vehicle_id, batch_id),
                      kwargs=dict(threshold=threshold, scope=scope))
 
 
-def import_button(container, *, label, key, vehicle_id=None):
-    container.button(label, key=key, width="stretch", on_click=navigate,
+def import_button(container, *, label, key, vehicle_id=None, primary=False):
+    container.button(label, key=key, width="stretch", type="primary" if primary else "secondary", on_click=navigate,
                      args=("CSV 数据导入",), kwargs={IMPORT_VEHICLE: vehicle_id})

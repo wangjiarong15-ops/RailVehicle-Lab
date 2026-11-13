@@ -32,9 +32,19 @@ class PublicDemoTests(unittest.TestCase):
             app = AppTest.from_file(str(Path(__file__).resolve().parents[1]/"app.py")).run()
             self.assertFalse(app.exception)
             navigation = [button.key.removeprefix("nav_") for button in app.sidebar.button]
-            self.assertEqual(app.session_state["navigation_page"], "演示中心")
-            self.assertNotIn("车辆参数", navigation)
-            self.assertNotIn("运行分析", navigation)
+            self.assertEqual(app.session_state["navigation_page"], "平台首页")
+            self.assertEqual(navigation, ["综合工作台", "车辆与数据", "三维诊断工作台", "AI 分析中心"])
+            app.sidebar.button(key="nav_车辆与数据").click().run()
+            self.assertEqual(app.session_state["navigation_page"], "统计与异常演示")
+            self.assertFalse(app.file_uploader)
+            self.assertFalse({"nav_车辆参数", "nav_运行分析", "nav_CSV 数据导入"} & {b.key for b in app.button})
+            for private_route in ("车辆参数", "运行分析", "CSV 数据导入"):
+                with self.subTest(private_route=private_route):
+                    direct = AppTest.from_file(str(Path(__file__).resolve().parents[1]/"app.py"))
+                    direct.query_params["rail_page"] = private_route
+                    direct.run()
+                    self.assertFalse(direct.exception)
+                    self.assertEqual(direct.session_state["navigation_page"], "平台首页")
             for name, page, key in (
                 ("cockpit", "动态运行驾驶舱", "cockpit_source"),
                 ("ml", "机器学习异常检测", "ml_source"),
@@ -42,6 +52,7 @@ class PublicDemoTests(unittest.TestCase):
                 ("fleet", "多车辆运行对比", "fleet_source"),
             ):
                 with self.subTest(page=page):
+                    app.sidebar.button(key="nav_综合工作台").click().run()
                     app.button(key="nav_演示中心").click().run()
                     if app.button(key=f"launch_demo_{name}").disabled:
                         continue
@@ -66,6 +77,7 @@ class PublicDemoTests(unittest.TestCase):
             app = AppTest.from_file(str(Path(__file__).resolve().parents[1]/"app.py"), default_timeout=30).run()
             for kind, action, state_key in (("ml", "ml_train", ML_KEY), ("vibration", "vibration_calculate", VIBRATION_KEY)):
                 with self.subTest(kind=kind):
+                    app.sidebar.button(key="nav_综合工作台").click().run()
                     app.button(key="nav_演示中心").click().run()
                     if app.button(key=f"launch_demo_{kind}").disabled:
                         continue

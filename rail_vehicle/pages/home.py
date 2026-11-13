@@ -11,7 +11,7 @@ from rail_vehicle.anomaly import detect_anomalies
 from rail_vehicle.pages.bogie_link import batch_replay_button
 from rail_vehicle.pages.data_workflow import analysis_button, import_button
 from rail_vehicle.pages.demo_center import render_walkthrough
-from rail_vehicle.ui import navigate, plot_chart, page_title, kpi, chart_container, empty_state, data_table, action_button, status_label, source_caption
+from rail_vehicle.ui import navigate, plot_chart, page_title, kpi, chart_container, empty_state, data_table, source_caption, render_advanced_navigation
 from rail_vehicle.dashboard_chart import (dashboard_chart, dashboard_events, display_timestamp,
                                          DISPLAY_TIMEZONES, EVENTS_PER_PAGE, HOME_PLOT_CONFIG)
 
@@ -19,10 +19,10 @@ from rail_vehicle.dashboard_chart import (dashboard_chart, dashboard_events, dis
 def render():
     public = public_demo_enabled()
     if public:
-        page_title("平台首页", "离线演示 / 统计、三维回放与证据", primary=True)
+        page_title("综合工作台", "统计 → 三维回放 → 证据核查", primary=True)
         source_caption(fictional=True)
         render_walkthrough()
-        action_button("查看进阶实验 →", key="home_演示中心", on_click=navigate, args=("演示中心",))
+        render_advanced_navigation("平台首页")
         return
     data = None
     try:
@@ -31,7 +31,7 @@ def render():
         st.warning("暂时无法读取工作空间数据，请检查数据库后刷新。")
     heading, controls = st.columns([4, 1], vertical_alignment="center")
     with heading:
-        page_title("平台首页", primary=True)
+        page_title("综合工作台", "从最近批次进入运行分析或三维回放", primary=True)
         source_caption()
     with controls:
         with st.popover("预览设置", width="stretch"):
@@ -44,13 +44,6 @@ def render():
                 timezone_name = "UTC"
                 st.warning("当前环境缺少北京时间时区数据，暂按 UTC 显示。")
             st.caption("仅影响最近车辆/批次预览；不改变原始数据。")
-    if data is not None and data["vehicle_count"] == 0:
-        with st.container(border=True):
-            st.subheader("首次使用：三步完成一次分析")
-            st.markdown("1. 在 **车辆参数** 中登记车辆，或先体验演示中心的虚构数据。\n"
-                        "2. 在 **CSV 数据导入** 中下载虚构示例并按提示登记对应车辆，上传并确认导入。\n"
-                        "3. 在 **运行分析** 中选择车辆和批次，查看曲线、统计与 PDF 报告。")
-            st.caption("基础统计、异常检测和 PDF 不需要 AI 或 API 密钥；演示数据不代表实际车辆。")
     preview = data.get("preview") if data else None
     analysis, anomalies = None, None
     invalid = False
@@ -73,6 +66,7 @@ def render():
         value = f"{data[key]:,}{' 点' if key == 'sample_count' else ''}" if data else "—"
         kpi(column, title, value, detail if data else "无可用数据库统计")
     kpi(columns[3], "统计异常区段", len(anomalies["events"]) if anomalies else "—", f"最近车辆/批次 · 阈值 |a| > {threshold:g} m/s²")
+    _render_next_step(data, preview, threshold)
     left, right = st.columns([3, 1])
     with left:
         with chart_container("rv-panel-trend"):
@@ -115,16 +109,6 @@ def render():
             else:
                 st.caption("暂无导入记录，请先导入 CSV。")
     with right:
-        with chart_container("rv-panel-actions"):
-            st.subheader("快捷操作")
-            st.caption("从数据到结论，开始一次分析。")
-            action_button("开始分析 →", key="home_运行分析", on_click=navigate, args=("运行分析",),
-                          width="stretch", type="primary")
-            import_button(st, label="导入数据 →", key="home_CSV 数据导入")
-            actions = [("车辆参数", "管理车辆"), ("演示中心", "虚构数据演示"),
-                       ("三维转向架仿真", "查看三维转向架")]
-            for target, title in actions:
-                action_button(title+" →", key=f"home_{target}", on_click=navigate, args=(target,), width="stretch")
         if preview:
             with chart_container("rv-panel-summary"):
                 st.subheader("当前批次摘要")
@@ -133,18 +117,12 @@ def render():
                     st.metric("平均速度（km/h）", f"{analysis['speed']['mean']:.2f}")
                     st.metric("统计异常点", len(anomalies["points"]))
                     st.caption(f"加速度绝对值 > {threshold:g} m/s²；按通道计数。")
-                analysis_button(st, label="分析此批次 →", key="home_latest_analysis",
-                                vehicle_id=preview["vehicle_id"], batch_id=preview["batch_id"])
-                batch_replay_button(st, label="回放此批次 →", key="home_latest_bogie",
-                                    vehicle_id=preview["vehicle_id"], batch_id=preview["batch_id"], threshold=threshold)
         with chart_container("rv-panel-recent"):
             st.subheader("最近分析")
             records = st.session_state.get("recent_analysis_records", [])
             if not records:
                 st.markdown("**尚未进行分析**")
                 st.caption("分析结果仅在当前会话中保留，刷新后清空。")
-                action_button("去分析 →", key="home_recent_analysis", on_click=navigate,
-                              args=("运行分析",), width="stretch")
             for row in records[:3]:
                 st.markdown(f"**{row['分析类型']}**")
                 st.caption(f"{row['数据点数']:,} 个样本 · {row['来源']}")
@@ -155,4 +133,26 @@ def render():
                         st.caption(f"{row['分析类型']} · {row['数据点数']:,} 样本 · {row['来源']} · {row['完成时间']}")
             if records:
                 st.caption("仅记录本会话实际计算，刷新新会话后不保留。")
-        status_label("本地分析工作空间")
+    render_advanced_navigation("平台首页")
+
+
+def _render_next_step(data, preview, threshold):
+    if data is None:
+        return
+    with chart_container("rv-panel-actions"):
+        st.subheader("下一步")
+        with st.container(horizontal=True, vertical_alignment="center"):
+            if data["vehicle_count"] == 0:
+                st.caption("登记车辆 → 导入 CSV → 查看运行分析。")
+                st.button("登记车辆", key="home_车辆参数", type="primary", on_click=navigate, args=("车辆参数",))
+            elif data["batch_count"] == 0:
+                st.caption("已有车辆档案，导入一批运行样本即可开始分析。")
+                import_button(st, label="导入 CSV", key="home_CSV 数据导入", primary=True)
+            elif preview:
+                st.caption(f"继续处理 {preview['vehicle_code']} · 批次 #{preview['batch_id']}")
+                analysis_button(st, label="分析此批次", key="home_latest_analysis", primary=True,
+                                vehicle_id=preview["vehicle_id"], batch_id=preview["batch_id"], threshold=threshold)
+                batch_replay_button(st, label="三维回放", key="home_latest_bogie",
+                                    vehicle_id=preview["vehicle_id"], batch_id=preview["batch_id"], threshold=threshold)
+            else:
+                st.button("选择运行批次", type="primary", on_click=navigate, args=("运行分析",))

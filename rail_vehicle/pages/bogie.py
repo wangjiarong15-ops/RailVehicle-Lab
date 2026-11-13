@@ -327,15 +327,17 @@ def _display(track, duration, threshold, cutoff, teaching, inspection, event_ind
             st.metric("速度（km/h）", f"{sample['speed_kmh']:.1f}")
             st.metric("横向加速度（m/s²）", f"{sample['lateral_accel']:.3f}")
             st.metric("垂向加速度（m/s²）", f"{sample['vertical_accel']:.3f}")
-        st.subheader("状态与检查")
+        st.subheader("规则状态" if track is not None else "教学场景")
         if scene is GAP or (track is not None and scene.parts):
             st.warning(scene.label)
         else:
             st.write(scene.label if track is not None else teaching)
-        st.write("涉及结构：" + ("、".join(scene.parts) or "无"))
-        if track is not None or scene.parts:
+        st.write("示意关联构件：" + ("、".join(scene.parts) or "无"))
+        if track is not None:
             st.caption(scene.impact)
             st.write("建议：" + scene.check)
+        elif scene.parts:
+            st.caption("教学高亮用于观察构件位置，不代表检测到故障。")
         if scene.parts:
             st.caption("琥珀色表示与当前场景关联的部件。")
             hidden = [part for part in scene.parts if part not in inspection.visible]
@@ -364,7 +366,7 @@ def _display(track, duration, threshold, cutoff, teaching, inspection, event_ind
 
 
 def render():
-    page_title("三维转向架仿真", "通用双轴工程示意 · 历史样本只决定提示和场景，不反推位移、轮轨力或故障。")
+    page_title("三维诊断工作台", "通用双轴转向架 · 观测读值、规则超阈值与模型示意分别显示。")
     st.html("""<style>
       .st-key-bogie_model_card {background:var(--rv-surface,#101f31);padding:.55rem;}
       .st-key-bogie_model_card [data-testid=stVerticalBlock] {gap:.35rem;}
@@ -387,13 +389,11 @@ def render():
     with options:
         st.subheader("场景与结构")
         source = st.radio("数据来源", choices, key="bogie_source")
-        teaching = st.selectbox("教学场景", list(TEACHING), disabled=source != TEACH, key="bogie_teaching")
-        renderer = st.selectbox("渲染方式", [WEBGL, COMPAT] if webgl_available() else [COMPAT],
-                                key="bogie_renderer")
-        with st.expander("视角与部件"):
-            inspection = _inspection_controls(source)
+        teaching = st.selectbox("教学场景", list(TEACHING), key="bogie_teaching") if source == TEACH else next(iter(TEACHING))
         if source == DEMO:
             st.caption("虚构数据，非实际测量。")
+        elif source == HISTORY:
+            st.caption("历史导入样本；模型运动为示意，不用于反推位移、轮轨力或故障。")
         try:
             selection, load = _load(source, requested)
             if selection != st.session_state.get("bogie_selection"):
@@ -425,6 +425,10 @@ def render():
                           "ai_center_demo": True, "ai_demo_batch": selection[1],
                           "ai_demo_threshold": threshold,
                       })
+        with st.expander("视角与部件"):
+            renderer = st.selectbox("渲染方式", [WEBGL, COMPAT] if webgl_available() else [COMPAT],
+                                    key="bogie_renderer")
+            inspection = _inspection_controls(source)
     if target and requested:
         row = None
         expected = ((DEMO, target["batch_id"]) if fictional else

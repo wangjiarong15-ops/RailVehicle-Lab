@@ -4,7 +4,7 @@ import importlib.util
 import sys
 
 import streamlit as st
-from rail_vehicle.ui import page_title
+from rail_vehicle.ui import navigate, page_title
 from rail_vehicle.ml_anomaly import STATE_KEY as ML_STATE_KEY
 from rail_vehicle.vibration import STATE_KEY as VIBRATION_STATE_KEY
 from rail_vehicle.pages.cockpit import STATE_KEY as COCKPIT_STATE_KEY
@@ -73,7 +73,10 @@ def launch_demo(name):
 def render():
     page_title("演示中心")
     st.info("离线虚构数据演示 · 无需登记车辆或导入 CSV。进阶实验不自动计算；演示不调用 AI，也不写入数据库。")
-    render_walkthrough()
+    if public_demo_enabled():
+        st.button("返回三步演示路线", key="demo_back_workbench", on_click=navigate, args=("平台首页",))
+    else:
+        render_walkthrough()
     st.subheader("进阶实验")
     for pair in (("cockpit", "ml"), ("vibration", "fleet")):
         for column, name in zip(st.columns(2), pair):

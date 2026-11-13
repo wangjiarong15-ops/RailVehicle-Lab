@@ -102,5 +102,6 @@ class VibrationPageTests(unittest.TestCase):
         app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py")).run()
         app.button(key="nav_振动与平稳性分析").click().run()
         self.assertEqual(len(app.exception), 0)
+        app.sidebar.button(key="nav_车辆与数据").click().run()
         app.button(key="nav_车辆参数").click().run()
         self.assertEqual(len(app.exception), 0)

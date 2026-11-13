@@ -72,9 +72,6 @@ def apply_design():
       background:rgba(72,129,196,.18);border:1px solid rgba(91,154,227,.28);
       border-left:3px solid var(--rv-accent,#4D9DFF);color:inherit;}
     [class*="st-key-nav_"] button[data-testid="stBaseButton-tertiary"] {color:var(--rv-muted,#B4C5DA);}
-    .rv-nav-heading {padding:.65rem .9rem .1rem;color:var(--rv-muted,#B4C5DA);
-      font-size:.78rem;font-weight:600;line-height:1.3;}
-    [class*="st-key-rv-nav-group-"] [data-testid="stVerticalBlock"] {gap:.15rem;}
     [class*="st-key-nav_"] button:hover {transform:translateX(2px);}
     [class*="st-key-rv-kpi-"] {background:var(--rv-surface,#101F31);border-radius:10px;padding:.7rem 1rem;
       border:1px solid var(--rv-line,#273B51);border-top:2px solid var(--rv-accent,#65ADFF);
@@ -182,43 +179,66 @@ def record_analysis(kind, selection, count, *, fictional=False):
     st.session_state["recent_analysis_records"] = [row, *records][:8]
 
 
-GROUPS = (
-    ("总览", (("平台首页", ":material/dashboard:"),)),
-    ("数据工作台", (("车辆参数", ":material/train:"), ("CSV 数据导入", ":material/upload_file:"), ("运行分析", ":material/monitoring:"))),
-    ("运行与智能分析", (("动态运行驾驶舱", ":material/speed:"), ("三维转向架仿真", ":material/view_in_ar:"), ("机器学习异常检测", ":material/model_training:"),
-                        ("振动与平稳性分析", ":material/vibration:"), ("多车辆运行对比", ":material/compare_arrows:"),
-                        ("AI 智能分析中心", ":material/smart_toy:"))),
-    ("演示与实验", (("统计与异常演示", ":material/query_stats:"), ("演示中心", ":material/play_circle:"))),
-)
+HOME = "平台首页"
+DATA_PAGES = ("车辆参数", "CSV 数据导入", "运行分析")
+DEMO_DATA = "统计与异常演示"
+BOGIE = "三维转向架仿真"
+AI = "AI 智能分析中心"
+ADVANCED_PAGES = ("演示中心", "动态运行驾驶舱", "振动与平稳性分析", "多车辆运行对比", "机器学习异常检测")
+
+
+def _workspaces(public):
+    # Public mode uses the same navigation but never offers private data routes.
+    return (
+        ("综合工作台", ":material/dashboard:", HOME, (HOME, *ADVANCED_PAGES)),
+        ("车辆与数据", ":material/database:", DEMO_DATA if public else "运行分析",
+         (DEMO_DATA,) if public else (*DATA_PAGES, DEMO_DATA)),
+        ("三维诊断工作台", ":material/view_in_ar:", BOGIE, (BOGIE,)),
+        ("AI 分析中心", ":material/smart_toy:", AI, (AI,)),
+    )
 
 
 def render_navigation(public):
-    private = {"车辆参数", "CSV 数据导入", "运行分析"}
-    allowed = [name for _, entries in GROUPS for name, _ in entries if not public or name not in private]
-    if st.session_state.get("navigation_page") not in allowed:
-        linked = st.query_params.get("rail_page")
-        st.session_state["navigation_page"] = linked if linked in allowed else "演示中心" if public else "平台首页"
-    selected = st.session_state["navigation_page"]
+    workspaces = _workspaces(public)
+    allowed = {route for _, _, _, routes in workspaces for route in routes}
+    aliases = {label: default for label, _, default, _ in workspaces}
+    requested = st.session_state.get("navigation_page")
+    if requested is None:
+        requested = st.query_params.get("rail_page")
+    selected = aliases.get(requested, requested)
+    if selected not in allowed:
+        selected = HOME
+    st.session_state["navigation_page"] = selected
     with st.sidebar:
         st.html('<div class="rv-brand"><div class="rv-brand-icon" aria-hidden="true">RV</div>'
                 '<div><div class="rv-brand-name">RailVehicle-Lab</div>'
                 '<div class="rv-brand-subtitle">轨道车辆运行与动力学分析</div></div></div>')
-        for index, (group, entries) in enumerate(GROUPS):
-            visible = [(name, icon) for name, icon in entries if name in allowed]
-            if not visible:
-                continue
-            with st.container(key=f"rv-nav-group-{index}"):
-                st.html(f'<div class="rv-nav-heading">{escape(group)}</div>')
-                for name, icon in visible:
-                    st.button(name, icon=icon, key=f"nav_{name}", width="stretch",
-                              type="primary" if selected == name else "tertiary",
-                              on_click=navigate, args=(name,))
-        st.divider()
+        with st.container(gap="xxsmall"):
+            for label, icon, default, routes in workspaces:
+                st.button(label, icon=icon, key=f"nav_{label}", width="stretch",
+                          type="primary" if selected in routes else "tertiary",
+                          on_click=navigate, args=(default,))
         st.caption("● 公开虚构数据演示" if public else "● 本地 SQLite 工作空间")
-        st.caption("统计异常 ≠ 故障或安全结论")
-        st.caption("工作空间外观")
-        st.html('<div class="rv-themes">' + ''.join(
-            f'<a target="_self" href="{escape(theme_url(mode, selected), quote=True)}">{label}</a>'
-            for mode, label in (("dark", "◐ 深色"), ("light", "◑ 浅色"))) + '</div>')
-        st.caption("偏好保存在当前浏览器。切换会重载当前页面，未持久化的实验/AI 结果需重新生成；数据库数据不受影响。")
+        with st.expander("工作空间外观", icon=":material/palette:"):
+            st.html('<div class="rv-themes">' + ''.join(
+                f'<a target="_self" href="{escape(theme_url(mode, selected), quote=True)}">{label}</a>'
+                for mode, label in (("dark", "◐ 深色"), ("light", "◑ 浅色"))) + '</div>')
+            st.caption("切换会重载当前页面；数据库数据不受影响，未保存的实验或 AI 结果需重新生成。")
     return selected
+
+
+def render_data_navigation(selected):
+    with st.container(horizontal=True, border=True, vertical_alignment="center"):
+        st.caption("车辆与数据")
+        for route in DATA_PAGES:
+            st.button(route, key=f"nav_{route}", type="primary" if route == selected else "tertiary",
+                      on_click=navigate, args=(route,))
+
+
+def render_advanced_navigation(selected):
+    with st.expander("高级选项", icon=":material/tune:"):
+        st.caption("专项分析与虚构数据演示。选择工具后才进入对应页面。")
+        with st.container(horizontal=True):
+            for route in ADVANCED_PAGES:
+                st.button(route, key=f"nav_{route}", type="primary" if route == selected else "secondary",
+                          on_click=navigate, args=(route,))
