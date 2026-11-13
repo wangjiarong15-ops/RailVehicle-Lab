@@ -7,6 +7,7 @@ import {motionClock} from "./motion.js";
 import {loadDetailedModel} from "./model-loader.js";
 import {playbackBatches} from "./playback-batches.js";
 import {partBrowser} from "./part-browser.js";
+import {measurement} from "./measurement.js";
 
 export async function mount() {
   const [response, detailed] = await Promise.all([fetch("./assembly.json"), loadDetailedModel()]);
@@ -19,6 +20,10 @@ export async function mount() {
   const viewControl = document.querySelector("#view");
   const hideControl = document.querySelector("#hide");
   const restoreControl = document.querySelector("#restore");
+  const measureControl = document.querySelector("#measure");
+  const measurementPanel = document.querySelector("#measurement-panel");
+  const measurementStatus = document.querySelector("#measurement-status");
+  const clearMeasurementControl = document.querySelector("#clear-measurement");
   const modelStatus = document.querySelector("#model-status");
   const renderer = new THREE.WebGLRenderer({antialias: true, alpha: true, powerPreference: "high-performance"});
   const gl = renderer.getContext();
@@ -50,6 +55,36 @@ export async function mount() {
   let visibleComponents = 0;
   const invalidate = () => { dirty = true; };
   const rig = cameraRig(canvas, invalidate);
+  const gauge = measurement(scene, invalidate);
+  let measuring = false;
+  let settling = false;
+  const inspectionText = document.querySelector("#inspection");
+  function updateMeasurement() {
+    const {count, distance, delta} = gauge.getState();
+    workbench.dataset.measuring = String(measuring);
+    workbench.dataset.measurePoints = String(count);
+    workbench.dataset.measureDistance = distance ?? "";
+    measureControl.setAttribute("aria-pressed", String(measuring));
+    measureControl.disabled = !args || args.playing || Boolean(args.spread) || settling;
+    clearMeasurementControl.disabled = count === 0;
+    inspectionText.hidden = measuring;
+    measurementPanel.hidden = !measuring;
+    if (!measuring) return;
+    const format = (value) => (Math.abs(value) < .0005 ? 0 : value).toFixed(3);
+    measurementStatus.textContent = count === 2
+      ? `直线距离 ${format(distance)} m · ΔX ${format(delta[0])} · ΔY ${format(delta[1])} · ΔZ ${format(delta[2])} m（模型示意）`
+      : (count ? "点击第二个表面测点" : "点击第一个表面测点") + " · 模型示意";
+  }
+  function clearMeasurement() {
+    gauge.clear();
+    updateMeasurement();
+  }
+  function toggleMeasurement() {
+    measuring = !measuring;
+    clearMeasurement();
+  }
+  measureControl.addEventListener("click", toggleMeasurement);
+  clearMeasurementControl.addEventListener("click", clearMeasurement);
   const reset = () => { if (args) rig.reset(args.view, args); };
   function select(part) {
     selection = part;
@@ -68,16 +103,25 @@ export async function mount() {
     restoreControl.disabled = !hidden.size;
     invalidate();
   }
-  const picker = inspection(canvas, data.parts, assembly, rig, select, reset, detailed?.parts);
+  const picker = inspection(canvas, data.parts, assembly, rig, select, reset, detailed?.parts, {
+    active: () => measuring,
+    hit(point) {
+      if (measureControl.disabled) return;
+      gauge.add(point);
+      updateMeasurement();
+    },
+  });
   const browser = detailed ? partBrowser(detailed.parts, {
     select,
     show() {
       if (!hidden.delete(selection)) return;
+      clearMeasurement();
       shadowDirty = true;
       select(selection);
     },
     isolate() {
       isolated = isolated ? null : selection;
+      clearMeasurement();
       shadowDirty = true;
       select(selection);
       if (isolated) picker.zoom();
@@ -87,6 +131,7 @@ export async function mount() {
   function hideSelected() {
     if (!assembly.partNodes.has(selection)) return;
     hidden.add(selection);
+    clearMeasurement();
     if (isolated === selection) {
       isolated = null;
       reset();
@@ -96,6 +141,7 @@ export async function mount() {
   }
   function restoreHidden() {
     hidden.clear();
+    clearMeasurement();
     shadowDirty = true;
     select(selection);
   }
@@ -122,6 +168,10 @@ export async function mount() {
     raf = requestAnimationFrame(frame);
     if (!args || document.hidden) return;
     const pose = clock.tick(now);
+    if (settling !== pose.settling) {
+      settling = pose.settling;
+      updateMeasurement();
+    }
     rig.controls.update();
     if (!(dirty || pose.running || pose.settling)) return;
     angle = pose.angle;
@@ -159,10 +209,13 @@ export async function mount() {
     viewControl.removeEventListener("change", chooseView);
     hideControl.removeEventListener("click", hideSelected);
     restoreControl.removeEventListener("click", restoreHidden);
+    measureControl.removeEventListener("click", toggleMeasurement);
+    clearMeasurementControl.removeEventListener("click", clearMeasurement);
     rig.controls.dispose();
     picker.dispose();
     browser?.dispose();
     batches?.dispose();
+    gauge.dispose();
     const disposable = new Set(Object.values(finishes).flat());
     scene.traverse(({geometry, material}) => {
       if (geometry) disposable.add(geometry);
@@ -200,6 +253,11 @@ export async function mount() {
     const previous = args;
     const view = localView || next.view;
     args = {...next, view, rails: next.rails && view !== "底视图"};
+    if (args.playing || args.spread) measuring = false;
+    if (previous && (previous.phase !== args.phase || previous.mode !== args.mode ||
+        previous.rails !== args.rails || previous.spread !== args.spread ||
+        previous.visible.join() !== args.visible.join() || args.playing)) clearMeasurement();
+    else updateMeasurement();
     if (software && previous?.playing !== args.playing) {
       const playbackScale = detailed ? .60 : .66;
       renderer.setPixelRatio(pixelRatio * (args.playing ? playbackScale : 1));

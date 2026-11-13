@@ -19,6 +19,7 @@
       <button id="browse-parts" type="button" aria-controls="part-panel" aria-expanded="false" hidden>零件清单</button>
       <button id="hide" disabled type="button">隐藏零件</button>
       <button id="restore" disabled type="button">恢复隐藏</button>
+      <button id="measure" type="button" aria-pressed="false" disabled>两点测距</button>
       <button id="reset" disabled type="button">恢复视角</button>
     </header>
     <div id="workspace">
@@ -41,6 +42,10 @@
     </div>
     <footer>
       <span id="inspection" aria-live="polite">点击零件查看名称、作用和安装位置</span>
+      <div id="measurement-panel" hidden>
+        <span id="measurement-status" role="status"></span>
+        <button id="clear-measurement" type="button" disabled>清除测点</button>
+      </div>
       <span class="legend"><i></i> 检查 <i></i> 异常</span>
     </footer>
   </main>

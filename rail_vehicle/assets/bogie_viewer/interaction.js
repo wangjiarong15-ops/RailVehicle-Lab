@@ -7,7 +7,7 @@ const anchors = {
   "制动装置": ["wheel", [1.30, -.64, .70]],
 };
 
-export function inspection(canvas, descriptions, assembly, rig, onSelect, reset, parts) {
+export function inspection(canvas, descriptions, assembly, rig, onSelect, reset, parts, measure) {
   const ray = new THREE.Raycaster(), cursor = new THREE.Vector2();
   ray.layers.enable(1); // Source meshes remain pickable during batched playback.
   const focus = document.querySelector("#focus");
@@ -34,8 +34,14 @@ export function inspection(canvas, descriptions, assembly, rig, onSelect, reset,
     cursor.set(2 * (event.clientX - rect.left) / rect.width - 1,
       1 - 2 * (event.clientY - rect.top) / rect.height);
     ray.setFromCamera(cursor, rig.camera);
-    pickedMesh = ray.intersectObjects(assembly.objects.filter((mesh) =>
-      active(mesh) && mesh.userData.part !== "轨道参照"), false)[0]?.object;
+    const measuring = measure.active();
+    const hit = ray.intersectObjects(assembly.objects.filter((mesh) =>
+      active(mesh) && (measuring || mesh.userData.part !== "轨道参照")), false)[0];
+    if (measuring) {
+      if (hit) measure.hit(hit.point);
+      return;
+    }
+    pickedMesh = hit?.object;
     onSelect(pickedMesh?.userData.id ?? pickedMesh?.userData.part ?? null);
   }
   function zoom() {
@@ -49,7 +55,8 @@ export function inspection(canvas, descriptions, assembly, rig, onSelect, reset,
   }
   canvas.addEventListener("pointerdown", start);
   canvas.addEventListener("pointerup", pick);
-  canvas.addEventListener("dblclick", zoom);
+  const doubleClick = () => { if (!measure.active()) zoom(); };
+  canvas.addEventListener("dblclick", doubleClick);
   focus.addEventListener("click", zoom);
   resetButton.addEventListener("click", reset);
   resetButton.disabled = false;
@@ -83,7 +90,7 @@ export function inspection(canvas, descriptions, assembly, rig, onSelect, reset,
     dispose() {
       canvas.removeEventListener("pointerdown", start);
       canvas.removeEventListener("pointerup", pick);
-      canvas.removeEventListener("dblclick", zoom);
+      canvas.removeEventListener("dblclick", doubleClick);
       focus.removeEventListener("click", zoom);
       resetButton.removeEventListener("click", reset);
     },

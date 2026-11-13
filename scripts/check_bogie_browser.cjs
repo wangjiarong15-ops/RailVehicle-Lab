@@ -115,6 +115,31 @@ async function audit(browser, width, height, complete = true) {
     await until(data, (d) => d.isolated === "disc_a_l" && d.visibleComponents === "1",
       "Isolating a disc did not leave exactly one part");
     await screenshot(page, "bogie-glb-part-inspector");
+    const measure = frame.getByRole("button", {name: "两点测距", exact: true});
+    const clearPoints = frame.getByRole("button", {name: "清除测点", exact: true});
+    const measurementStatus = frame.locator("#measurement-status");
+    await measure.click();
+    assert.equal(await measure.getAttribute("aria-pressed"), "true");
+    const isolatedBox = await canvas.boundingBox();
+    const measureAt = (x, y) => canvas.click({position: {x: isolatedBox.width * x, y: isolatedBox.height * y}});
+    await measureAt(.40, .50);
+    await until(data, (d) => d.measurePoints === "1", "First surface click did not add a measurement point");
+    assert.equal((await data()).measureDistance, "");
+    await measureAt(.60, .50);
+    const measured = await until(data, (d) => d.measurePoints === "2" && Number(d.measureDistance) > 0,
+      "Second surface click did not produce a positive distance");
+    assert(Number(measured.measureDistance) < .6, "Measured distance exceeds the isolated brake disc's size");
+    assert.equal(measured.selected, "disc_a_l", "Measurement clicks changed the inspected part");
+    assert.match(await measurementStatus.textContent(), /m|米/);
+    await screenshot(page, "bogie-glb-measurement");
+    await clearPoints.click();
+    await until(data, (d) => d.measurePoints === "0" && !d.measureDistance, "Clear did not remove measurement points");
+    await measureAt(.40, .50);
+    await until(data, (d) => d.measurePoints === "1", "Could not place a new point after clearing");
+    await measure.click();
+    assert.equal(await measure.getAttribute("aria-pressed"), "false");
+    await until(data, (d) => d.measurePoints === "0" && !d.measureDistance,
+      "Leaving measurement mode did not remove the pending point");
     await frame.getByRole("button", {name: "退出隔离"}).click();
     await until(data, (d) => d.isolated === "" && d.visibleComponents === initial.visibleComponents,
       "Leaving isolation did not restore the assembly");
@@ -171,6 +196,7 @@ async function audit(browser, width, height, complete = true) {
       await play.click();
       const running = await until(data, (d) => d.playing === "true" && Math.abs(Number(d.phase)) > .02,
         "Illustration did not play");
+      assert.equal(await measure.isDisabled(), true, "Measurement was available while the model was playing");
       assert.equal(running.axleAngle, running.discAngle, "Brake disc should spin with axle");
       assert.equal(Number(running.axleboxAngle), 0, "Axlebox should not spin with the axle");
       if (mode !== "正常运行") await until(data, (d) =>
