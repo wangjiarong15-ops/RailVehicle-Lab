@@ -10,12 +10,14 @@
 <body>
   <main id="workbench" aria-label="三维转向架工作台">
     <header>
-      <div><strong>双轴转向架</strong><span>通用工程示意</span></div>
+      <div><strong>双轴转向架</strong><span id="model-status">通用工程示意</span></div>
       <select id="view" aria-label="视窗视角" disabled>
         <option>整体视图</option><option>侧视图</option><option>正视图</option>
         <option>俯视图</option><option>底视图</option>
       </select>
       <button id="focus" disabled type="button">聚焦零件</button>
+      <button id="hide" disabled type="button">隐藏零件</button>
+      <button id="restore" disabled type="button">恢复隐藏</button>
       <button id="reset" disabled type="button">恢复视角</button>
     </header>
     <div id="stage">
@@ -37,17 +39,26 @@
         "无法开启 WebGL 三维视图。请在左侧「渲染方式」选择 Plotly 兼容模式，运行曲线和回放仍可使用。";
       document.querySelector("#workbench").dataset.status = "unavailable";
     };
-    window.addEventListener("message", (event) => {
-      if (event.source !== parent || event.data?.type !== "streamlit:render") return;
-      args = event.data.args;
+    function resize() {
+      if (!args) return;
       let viewport = screen.availHeight;
       try { viewport = parent.innerHeight; } catch {}
-      const height = Math.max(260, Math.min(args.height, Math.round(viewport * .62)));
+      const fraction = viewport < 850 ? .61 : .67;
+      const height = Math.max(280, Math.min(args.height, Math.round(viewport * fraction)));
       const root = document.querySelector("#workbench");
       if (root.style.height !== height + "px") {
         root.style.height = height + "px";
         send("streamlit:setFrameHeight", {height});
       }
+    }
+    try {
+      parent.addEventListener("resize", resize);
+      addEventListener("pagehide", () => parent.removeEventListener("resize", resize), {once: true});
+    } catch {}
+    window.addEventListener("message", (event) => {
+      if (event.source !== parent || event.data?.type !== "streamlit:render") return;
+      args = event.data.args;
+      resize();
       if (update) update(args);
       else startup ??= import("./viewer.js").then(({mount}) => mount()).then((apply) => {
         update = apply;

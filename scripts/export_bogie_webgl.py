@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from rail_vehicle.bogie import PART_DESCRIPTIONS
 from rail_vehicle.bogie_geometry import AXLE_X, AXLE_Z, WHEEL_POSE_GAIN, WHEEL_Y, _rigid_template, connection_anchors
+from rail_vehicle.bogie_model_spec import model_contract
 
 OUTPUT = Path(__file__).resolve().parents[1] / "rail_vehicle/assets/bogie_viewer/assembly.json"
 
@@ -35,3 +36,6 @@ def serialized_mesh():
 
 if __name__ == "__main__":
     OUTPUT.write_text(serialized_mesh(), encoding="utf-8", newline="\n")
+    OUTPUT.with_name("model_contract.json").write_text(
+        json.dumps(model_contract(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n"
+    )

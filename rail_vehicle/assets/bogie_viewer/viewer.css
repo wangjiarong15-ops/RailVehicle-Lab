@@ -5,6 +5,7 @@ body { margin: 0; font: 13px/1.45 "Segoe UI", "Microsoft YaHei", sans-serif; col
 header, footer { display: flex; align-items: center; gap: 8px; padding: 7px 11px;
   background: #142336; min-height: 43px; }
 header { border-bottom: 1px solid #34485e; }
+header { flex-wrap: wrap; }
 header div { flex: 1; }
 header strong { font-size: 14px; }
 header span { color: #a8bbce; margin-left: 9px; font-size: 12px; white-space: nowrap; }
@@ -33,3 +34,4 @@ footer { border-top: 1px solid #34485e; justify-content: space-between; color: #
 .legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: #55aaff; }
 .legend i + i { background: #fca549; margin-left: 5px; }
 @media (max-width: 420px) { header span, .legend { display: none; } header, footer { padding-inline: 6px; } }
+@media (max-width: 470px) { header div { flex-basis: 100%; } }

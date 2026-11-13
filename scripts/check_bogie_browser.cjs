@@ -36,7 +36,7 @@ async function until(read, check, reason) {
   throw Error(reason);
 }
 async function screenshot(page, name) {
-  if (output) await page.screenshot({path: join(output, name + ".png")});
+  if (output) await page.screenshot({path: join(output, name.replace("webgl", "glb") + ".png")});
 }
 
 async function audit(browser, width, height, complete = true) {
@@ -56,12 +56,18 @@ async function audit(browser, width, height, complete = true) {
     const canvas = frame.locator("canvas");
     const data = () => root.evaluate((node) => ({...node.dataset}));
     await frame.locator("#workbench[data-status=ready][data-frames]").waitFor();
+    assert.equal((await data()).model, "glb");
+    assert.equal((await data()).components, "54");
     const box = await canvas.boundingBox();
     assert(box.width >= 390 && box.height >= 320, "Canvas should occupy the work area");
     assert(box.x >= 0 && box.x + box.width <= width && box.y + box.height < height, "Canvas should fit");
     assert.equal((await data()).parts, "7");
     await screenshot(page, "bogie-webgl-" + width);
     if (!complete) return;
+    await page.setViewportSize({width: 1366, height: 768});
+    await until(() => canvas.boundingBox(), (resized) => resized.height < box.height - 100, "Viewport did not resize");
+    await page.setViewportSize({width, height});
+    await until(() => canvas.boundingBox(), (resized) => Math.abs(resized.height - box.height) < 2, "Viewport did not grow again");
 
     const initial = await data();
     await page.mouse.move(box.x + box.width * .56, box.y + box.height * .49);
@@ -82,6 +88,11 @@ async function audit(browser, width, height, complete = true) {
     await frame.getByRole("button", {name: "聚焦零件"}).click();
     await until(data, (d) => Number(d.zoom) > Number(initial.zoom), "Focus did not magnify selection");
     await screenshot(page, "bogie-webgl-wheel-detail");
+    await frame.getByRole("button", {name: "隐藏零件"}).click();
+    await until(data, (d) => d.hidden === "1" && Number(d.visibleComponents) === Number(initial.visibleComponents) - 1,
+      "Hiding a picked GLB part did not remove its geometry");
+    await frame.getByRole("button", {name: "恢复隐藏"}).click();
+    await until(data, (d) => d.hidden === "0" && d.visibleComponents === initial.visibleComponents, "Part was not restored");
 
     await page.getByText("视角与部件", {exact: true}).click();
     for (const view of ["侧视图", "正视图", "俯视图", "底视图", "整体视图"]) {
@@ -97,6 +108,16 @@ async function audit(browser, width, height, complete = true) {
     await page.getByRole("heading", {name: "三维转向架仿真"}).scrollIntoViewIfNeeded();
     await screenshot(page, "bogie-webgl-detail");
     await option(page, "bogie_inspection_preset", "完整转向架");
+    if ((await data()).parts !== "7") {
+      await page.getByRole("button", {name: "恢复所选预设", exact: true}).click();
+    }
+    await until(data, (d) => d.parts === "7" && d.view === "整体视图", "Full assembly preset did not restore");
+    await page.getByText("分解示意", {exact: true}).click();
+    await until(data, (d) => Number(d.spread) > 0, "Exploded view did not activate");
+    await page.getByRole("heading", {name: "三维转向架仿真"}).scrollIntoViewIfNeeded();
+    await screenshot(page, "bogie-webgl-exploded");
+    await page.getByText("分解示意", {exact: true}).click();
+    await until(data, (d) => Number(d.spread) === 0, "Reassembly did not finish");
     await page.getByText("显示部件标注", {exact: true}).click();
     await page.getByText("视角与部件", {exact: true}).click();
 
@@ -112,6 +133,8 @@ async function audit(browser, width, height, complete = true) {
       await play.click();
       const running = await until(data, (d) => d.playing === "true" && Math.abs(Number(d.phase)) > .02,
         "Illustration did not play");
+      assert.equal(running.axleAngle, running.discAngle, "Brake disc should spin with axle");
+      assert.equal(Number(running.axleboxAngle), 0, "Axlebox should not spin with the axle");
       if (mode !== "正常运行") await until(data, (d) =>
         d.pose.split(",").some((v) => Math.abs(Number(v)) > .01), "Model did not move in the chosen scene");
       if (scenario === "正常运行") {
@@ -121,7 +144,7 @@ async function audit(browser, width, height, complete = true) {
         const fps = (Number(later.frames) - Number(running.frames)) * 1000 / (Date.now() - started);
         assert(fps > 5, "Browser stopped drawing during continuous playback");
         console.log("Normal playback", JSON.stringify({width, height, fps: Math.round(fps),
-          triangles: Number(later.triangles), renderer: later.renderer}));
+          triangles: Number(later.triangles), drawCalls: Number(later.calls), renderer: later.renderer}));
       }
       await pause.click();
       const paused = await until(data, (d) => d.playing === "false", "Pause did not reach renderer");
@@ -160,12 +183,37 @@ async function audit(browser, width, height, complete = true) {
   }
 }
 
+async function checkFallback(browser, response) {
+  const page = await browser.newPage({viewport: {width: 1366, height: 768}});
+  page.setDefaultTimeout(20000);
+  try {
+    await page.route("**/bogie.glb", (route) => route.fulfill(response));
+    const address = new URL(url);
+    address.searchParams.set("rail_page", "三维转向架仿真");
+    await page.goto(address.href);
+    const frame = page.frameLocator("iframe[title*=bogie_viewer]").first();
+    const root = frame.locator("#workbench[data-status=ready][data-model=procedural][data-frames]");
+    await root.waitFor();
+    assert.equal(await root.getAttribute("data-parts"), "7");
+    await page.locator(".st-key-bogie_play button").click();
+    await frame.locator('#workbench[data-playing="true"]').waitFor();
+    await until(() => root.getAttribute("data-phase"), (phase) => Math.abs(Number(phase)) > .02,
+      "Procedural fallback did not animate");
+    assert.equal(await page.getByTestId("stException").count(), 0);
+  } finally {
+    await page.close();
+  }
+}
+
 (async () => {
   if (output) await mkdir(output, {recursive: true});
   const browser = await chromium.launch({executablePath, args});
   try {
     await audit(browser, 1920, 1080);
     await audit(browser, 1366, 768, false);
+    await checkFallback(browser, {status: 404, body: "Missing"});
+    await checkFallback(browser, {status: 200, contentType: "model/gltf-binary", body: "Corrupt GLB"});
+    console.log("Procedural fallback passed for missing and corrupt GLB");
     console.log("Desktop layout passed at 1920x1080 and 1366x768");
   } finally {
     await browser.close();

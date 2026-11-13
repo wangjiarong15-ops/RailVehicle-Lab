@@ -4,9 +4,10 @@ import {createAssembly} from "./geometry.js";
 import {inspection} from "./interaction.js";
 import {materials, studio} from "./lighting.js";
 import {motionClock} from "./motion.js";
+import {loadDetailedModel} from "./model-loader.js";
 
 export async function mount() {
-  const response = await fetch("./assembly.json");
+  const [response, detailed] = await Promise.all([fetch("./assembly.json"), loadDetailedModel()]);
   if (!response.ok) throw new Error("Missing bogie assembly");
   const data = await response.json();
   if (data.format !== 1) throw new Error("Unsupported bogie assembly");
@@ -14,6 +15,9 @@ export async function mount() {
   const surface = document.querySelector("#surface");
   const message = document.querySelector("#message");
   const viewControl = document.querySelector("#view");
+  const hideControl = document.querySelector("#hide");
+  const restoreControl = document.querySelector("#restore");
+  const modelStatus = document.querySelector("#model-status");
   const renderer = new THREE.WebGLRenderer({antialias: true, alpha: true, powerPreference: "high-performance"});
   const gl = renderer.getContext();
   const gpuInfo = gl.getExtension("WEBGL_debug_renderer_info");
@@ -33,21 +37,54 @@ export async function mount() {
   const scene = new THREE.Scene();
   const illumination = studio(scene, renderer);
   const finishes = materials();
-  const assembly = createAssembly(scene, data, finishes);
+  const assembly = createAssembly(scene, data, finishes, detailed);
+  const hidden = new Set();
+  const playbackMaterials = new Map();
+  modelStatus.textContent = detailed ? "Blender 精细模型" : "兼容几何 · GLB 不可用";
   const clock = motionClock();
   let args, serverArgs, localView, selection = null, appearance = "", angle = 0, width = 0, height = 0;
   let raf, frames = 0, dirty = true, alive = true, shadowPose = "", shadowDirty = true;
+  let visibleComponents = 0;
   const invalidate = () => { dirty = true; };
   const rig = cameraRig(canvas, invalidate);
   const reset = () => { if (args) rig.reset(args.view, args); };
+  function resolveMaterial(material) {
+    if (!(software && detailed && args.playing)) return material;
+    if (!playbackMaterials.has(material)) {
+      // CPU renderers get lighter shading during playback; restore PBR on pause.
+      const simplified = new THREE.MeshLambertMaterial({color: material.color, side: material.side});
+      playbackMaterials.set(material, simplified);
+    }
+    return playbackMaterials.get(material);
+  }
   function select(part) {
     selection = part;
     picker.select(part);
-    assembly.appearance(args, part);
+    assembly.appearance({...args, hidden}, part, resolveMaterial);
+    visibleComponents = new Set(assembly.objects.filter((mesh) => mesh.visible && mesh.parent.visible)
+      .map((mesh) => mesh.userData.id ?? mesh.userData.part)).size;
     workbench.dataset.selected = part ?? "";
+    hideControl.disabled = !assembly.partNodes.has(part);
     invalidate();
   }
   const picker = inspection(canvas, data.parts, assembly, rig, select, reset);
+  function hideSelected() {
+    if (!assembly.partNodes.has(selection)) return;
+    hidden.add(selection);
+    restoreControl.disabled = false;
+    workbench.dataset.hidden = hidden.size;
+    shadowDirty = true;
+    select(null);
+  }
+  function restoreHidden() {
+    hidden.clear();
+    restoreControl.disabled = true;
+    workbench.dataset.hidden = "0";
+    shadowDirty = true;
+    select(selection);
+  }
+  hideControl.addEventListener("click", hideSelected);
+  restoreControl.addEventListener("click", restoreHidden);
 
   function size() {
     const w = surface.clientWidth, h = surface.clientHeight;
@@ -89,7 +126,12 @@ export async function mount() {
       camera: rig.camera.position.toArray().map((x) => x.toFixed(3)).join(","),
       triangles: renderer.info.render.triangles, mode: args.mode,
       playing: String(args.playing),
-      parts: args.visible.length, highlighted: args.highlight.join("、"),
+      parts: args.visible.length, highlighted: args.highlight.join("、"), calls: renderer.info.render.calls,
+      spread: args.spread,
+      visibleComponents,
+      axleAngle: assembly.partNodes.get("axle_a")?.parent.rotation.y.toFixed(4) ?? "",
+      axleboxAngle: assembly.partNodes.get("axlebox_a_l")?.parent.rotation.y.toFixed(4) ?? "",
+      discAngle: assembly.partNodes.get("disc_a_l")?.parent.rotation.y.toFixed(4) ?? "",
       pose: [pose.lateral, pose.vertical, pose.yaw].map((value) => value.toFixed(4)).join(","),
     });
   }
@@ -99,13 +141,17 @@ export async function mount() {
     cancelAnimationFrame(raf);
     observer.disconnect();
     viewControl.removeEventListener("change", chooseView);
+    hideControl.removeEventListener("click", hideSelected);
+    restoreControl.removeEventListener("click", restoreHidden);
     rig.controls.dispose();
     picker.dispose();
     const disposable = new Set(Object.values(finishes).flat());
+    for (const item of playbackMaterials.values()) disposable.add(item);
     scene.traverse(({geometry, material}) => {
       if (geometry) disposable.add(geometry);
-      for (const item of Array.isArray(material) ? material : [material]) if (item) disposable.add(item);
+      for (const item of [material].flat()) if (item) disposable.add(item);
     });
+    for (const mesh of assembly.objects) for (const item of [mesh.userData.original].flat()) disposable.add(item);
     for (const resource of disposable) resource.dispose();
     illumination.dispose();
     renderer.dispose();
@@ -121,6 +167,8 @@ export async function mount() {
   });
   message.hidden = true;
   workbench.dataset.status = "ready";
+  workbench.dataset.model = detailed ? "glb" : "procedural";
+  workbench.dataset.components = String(assembly.partNodes.size);
   workbench.dataset.renderer = software ? "software" : "default";
   viewControl.disabled = false;
   viewControl.addEventListener("change", chooseView);
@@ -135,14 +183,20 @@ export async function mount() {
     const previous = args;
     const view = localView || next.view;
     args = {...next, view, rails: next.rails && view !== "底视图"};
-    if (software && previous?.playing !== args.playing) renderer.setPixelRatio(pixelRatio * (args.playing ? .66 : 1));
+    if (software && previous?.playing !== args.playing) {
+      const playbackScale = detailed ? .48 : .66;
+      renderer.setPixelRatio(pixelRatio * (args.playing ? playbackScale : 1));
+    }
     const reframe = !previous || previous.view !== args.view || previous.revision !== args.revision
       || Boolean(previous.spread) !== Boolean(args.spread) || previous.rails !== args.rails;
-    const newAppearance = JSON.stringify([args.visible, args.highlight, args.focus, args.rails, args.spread]);
+    const newAppearance = JSON.stringify([
+      args.visible, args.highlight, args.focus, args.rails, args.spread, software && detailed && args.playing,
+    ]);
     if (newAppearance !== appearance) {
       appearance = newAppearance;
       const part = !previous || previous.focus !== args.focus ? args.focus : selection;
-      select(args.visible.includes(part) ? part : null);
+      const group = detailed?.parts.get(part)?.spec.group ?? part;
+      select(args.visible.includes(group) ? part : null);
       illumination.platform.visible = args.rails;
       shadowDirty = true;
     }

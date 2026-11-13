@@ -21,6 +21,7 @@ export function inspection(canvas, descriptions, assembly, rig, onSelect, reset)
     return [part, tag];
   });
   let down, selection, pickedMesh;
+  const matches = (mesh, part) => mesh.userData.id === part || mesh.userData.part === part;
   const active = (mesh) => mesh.visible && mesh.parent.visible && mesh.userData.part !== "轨道参照";
   function start(event) {
     down = event.button === 0 ? [event.clientX, event.clientY] : null;
@@ -33,14 +34,14 @@ export function inspection(canvas, descriptions, assembly, rig, onSelect, reset)
       1 - 2 * (event.clientY - rect.top) / rect.height);
     ray.setFromCamera(cursor, rig.camera);
     pickedMesh = ray.intersectObjects(assembly.objects.filter(active), false)[0]?.object;
-    onSelect(pickedMesh?.userData.part ?? null);
+    onSelect(pickedMesh?.userData.id ?? pickedMesh?.userData.part ?? null);
   }
   function zoom() {
     const box = new THREE.Box3();
-    if (pickedMesh?.userData.part === selection && pickedMesh && active(pickedMesh))
+    if (pickedMesh && !pickedMesh.userData.id && matches(pickedMesh, selection) && active(pickedMesh))
       box.expandByObject(pickedMesh);
     else for (const mesh of assembly.objects) {
-      if (active(mesh) && mesh.userData.part === selection) box.expandByObject(mesh);
+      if (active(mesh) && matches(mesh, selection)) box.expandByObject(mesh);
     }
     if (!box.isEmpty()) rig.focus(box);
   }
@@ -53,10 +54,12 @@ export function inspection(canvas, descriptions, assembly, rig, onSelect, reset)
   const point = new THREE.Vector3();
   return {
     select(part) {
-      if (pickedMesh?.userData.part !== part) pickedMesh = null;
+      if (pickedMesh && !matches(pickedMesh, part)) pickedMesh = null;
       selection = part;
       focus.disabled = !part;
-      inspectionText.textContent = part ? part + " · " + descriptions[part] : "点击零件查看名称、作用和安装位置";
+      const group = pickedMesh?.userData.part ?? part;
+      inspectionText.textContent = part ? (group === part ? part : group + " · " + part) + " · " + descriptions[group]
+        : "点击零件查看名称、作用和安装位置";
     },
     labels(args, width, height) {
       labelLayer.hidden = !args.labels;
@@ -64,7 +67,7 @@ export function inspection(canvas, descriptions, assembly, rig, onSelect, reset)
       for (const [part, tag] of tags) {
         const [parent, coord] = anchors[part];
         const candidate = assembly.objects.find((mesh) => active(mesh) && mesh.userData.part === part);
-        if (args.spread && candidate) candidate.getWorldPosition(point);
+        if (args.spread && candidate) new THREE.Box3().setFromObject(candidate).getCenter(point);
         else point.set(...coord).applyMatrix4(assembly[parent].matrixWorld);
         point.project(rig.camera);
         tag.hidden = !candidate || Math.abs(point.x) > .95 || Math.abs(point.y) > .9;

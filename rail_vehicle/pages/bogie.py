@@ -283,7 +283,7 @@ def _display(track, duration, threshold, cutoff, teaching, inspection, event_ind
     else:
         scene = TEACHING[teaching]
     phase = 0 if scene is GAP else illustration_phase(state.position)
-    model, panel = st.columns([4, 1.23], gap="small")
+    model, panel = st.columns([5, 1.25], gap="small")
     with model, st.container(border=True, key="bogie_model_card"):
         st.caption("拖动旋转 · 滚轮缩放 · " + ("单击检查 · 双击聚焦" if renderer == WEBGL else "悬停查看名称"))
         if inspection.exploded:
@@ -299,7 +299,7 @@ def _display(track, duration, threshold, cutoff, teaching, inspection, event_ind
                     reference.caption("同一相位 · 正常参照")
                 else:
                     active = st.container()
-                height = 390 if compare else (640 if renderer == WEBGL else 500)
+                height = 390 if compare else (720 if renderer == WEBGL else 500)
                 with active:
                     _model_view(scene.mode, phase, state, inspection, scene.parts, height, "bogie_model",
                                 renderer, scene is not GAP, labels=inspection.labels, focus=inspection.focus,
@@ -373,7 +373,7 @@ def render():
         st.session_state["bogie_source"] = DEMO if fictional else HISTORY
     if requested and "threshold" in requested:
         st.session_state["bogie_threshold"] = requested["threshold"]
-    options, main = st.columns([1, 4.55], gap="medium")
+    options, main = st.columns([1, 5.2], gap="medium")
     with options:
         st.subheader("场景与结构")
         source = st.radio("数据来源", choices, key="bogie_source")

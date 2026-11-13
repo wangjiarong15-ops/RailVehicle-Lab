@@ -52,31 +52,52 @@ function orient(group, from, to) {
   return length;
 }
 
-export function createAssembly(scene, data, material) {
+export function createAssembly(scene, data, material, detailed) {
   const frame = new THREE.Group(), wheel = new THREE.Group(), fixed = new THREE.Group();
   scene.add(frame, wheel, fixed);
   const parents = {frame, wheel, fixed};
-  const objects = [], spins = [], links = [];
-  function track(mesh, part, tone = null) {
-    mesh.userData = {part, tone};
+  const objects = [], spins = [], links = [], partNodes = new Map();
+  function track(mesh, part, tone = null, id = null) {
+    mesh.userData = {part, tone, id, original: mesh.material};
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     objects.push(mesh);
     return mesh;
   }
-  const markerGeometry = new THREE.BoxGeometry(.060, .006, .010);
-  for (const [[part, group, parent, offset], vertices, faces, tones] of data.mesh) {
+  function holderAt(parent, offset) {
     const holder = new THREE.Group();
-    parents[parent].add(holder);
+    parent.add(holder);
     holder.userData.offset = new THREE.Vector3(...offset);
+    return holder;
+  }
+  function spinAt(holder, pivot) {
+    const axle = new THREE.Group();
+    axle.position.set(...pivot);
+    holder.add(axle);
+    spins.push(axle);
+    return axle;
+  }
+  if (detailed) for (const [id, {node, spec, meshes}] of detailed.parts) {
+    for (const mesh of meshes) track(mesh, spec.group, 0, id);
+    if (id.startsWith("wheel_")) {
+      // The paint witness rotates with the wheel but should not invalidate its static shadow.
+      for (const mesh of meshes) if (mesh.material.name === "marker") mesh.castShadow = false;
+    }
+    if (spec.parent === "links") continue;
+    const holder = holderAt(parents[spec.parent], spec.offset);
+    const parent = spec.spin ? spinAt(holder, spec.spin) : holder;
+    parent.attach(node);
+    partNodes.set(id, node);
+  }
+  const markerGeometry = detailed ? null : new THREE.BoxGeometry(.060, .006, .010);
+  if (!detailed) for (const [[part, group, parent, offset], vertices, faces, tones] of data.mesh) {
+    const holder = holderAt(parents[parent], offset);
     const mesh = track(new THREE.Mesh(rigidGeometry(vertices, faces, tones), material[part]), part);
     if (group && (part === "轮对" || group[2] === "disc")) {
-      const axle = new THREE.Group(), [x, side] = group;
-      axle.position.set(x, 0, data.axleZ);
+      const [x, side] = group;
+      const axle = spinAt(holder, [x, 0, data.axleZ]);
       mesh.position.set(-x, 0, -data.axleZ);
-      holder.add(axle);
       axle.add(mesh);
-      spins.push(axle);
       if (side && part === "轮对") {
         const marker = track(new THREE.Mesh(markerGeometry, material[part][1]), part, 1);
         marker.position.set(.27, side * (data.wheelY + .100), .01);
@@ -85,11 +106,23 @@ export function createAssembly(scene, data, material) {
       }
     } else holder.add(mesh);
   }
-  const cylinder = new THREE.CylinderGeometry(1, 1, 1, 16);
-  const coil = new THREE.TubeGeometry(new Coil(), 80, .0095, 8);
-  for (const [part, kind, a, b] of data.links) {
+  const cylinder = detailed ? null : new THREE.CylinderGeometry(1, 1, 1, 16);
+  const coil = detailed ? null : new THREE.TubeGeometry(new Coil(), 80, .0095, 8);
+  const importedParts = detailed ? [...detailed.parts] : [];
+  const importedLinks = new Map(importedParts.filter(([, entry]) => entry.spec.parent === "links")
+    .map(([id, entry]) => [entry.spec.link, {id, ...entry}]));
+  for (const [index, [part, kind, a, b]] of data.links.entries()) {
     const node = new THREE.Group();
     scene.add(node);
+    const start = new THREE.Vector3(...a), end = new THREE.Vector3(...b);
+    const imported = importedLinks.get(index);
+    if (imported) {
+      const length = orient(node, start, end);
+      node.attach(imported.node);
+      partNodes.set(imported.id, imported.node);
+      links.push({node, a: start, b: end, part, id: imported.id, length, offset: new THREE.Vector3(...imported.spec.offset)});
+      continue;
+    }
     const add = (geo, tone) => {
       const mesh = track(new THREE.Mesh(geo, material[part][tone]), part, tone);
       node.add(mesh);
@@ -98,13 +131,13 @@ export function createAssembly(scene, data, material) {
     const segments = kind === "coil" ? [[add(coil, 0), 0, 1, null]]
       : kind === "damper" ? [[add(cylinder, 2), 0, .59, .032], [add(cylinder, 1), .57, 1, .019]]
         : [[add(cylinder, kind === "coupling" ? 1 : 2), 0, 1, kind === "coupling" ? .063 : .028]];
-    links.push({node, a: new THREE.Vector3(...a), b: new THREE.Vector3(...b), segments, part});
+    links.push({node, a: start, b: end, segments, part});
   }
 
   let visible = new Set(), highlight = new Set(), selected, spread = 0;
   return {
-    objects, frame, wheel,
-    appearance(args, selection) {
+    objects, frame, wheel, partNodes,
+    appearance(args, selection, resolveMaterial) {
       visible = new Set(args.visible);
       if (args.rails) visible.add("轨道参照");
       highlight = new Set(args.highlight);
@@ -114,12 +147,13 @@ export function createAssembly(scene, data, material) {
         for (const holder of parent.children) holder.position.copy(holder.userData.offset).multiplyScalar(spread);
       }
       for (const mesh of objects) {
-        const {part, tone} = mesh.userData;
-        mesh.visible = visible.has(part);
-        const finishes = material[highlight.has(part) ? "alert" : part === selected ? "focus" : part];
-        mesh.material = tone === null ? finishes : finishes[tone];
+        const {part, tone, id, original} = mesh.userData;
+        mesh.visible = visible.has(part) && !args.hidden?.has(id);
+        const finish = highlight.has(part) ? "alert" : part === selected || id && id === selected ? "focus" : null;
+        const surface = !finish ? original : tone === null ? material[finish] : material[finish][tone];
+        mesh.material = Array.isArray(surface) ? surface.map(resolveMaterial) : resolveMaterial(surface);
       }
-      for (const {node, part} of links) node.visible = !spread && visible.has(part);
+      for (const {node, part, id} of links) node.visible = (id || !spread) && visible.has(part) && !args.hidden?.has(id);
     },
     pose(phase, lateral, vertical, yaw) {
       frame.position.set(0, lateral, vertical);
@@ -130,11 +164,21 @@ export function createAssembly(scene, data, material) {
       for (const axle of spins) axle.rotation.y = phase;
       frame.updateMatrixWorld(true);
       wheel.updateMatrixWorld(true);
-      for (const {node, a, b, segments} of links) {
+      for (const {node, a, b, segments, length: restLength, offset} of links) {
         if (!node.visible) continue;
+        if (spread && offset) {
+          orient(node, a, b);
+          node.position.addScaledVector(offset, spread);
+          node.scale.y = 1;
+          continue;
+        }
         lower.copy(a).applyMatrix4(wheel.matrixWorld);
         upper.copy(b).applyMatrix4(frame.matrixWorld);
         const length = orient(node, lower, upper);
+        if (restLength) {
+          node.scale.y = length / restLength;
+          continue;
+        }
         for (const [mesh, start, end, radius] of segments) {
           if (radius === null) mesh.scale.y = length / .201;
           else {

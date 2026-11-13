@@ -21,7 +21,10 @@ export function cameraRig(canvas, invalidate) {
   controls.addEventListener("change", invalidate);
   let aspect = 1;
   function resize(width, height) {
+    const previous = aspect;
     aspect = width / height;
+    const adjustment = Math.min(1, aspect / 1.6) / Math.min(1, previous / 1.6);
+    camera.zoom = THREE.MathUtils.clamp(camera.zoom * adjustment, controls.minZoom, controls.maxZoom);
     camera.left = -halfHeight * aspect;
     camera.right = halfHeight * aspect;
     camera.updateProjectionMatrix();
@@ -54,10 +57,10 @@ export function cameraRig(canvas, invalidate) {
     camera, controls, resize,
     reset(view, args) {
       const [x, y, z] = angles[view] ?? angles["整体视图"];
-      const extentX = args.rails ? 2.25 : 1.90 + .23 * args.spread;
-      const extentY = 1.40 + .38 * args.spread;
+      const extentX = args.rails ? 2.25 : 1.90 + .30 * args.spread;
+      const extentY = 1.40 + .46 * args.spread;
       const box = new THREE.Box3(new THREE.Vector3(-extentX, -extentY, args.rails ? -.37 : -.045),
-        new THREE.Vector3(extentX, extentY, 1.49 + .87 * args.spread));
+        new THREE.Vector3(extentX, extentY, 1.49 + .93 * args.spread));
       fit(box, new THREE.Vector3(x, y, z), view === "俯视图" || view === "底视图");
     },
     focus(box) {

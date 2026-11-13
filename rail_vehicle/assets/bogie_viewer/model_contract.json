@@ -1,0 +1,848 @@
+{
+  "version": 1,
+  "units": "m",
+  "coordinates": "X longitudinal, Y transverse, Z up",
+  "dimensions": {
+    "wheelbase": 2.6,
+    "axle_height": 0.42,
+    "wheel_centres": 1.76,
+    "tread_radius": 0.42,
+    "flange_radius": 0.456,
+    "axlebox_centres": 2.4,
+    "side_beam_centres": 2.32,
+    "frame_length": 3.72,
+    "side_beam_width": 0.235
+  },
+  "parts": {
+    "side_beam_l": {
+      "group": "构架",
+      "parent": "frame",
+      "origin": [
+        0,
+        -1.16,
+        0.98
+      ],
+      "offset": [
+        0,
+        -0.14,
+        0.48
+      ]
+    },
+    "air_spring_l": {
+      "group": "二系悬挂",
+      "parent": "frame",
+      "origin": [
+        0,
+        -1.16,
+        1.14
+      ],
+      "offset": [
+        0,
+        -0.12,
+        0.92
+      ]
+    },
+    "side_beam_r": {
+      "group": "构架",
+      "parent": "frame",
+      "origin": [
+        0,
+        1.16,
+        0.98
+      ],
+      "offset": [
+        0,
+        0.14,
+        0.48
+      ]
+    },
+    "air_spring_r": {
+      "group": "二系悬挂",
+      "parent": "frame",
+      "origin": [
+        0,
+        1.16,
+        1.14
+      ],
+      "offset": [
+        0,
+        0.12,
+        0.92
+      ]
+    },
+    "cross_members": {
+      "group": "构架",
+      "parent": "frame",
+      "origin": [
+        0,
+        0,
+        1.0
+      ],
+      "offset": [
+        0,
+        0,
+        0.48
+      ]
+    },
+    "reference_track": {
+      "group": "轨道参照",
+      "parent": "fixed",
+      "origin": [
+        0,
+        0,
+        0
+      ],
+      "offset": [
+        0,
+        0,
+        0
+      ]
+    },
+    "axle_a": {
+      "group": "轮对",
+      "parent": "wheel",
+      "origin": [
+        -1.3,
+        0,
+        0.42
+      ],
+      "offset": [
+        -0.28,
+        0,
+        0
+      ],
+      "spin": [
+        -1.3,
+        0,
+        0.42
+      ]
+    },
+    "motor_a": {
+      "group": "电机与传动",
+      "parent": "frame",
+      "origin": [
+        -0.8710000000000001,
+        0,
+        0.63
+      ],
+      "offset": [
+        0.27,
+        0,
+        0.44
+      ]
+    },
+    "gearbox_a": {
+      "group": "电机与传动",
+      "parent": "wheel",
+      "origin": [
+        -1.3,
+        0.43,
+        0.47
+      ],
+      "offset": [
+        -0.25,
+        0.09,
+        0.31
+      ]
+    },
+    "wheel_a_l": {
+      "group": "轮对",
+      "parent": "wheel",
+      "origin": [
+        -1.3,
+        -0.88,
+        0.42
+      ],
+      "offset": [
+        -0.28,
+        -0.1,
+        0
+      ],
+      "spin": [
+        -1.3,
+        0,
+        0.42
+      ]
+    },
+    "axlebox_a_l": {
+      "group": "轴箱",
+      "parent": "wheel",
+      "origin": [
+        -1.3,
+        -1.2,
+        0.42
+      ],
+      "offset": [
+        -0.28,
+        -0.46,
+        0.03
+      ]
+    },
+    "spring_seat_lower_a_l": {
+      "group": "一系悬挂",
+      "parent": "wheel",
+      "origin": [
+        -1.3,
+        -1.2,
+        0.625
+      ],
+      "offset": [
+        -0.2,
+        -0.3,
+        0.24
+      ]
+    },
+    "spring_seat_upper_a_l": {
+      "group": "一系悬挂",
+      "parent": "frame",
+      "origin": [
+        -1.3,
+        -1.16,
+        0.826
+      ],
+      "offset": [
+        -0.2,
+        -0.3,
+        0.52
+      ]
+    },
+    "disc_a_l": {
+      "group": "制动装置",
+      "parent": "wheel",
+      "origin": [
+        -1.3,
+        -0.64,
+        0.42
+      ],
+      "offset": [
+        -0.43,
+        -0.15,
+        0.12
+      ],
+      "spin": [
+        -1.3,
+        0,
+        0.42
+      ]
+    },
+    "caliper_a_l": {
+      "group": "制动装置",
+      "parent": "wheel",
+      "origin": [
+        -1.3,
+        -0.64,
+        0.658
+      ],
+      "offset": [
+        -0.43,
+        -0.15,
+        0.34
+      ]
+    },
+    "wheel_a_r": {
+      "group": "轮对",
+      "parent": "wheel",
+      "origin": [
+        -1.3,
+        0.88,
+        0.42
+      ],
+      "offset": [
+        -0.28,
+        0.1,
+        0
+      ],
+      "spin": [
+        -1.3,
+        0,
+        0.42
+      ]
+    },
+    "axlebox_a_r": {
+      "group": "轴箱",
+      "parent": "wheel",
+      "origin": [
+        -1.3,
+        1.2,
+        0.42
+      ],
+      "offset": [
+        -0.28,
+        0.46,
+        0.03
+      ]
+    },
+    "spring_seat_lower_a_r": {
+      "group": "一系悬挂",
+      "parent": "wheel",
+      "origin": [
+        -1.3,
+        1.2,
+        0.625
+      ],
+      "offset": [
+        -0.2,
+        0.3,
+        0.24
+      ]
+    },
+    "spring_seat_upper_a_r": {
+      "group": "一系悬挂",
+      "parent": "frame",
+      "origin": [
+        -1.3,
+        1.16,
+        0.826
+      ],
+      "offset": [
+        -0.2,
+        0.3,
+        0.52
+      ]
+    },
+    "disc_a_r": {
+      "group": "制动装置",
+      "parent": "wheel",
+      "origin": [
+        -1.3,
+        0.64,
+        0.42
+      ],
+      "offset": [
+        -0.43,
+        0.15,
+        0.12
+      ],
+      "spin": [
+        -1.3,
+        0,
+        0.42
+      ]
+    },
+    "caliper_a_r": {
+      "group": "制动装置",
+      "parent": "wheel",
+      "origin": [
+        -1.3,
+        0.64,
+        0.658
+      ],
+      "offset": [
+        -0.43,
+        0.15,
+        0.34
+      ]
+    },
+    "axle_b": {
+      "group": "轮对",
+      "parent": "wheel",
+      "origin": [
+        1.3,
+        0,
+        0.42
+      ],
+      "offset": [
+        0.28,
+        0,
+        0
+      ],
+      "spin": [
+        1.3,
+        0,
+        0.42
+      ]
+    },
+    "motor_b": {
+      "group": "电机与传动",
+      "parent": "frame",
+      "origin": [
+        0.8710000000000001,
+        0,
+        0.63
+      ],
+      "offset": [
+        -0.27,
+        0,
+        0.44
+      ]
+    },
+    "gearbox_b": {
+      "group": "电机与传动",
+      "parent": "wheel",
+      "origin": [
+        1.3,
+        0.43,
+        0.47
+      ],
+      "offset": [
+        0.25,
+        0.09,
+        0.31
+      ]
+    },
+    "wheel_b_l": {
+      "group": "轮对",
+      "parent": "wheel",
+      "origin": [
+        1.3,
+        -0.88,
+        0.42
+      ],
+      "offset": [
+        0.28,
+        -0.1,
+        0
+      ],
+      "spin": [
+        1.3,
+        0,
+        0.42
+      ]
+    },
+    "axlebox_b_l": {
+      "group": "轴箱",
+      "parent": "wheel",
+      "origin": [
+        1.3,
+        -1.2,
+        0.42
+      ],
+      "offset": [
+        0.28,
+        -0.46,
+        0.03
+      ]
+    },
+    "spring_seat_lower_b_l": {
+      "group": "一系悬挂",
+      "parent": "wheel",
+      "origin": [
+        1.3,
+        -1.2,
+        0.625
+      ],
+      "offset": [
+        0.2,
+        -0.3,
+        0.24
+      ]
+    },
+    "spring_seat_upper_b_l": {
+      "group": "一系悬挂",
+      "parent": "frame",
+      "origin": [
+        1.3,
+        -1.16,
+        0.826
+      ],
+      "offset": [
+        0.2,
+        -0.3,
+        0.52
+      ]
+    },
+    "disc_b_l": {
+      "group": "制动装置",
+      "parent": "wheel",
+      "origin": [
+        1.3,
+        -0.64,
+        0.42
+      ],
+      "offset": [
+        0.43,
+        -0.15,
+        0.12
+      ],
+      "spin": [
+        1.3,
+        0,
+        0.42
+      ]
+    },
+    "caliper_b_l": {
+      "group": "制动装置",
+      "parent": "wheel",
+      "origin": [
+        1.3,
+        -0.64,
+        0.658
+      ],
+      "offset": [
+        0.43,
+        -0.15,
+        0.34
+      ]
+    },
+    "wheel_b_r": {
+      "group": "轮对",
+      "parent": "wheel",
+      "origin": [
+        1.3,
+        0.88,
+        0.42
+      ],
+      "offset": [
+        0.28,
+        0.1,
+        0
+      ],
+      "spin": [
+        1.3,
+        0,
+        0.42
+      ]
+    },
+    "axlebox_b_r": {
+      "group": "轴箱",
+      "parent": "wheel",
+      "origin": [
+        1.3,
+        1.2,
+        0.42
+      ],
+      "offset": [
+        0.28,
+        0.46,
+        0.03
+      ]
+    },
+    "spring_seat_lower_b_r": {
+      "group": "一系悬挂",
+      "parent": "wheel",
+      "origin": [
+        1.3,
+        1.2,
+        0.625
+      ],
+      "offset": [
+        0.2,
+        0.3,
+        0.24
+      ]
+    },
+    "spring_seat_upper_b_r": {
+      "group": "一系悬挂",
+      "parent": "frame",
+      "origin": [
+        1.3,
+        1.16,
+        0.826
+      ],
+      "offset": [
+        0.2,
+        0.3,
+        0.52
+      ]
+    },
+    "disc_b_r": {
+      "group": "制动装置",
+      "parent": "wheel",
+      "origin": [
+        1.3,
+        0.64,
+        0.42
+      ],
+      "offset": [
+        0.43,
+        0.15,
+        0.12
+      ],
+      "spin": [
+        1.3,
+        0,
+        0.42
+      ]
+    },
+    "caliper_b_r": {
+      "group": "制动装置",
+      "parent": "wheel",
+      "origin": [
+        1.3,
+        0.64,
+        0.658
+      ],
+      "offset": [
+        0.43,
+        0.15,
+        0.34
+      ]
+    },
+    "coupling_a": {
+      "group": "电机与传动",
+      "parent": "links",
+      "origin": [
+        -1.1700000000000002,
+        0.38,
+        0.55
+      ],
+      "offset": [
+        -0.2,
+        0.38,
+        0.38
+      ],
+      "link": 0
+    },
+    "coil_a_l": {
+      "group": "一系悬挂",
+      "parent": "links",
+      "origin": [
+        -1.3,
+        -1.2,
+        0.625
+      ],
+      "offset": [
+        -0.2,
+        -0.38,
+        0.38
+      ],
+      "link": 1
+    },
+    "damper_a_l": {
+      "group": "一系悬挂",
+      "parent": "links",
+      "origin": [
+        -1.1300000000000001,
+        -1.2,
+        0.55
+      ],
+      "offset": [
+        -0.2,
+        -0.38,
+        0.38
+      ],
+      "link": 2
+    },
+    "guide_a_l": {
+      "group": "一系悬挂",
+      "parent": "links",
+      "origin": [
+        -1.4300000000000002,
+        -1.2,
+        0.48
+      ],
+      "offset": [
+        -0.2,
+        -0.38,
+        0.38
+      ],
+      "link": 3
+    },
+    "stay_a_l": {
+      "group": "制动装置",
+      "parent": "links",
+      "origin": [
+        -1.3,
+        -0.64,
+        0.693
+      ],
+      "offset": [
+        -0.2,
+        -0.38,
+        0.38
+      ],
+      "link": 4
+    },
+    "coil_a_r": {
+      "group": "一系悬挂",
+      "parent": "links",
+      "origin": [
+        -1.3,
+        1.2,
+        0.625
+      ],
+      "offset": [
+        -0.2,
+        0.38,
+        0.38
+      ],
+      "link": 5
+    },
+    "damper_a_r": {
+      "group": "一系悬挂",
+      "parent": "links",
+      "origin": [
+        -1.1300000000000001,
+        1.2,
+        0.55
+      ],
+      "offset": [
+        -0.2,
+        0.38,
+        0.38
+      ],
+      "link": 6
+    },
+    "guide_a_r": {
+      "group": "一系悬挂",
+      "parent": "links",
+      "origin": [
+        -1.4300000000000002,
+        1.2,
+        0.48
+      ],
+      "offset": [
+        -0.2,
+        0.38,
+        0.38
+      ],
+      "link": 7
+    },
+    "stay_a_r": {
+      "group": "制动装置",
+      "parent": "links",
+      "origin": [
+        -1.3,
+        0.64,
+        0.693
+      ],
+      "offset": [
+        -0.2,
+        0.38,
+        0.38
+      ],
+      "link": 8
+    },
+    "coupling_b": {
+      "group": "电机与传动",
+      "parent": "links",
+      "origin": [
+        1.1700000000000002,
+        0.38,
+        0.55
+      ],
+      "offset": [
+        0.2,
+        0.38,
+        0.38
+      ],
+      "link": 9
+    },
+    "coil_b_l": {
+      "group": "一系悬挂",
+      "parent": "links",
+      "origin": [
+        1.3,
+        -1.2,
+        0.625
+      ],
+      "offset": [
+        0.2,
+        -0.38,
+        0.38
+      ],
+      "link": 10
+    },
+    "damper_b_l": {
+      "group": "一系悬挂",
+      "parent": "links",
+      "origin": [
+        1.47,
+        -1.2,
+        0.55
+      ],
+      "offset": [
+        0.2,
+        -0.38,
+        0.38
+      ],
+      "link": 11
+    },
+    "guide_b_l": {
+      "group": "一系悬挂",
+      "parent": "links",
+      "origin": [
+        1.17,
+        -1.2,
+        0.48
+      ],
+      "offset": [
+        0.2,
+        -0.38,
+        0.38
+      ],
+      "link": 12
+    },
+    "stay_b_l": {
+      "group": "制动装置",
+      "parent": "links",
+      "origin": [
+        1.3,
+        -0.64,
+        0.693
+      ],
+      "offset": [
+        0.2,
+        -0.38,
+        0.38
+      ],
+      "link": 13
+    },
+    "coil_b_r": {
+      "group": "一系悬挂",
+      "parent": "links",
+      "origin": [
+        1.3,
+        1.2,
+        0.625
+      ],
+      "offset": [
+        0.2,
+        0.38,
+        0.38
+      ],
+      "link": 14
+    },
+    "damper_b_r": {
+      "group": "一系悬挂",
+      "parent": "links",
+      "origin": [
+        1.47,
+        1.2,
+        0.55
+      ],
+      "offset": [
+        0.2,
+        0.38,
+        0.38
+      ],
+      "link": 15
+    },
+    "guide_b_r": {
+      "group": "一系悬挂",
+      "parent": "links",
+      "origin": [
+        1.17,
+        1.2,
+        0.48
+      ],
+      "offset": [
+        0.2,
+        0.38,
+        0.38
+      ],
+      "link": 16
+    },
+    "stay_b_r": {
+      "group": "制动装置",
+      "parent": "links",
+      "origin": [
+        1.3,
+        0.64,
+        0.693
+      ],
+      "offset": [
+        0.2,
+        0.38,
+        0.38
+      ],
+      "link": 17
+    }
+  },
+  "layers": [
+    "frame",
+    "wheel",
+    "fixed",
+    "links"
+  ]
+}
