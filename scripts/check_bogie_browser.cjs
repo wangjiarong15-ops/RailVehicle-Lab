@@ -395,12 +395,96 @@ async function checkFallback(browser, response) {
   }
 }
 
+async function checkBookmarks(browser) {
+  const page = await browser.newPage({viewport: {width: 1536, height: 950}});
+  page.setDefaultTimeout(20000);
+  try {
+    const address = new URL(url);
+    address.searchParams.set("rail_page", "三维转向架仿真");
+    await page.goto(address.href);
+    const frame = page.frameLocator("iframe[title*=bogie_viewer]").first();
+    const root = frame.locator("#workbench[data-status=ready][data-frames]");
+    const data = () => root.evaluate((node) => ({...node.dataset}));
+    const section = frame.getByRole("button", {name: "剖切视图", exact: true});
+    const sectionAxis = frame.getByLabel("剖切轴", {exact: true});
+    const toggle = frame.getByRole("button", {name: "检查视图", exact: true});
+    const name = frame.getByLabel("视图名称", {exact: true});
+    const saved = frame.getByLabel("已保存视图", {exact: true});
+    const save = frame.getByRole("button", {name: "保存当前视图", exact: true});
+    const restore = frame.getByRole("button", {name: "恢复视图", exact: true});
+    const remove = frame.getByRole("button", {name: "删除视图", exact: true});
+    const canvas = frame.locator("canvas");
+    const view = frame.getByRole("combobox", {name: "视窗视角"});
+    const bookmark = "轮对纵剖检查";
+    const savedOption = saved.locator("option").filter({hasText: bookmark});
+
+    await root.waitFor();
+    const parts = frame.getByRole("button", {name: "零件清单", exact: true});
+    const search = frame.getByRole("searchbox", {name: "查找零件"});
+    await parts.click();
+    await search.fill("disc_a_l");
+    await frame.locator('[data-part="disc_a_l"]').click();
+    await frame.getByRole("button", {name: "隐藏零件", exact: true}).click();
+    await search.press("Escape");
+    await view.selectOption("侧视图");
+    await section.click();
+    await toggle.click();
+    const originalZoom = Number((await data()).zoom);
+    await canvas.hover();
+    await page.mouse.wheel(0, -240);
+    await until(data, (d) => Number(d.zoom) > originalZoom, "The custom bookmark camera did not zoom");
+    await name.fill(bookmark);
+    const current = await data();
+    assert.equal(current.sectionAxis, "x");
+    assert.equal(Number(current.sectionPosition), 0);
+    await save.click();
+    await savedOption.waitFor({state: "attached"});
+
+    await frame.getByRole("button", {name: "恢复隐藏", exact: true}).click();
+    await view.selectOption("俯视图");
+    await sectionAxis.selectOption("z");
+    await until(data, (d) => d.view === "俯视图" && d.sectionAxis === "z",
+      "The active view did not move away from the saved view");
+    await saved.selectOption({label: bookmark});
+    await restore.click();
+    await until(data, (d) => d.view === "侧视图" && d.sectionAxis === "x" && d.hidden === "1" &&
+      Number(d.sectionPosition) === 0 && Math.abs(Number(d.zoom) - Number(current.zoom)) < .02,
+      "The bookmark did not restore its camera preset and clipping plane");
+    await screenshot(page, "bogie-glb-bookmark");
+
+    await page.reload();
+    await root.waitFor();
+    await toggle.click();
+    await savedOption.waitFor({state: "attached"});
+    await saved.selectOption({label: bookmark});
+    const beforeRestore = await canvas.screenshot();
+    const initialFrame = Number((await data()).frames);
+    await restore.click();
+    await until(data, (d) => Number(d.frames) > initialFrame && d.view === "侧视图" &&
+      d.sectionAxis === "x" && Number(d.sectionPosition) === 0 && d.hidden === "1" && d.selected === "disc_a_l" &&
+      Math.abs(Number(d.zoom) - Number(current.zoom)) < .02,
+      "The persisted bookmark did not restore a newly loaded workbench");
+    assert.notDeepEqual(await canvas.screenshot(), beforeRestore, "Restoring the bookmark did not change the canvas");
+    await remove.click();
+    await savedOption.waitFor({state: "detached"});
+    await page.reload();
+    await root.waitFor();
+    await toggle.click();
+    assert.equal(await savedOption.count(), 0, "The deleted bookmark reappeared after reload");
+    assert.equal(await page.getByTestId("stException").count(), 0);
+    console.log("Inspection bookmarks passed save, restore, reload persistence and deletion");
+  } finally {
+    await page.close();
+  }
+}
+
 (async () => {
   if (output) await mkdir(output, {recursive: true});
   const browser = await chromium.launch({executablePath, args});
   try {
     await audit(browser, 1920, 1080);
     await audit(browser, 1366, 768, false);
+    await checkBookmarks(browser);
     await checkFallback(browser, {status: 404, body: "Missing"});
     await checkFallback(browser, {status: 200, contentType: "model/gltf-binary", body: "Corrupt GLB"});
     console.log("Procedural fallback passed for missing and corrupt GLB");

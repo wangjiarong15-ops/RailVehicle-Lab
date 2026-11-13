@@ -6,6 +6,9 @@ const angles = {
   "俯视图": [0, 0, 1], "底视图": [0, 0, -1],
 };
 const halfHeight = 1.55;
+const aspectScale = (aspect) => Math.min(1, aspect / 1.6);
+const isVector = (value) => Array.isArray(value) && value.length === 3 &&
+  value.every((coordinate) => Number.isFinite(coordinate) && Math.abs(coordinate) <= 1000);
 
 export function cameraRig(canvas, invalidate) {
   const camera = new THREE.OrthographicCamera(-3, 3, halfHeight, -halfHeight, .05, 80);
@@ -23,7 +26,7 @@ export function cameraRig(canvas, invalidate) {
   function resize(width, height) {
     const previous = aspect;
     aspect = width / height;
-    const adjustment = Math.min(1, aspect / 1.6) / Math.min(1, previous / 1.6);
+    const adjustment = aspectScale(aspect) / aspectScale(previous);
     camera.zoom = THREE.MathUtils.clamp(camera.zoom * adjustment, controls.minZoom, controls.maxZoom);
     camera.left = -halfHeight * aspect;
     camera.right = halfHeight * aspect;
@@ -55,6 +58,29 @@ export function cameraRig(canvas, invalidate) {
   }
   return {
     camera, controls, resize,
+    capture() {
+      return {
+        position: camera.position.toArray(),
+        target: controls.target.toArray(),
+        zoom: camera.zoom / aspectScale(aspect),
+      };
+    },
+    accepts(state) {
+      return state && isVector(state.position) && isVector(state.target) &&
+        state.position.some((value, index) => Math.abs(value - state.target[index]) > .001) &&
+        Number.isFinite(state.zoom) && state.zoom > 0 && state.zoom <= 100;
+    },
+    restore(state) {
+      controls.enableDamping = false;
+      controls.update();
+      controls.target.fromArray(state.target);
+      camera.position.fromArray(state.position);
+      camera.zoom = THREE.MathUtils.clamp(state.zoom * aspectScale(aspect), controls.minZoom, controls.maxZoom);
+      camera.updateProjectionMatrix();
+      controls.update();
+      controls.enableDamping = true;
+      invalidate();
+    },
     reset(view, args) {
       const [x, y, z] = angles[view] ?? angles["整体视图"];
       const extentX = args.rails ? 2.25 : 1.90 + .30 * args.spread;

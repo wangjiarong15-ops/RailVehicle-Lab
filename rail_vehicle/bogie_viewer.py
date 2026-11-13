@@ -15,7 +15,7 @@ def webgl_available():
         "index.html", "viewer.js", "viewer.css", "assembly.json", "geometry.js",
         "lighting.js", "camera.js", "interaction.js", "motion.js", "model-loader.js",
         "playback-batches.js", "part-browser.js", "measurement.js", "section-plane.js",
-        "inspection-export.js",
+        "inspection-export.js", "view-bookmarks.js",
         "vendor/three.module.min.js", "vendor/three.core.min.js",
         "vendor/OrbitControls.js", "vendor/RoomEnvironment.js",
     ))

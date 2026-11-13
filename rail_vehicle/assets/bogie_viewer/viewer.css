@@ -35,9 +35,13 @@ footer { border-top: 1px solid #34485e; justify-content: space-between; color: #
 #section-toggle[aria-pressed="true"], #section-flip[aria-pressed="true"] {
   border-color: #82bbf6; background: #244b75;
 }
-#section-controls { display: flex; flex: 0 0 100%; align-items: center; flex-wrap: wrap; gap: 6px;
+#section-controls, #bookmarks-controls { display: flex; flex: 0 0 100%; align-items: center; flex-wrap: wrap; gap: 6px;
   border-top: 1px solid #34485e; padding-top: 6px; }
-#section-controls[hidden] { display: none; }
+#section-controls[hidden], #bookmarks-controls[hidden] { display: none; }
+#bookmark-name, #bookmark-select { width: clamp(96px, 17vw, 176px); }
+#bookmark-name { background: #0b1521; color: #e3edf9; border: 1px solid #486581;
+  border-radius: 5px; font: inherit; padding: 4px 6px; }
+#bookmark-status { color: #a8bbce; font-size: 11px; overflow-wrap: anywhere; }
 #section-position { flex: 1; min-width: 72px; accent-color: #82bbf6; }
 #section-value { color: #c3d5e6; font-variant-numeric: tabular-nums; }
 #workbench[data-measuring="true"] canvas { cursor: crosshair; }

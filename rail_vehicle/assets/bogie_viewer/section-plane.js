@@ -40,12 +40,15 @@ export function sectionPlane(renderer, workbench, onChange) {
   function changeAxis() {
     axis = axisControl.value;
     position = 0;
+    syncPosition();
+    update();
+  }
+  function syncPosition() {
     const [min, max, label] = ranges[axis];
     positionControl.min = min;
     positionControl.max = max;
     positionControl.value = position;
-    positionControl.setAttribute("aria-valuetext", label + " 0.00 米");
-    update();
+    positionControl.setAttribute("aria-valuetext", label + " " + position.toFixed(2) + " 米");
   }
   function movePlane() {
     position = Number(positionControl.value);
@@ -64,6 +67,19 @@ export function sectionPlane(renderer, workbench, onChange) {
   workbench.dataset.sectionAxis = "";
   return {
     get enabled() { return enabled; },
+    capture() { return {enabled, axis, position, flipped}; },
+    accepts(state) {
+      if (!state || !Object.hasOwn(ranges, state.axis)) return false;
+      const [min, max] = ranges[state.axis];
+      return typeof state.enabled === "boolean" && typeof state.flipped === "boolean" &&
+        Number.isFinite(state.position) && state.position >= min && state.position <= max;
+    },
+    restore(state) {
+      ({enabled, axis, position, flipped} = state);
+      axisControl.value = axis;
+      syncPosition();
+      update();
+    },
     contains(point) { return !enabled || plane.distanceToPoint(point) >= -1e-6; },
     clipBounds(box) {
       if (enabled && !box.isEmpty()) {

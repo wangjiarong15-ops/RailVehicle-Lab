@@ -22,6 +22,7 @@
       <button id="measure" type="button" aria-pressed="false" disabled>两点测距</button>
       <button id="section-toggle" type="button" aria-controls="section-controls" aria-pressed="false" disabled>剖切视图</button>
       <button id="export-inspection" type="button" aria-describedby="export-status" disabled>导出检查图</button>
+      <button id="bookmarks-toggle" type="button" aria-controls="bookmarks-controls" aria-expanded="false" disabled>检查视图</button>
       <button id="reset" disabled type="button">恢复视角</button>
       <div id="section-controls" hidden>
         <select id="section-axis" aria-label="剖切轴">
@@ -30,6 +31,14 @@
         <input id="section-position" type="range" aria-label="剖切位置" aria-valuetext="纵向 0.00 米" min="-2.7" max="2.7" step=".05" value="0">
         <output id="section-value" for="section-position">X = 0.00 m · 保留负侧</output>
         <button id="section-flip" type="button" aria-pressed="false">翻转保留侧</button>
+      </div>
+      <div id="bookmarks-controls" hidden>
+        <input id="bookmark-name" type="text" aria-label="视图名称" placeholder="视图名称" maxlength="32">
+        <button id="bookmark-save" type="button">保存当前视图</button>
+        <select id="bookmark-select" aria-label="已保存视图"></select>
+        <button id="bookmark-restore" type="button">恢复视图</button>
+        <button id="bookmark-delete" type="button">删除视图</button>
+        <span id="bookmark-status" role="status"></span>
       </div>
     </header>
     <div id="workspace">

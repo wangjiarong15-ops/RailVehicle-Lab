@@ -10,6 +10,7 @@ import {partBrowser} from "./part-browser.js";
 import {measurement} from "./measurement.js";
 import {sectionPlane} from "./section-plane.js";
 import {exportInspectionPng} from "./inspection-export.js";
+import {viewBookmarks} from "./view-bookmarks.js";
 
 export async function mount() {
   const [response, detailed] = await Promise.all([fetch("./assembly.json"), loadDetailedModel()]);
@@ -54,7 +55,7 @@ export async function mount() {
   const batches = software && detailed ? playbackBatches(assembly, detailed) : null;
   modelStatus.textContent = detailed ? "Blender 精细模型" : "兼容几何 · GLB 不可用";
   const clock = motionClock();
-  let args, serverArgs, localView, selection = null, appearance = "", angle = 0, width = 0, height = 0;
+  let args, serverArgs, localView, bookmarkDisplay, selection = null, appearance = "", angle = 0, width = 0, height = 0;
   let raf, frames = 0, dirty = true, alive = true, shadowPose = "", shadowDirty = true;
   let visibleComponents = 0;
   const invalidate = () => { dirty = true; };
@@ -184,6 +185,45 @@ export async function mount() {
       else reset();
     },
   }) : null;
+  const knownGroups = Object.keys(data.parts);
+  const hasPart = (id) => id === null || assembly.partNodes.has(id);
+  const hasSelection = (id) => hasPart(id) || knownGroups.includes(id);
+  const bookmarks = viewBookmarks({
+    capture() {
+      if (!args || args.playing || args.spread || settling) return null;
+      return {
+        model: detailed ? "glb" : "procedural",
+        view: args.view,
+        camera: rig.capture(),
+        visible: [...args.visible],
+        rails: bookmarkDisplay?.rails ?? serverArgs.rails,
+        hidden: [...hidden],
+        isolated,
+        selection,
+        section: section.capture(),
+      };
+    },
+    restore(state) {
+      if (!args || args.playing || args.spread || settling || !state || state.model !== (detailed ? "glb" : "procedural") ||
+          !Array.from(viewControl.options).some(({value}) => value === state.view) ||
+          !rig.accepts(state.camera) || !section.accepts(state.section) ||
+          !Array.isArray(state.visible) || !state.visible.every((group) => knownGroups.includes(group)) ||
+          typeof state.rails !== "boolean" ||
+          !Array.isArray(state.hidden) || !state.hidden.every((id) => id !== null && hasPart(id)) ||
+          !hasPart(state.isolated) || !hasSelection(state.selection)) return false;
+      localView = state.view;
+      bookmarkDisplay = {visible: [...new Set(state.visible)], rails: state.rails};
+      hidden.clear();
+      for (const id of state.hidden) hidden.add(id);
+      isolated = state.isolated;
+      clearMeasurement();
+      section.restore(state.section);
+      apply(serverArgs);
+      select(state.selection);
+      rig.restore(state.camera);
+      return true;
+    },
+  });
   function hideSelected() {
     if (!assembly.partNodes.has(selection)) return;
     hidden.add(selection);
@@ -273,6 +313,7 @@ export async function mount() {
     rig.controls.dispose();
     picker.dispose();
     browser?.dispose();
+    bookmarks.dispose();
     batches?.dispose();
     gauge.dispose();
     section.dispose();
@@ -312,7 +353,7 @@ export async function mount() {
     if (!alive) return;
     const previous = args;
     const view = localView || next.view;
-    args = {...next, view, rails: next.rails && view !== "底视图"};
+    args = {...next, ...bookmarkDisplay, view, rails: (bookmarkDisplay?.rails ?? next.rails) && view !== "底视图"};
     if (args.playing) {
       exportPending = false;
       setExportStatus("");
@@ -351,6 +392,8 @@ export async function mount() {
   }
   return function update(next) {
     if (!serverArgs || serverArgs.view !== next.view || serverArgs.revision !== next.revision) localView = null;
+    if (serverArgs && (serverArgs.visible.join() !== next.visible.join() ||
+        serverArgs.revision !== next.revision || serverArgs.rails !== next.rails)) bookmarkDisplay = null;
     serverArgs = next;
     clock.receive(next, performance.now());
     apply(next);
