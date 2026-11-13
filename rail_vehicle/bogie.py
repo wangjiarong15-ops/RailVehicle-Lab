@@ -1,10 +1,8 @@
 """Plotly renderer and illustrative, non-physical bogie motion."""
 
-from math import sin, cos
-
 import plotly.graph_objects as go
 
-from rail_vehicle.bogie_geometry import build_assembly
+from rail_vehicle.bogie_geometry import build_assembly, motion, motion_envelope
 
 
 PARTS = ("构架", "轮对", "一系悬挂", "二系悬挂", "轴箱", "电机与传动", "制动装置")
@@ -30,19 +28,6 @@ PART_DESCRIPTIONS = {
     "电机与传动": "每根车轴附近可看到构架侧电机、连接段和车轴侧齿轮箱。外形只用于展示布置关系。",
     "制动装置": "轮对内侧示意轴装制动盘；盘缘上方为卡钳及其支架。不代表特定制动系统。",
 }
-
-
-def motion_envelope(mode):
-    """Amplitudes for the shared illustration (lateral, vertical, yaw)."""
-    return (.075 if mode in ("横向振动", "蛇行运动示意", "异常运行") else 0,
-            .065 if mode in ("垂向振动", "异常运行") else 0,
-            .049 if mode == "蛇行运动示意" else 0)
-
-
-def motion(mode, phase):
-    """Return prescribed illustration offsets; never infer displacement from acceleration."""
-    lateral, vertical, yaw = motion_envelope(mode)
-    return lateral*sin(phase), vertical*sin(phase), yaw*cos(phase)
 
 
 def build_bogie(mode="正常运行", phase=0.0, visible=PARTS, highlight="无", view="整体视图",

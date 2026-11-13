@@ -58,18 +58,13 @@ def test_truncated_glb_is_rejected(tmp_path):
         validate(broken)
 
 
-@pytest.mark.parametrize(("axis", "change", "message"), [
-    (1, lambda value: value - .008, "Nominal tread and rail top do not align"),
-    (2, lambda value: value - .030 if value > .7 else value + .030 if value < -.7 else value,
-     "Wheel spin envelope intersects rail"),
-])
-def test_glb_wheel_track_check_uses_exported_vertices(tmp_path, axis, change, message):
+def _rewrite_part_vertices(target, part_name, axis, change):
     source = ASSETS / "bogie.glb"
     doc, binary, _ = read_glb(source)
     raw = bytearray(source.read_bytes())
     binary_start = len(raw) - len(binary)
-    track = next(node for node in doc["nodes"] if node["name"] == "reference_track")
-    mesh = doc["meshes"][doc["nodes"][track["children"][0]]["mesh"]]
+    part = next(node for node in doc["nodes"] if node["name"] == part_name)
+    mesh = doc["meshes"][doc["nodes"][part["children"][0]]["mesh"]]
     point = Struct("<fff")
     for index in {primitive["attributes"]["POSITION"] for primitive in mesh["primitives"]}:
         accessor = doc["accessors"][index]
@@ -81,7 +76,27 @@ def test_glb_wheel_track_check_uses_exported_vertices(tmp_path, axis, change, me
             coordinates[axis] = change(coordinates[axis])
             point.pack_into(raw, offset, *coordinates)
     # Keep node origins and the metadata bounds unchanged to catch vertex regressions.
+    target.write_bytes(raw)
+
+
+@pytest.mark.parametrize(("axis", "change", "message"), [
+    (1, lambda value: value - .008, "Nominal tread and rail top do not align"),
+    (2, lambda value: value - .030 if value > .7 else value + .030 if value < -.7 else value,
+     "Wheel spin envelope intersects rail"),
+])
+def test_glb_wheel_track_check_uses_exported_vertices(tmp_path, axis, change, message):
     broken = tmp_path / "rail-profile.glb"
-    broken.write_bytes(raw)
+    _rewrite_part_vertices(broken, "reference_track", axis, change)
     with pytest.raises(ValueError, match=message):
+        validate(broken)
+
+
+@pytest.mark.parametrize(("upper", "lower"), [
+    ("side_beam_l", "axlebox_a_l"),
+    ("cross_members", "wheel_a_l"),
+])
+def test_glb_detects_frame_intrusion_only_in_a_moving_pose(tmp_path, upper, lower):
+    broken = tmp_path / f"{upper}.glb"
+    _rewrite_part_vertices(broken, upper, 1, lambda height: height - .12)
+    with pytest.raises(ValueError, match=f"Animation clearance too small: {upper}/{lower}, 垂向振动,"):
         validate(broken)

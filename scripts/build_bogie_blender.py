@@ -114,6 +114,16 @@ def side_beam(p):
         for sign in (-1,1):
             a,b = sorted((x+sign*.14,x+sign*.34))
             p.outline(0,.15,((a,-.107),(b,-.075),(b,.012),(a,.012)), "paint_edge", .009)
+    # The end cross members meet the side beams behind these outer joint plates.
+    outer = 1 if p.node.location.y > 0 else -1
+    end_plate = ((1.531,-.047),(1.714,-.047),(1.820,-.026),(1.820,.054),
+                 (1.781,.085),(1.577,.103),(1.531,.068))
+    for end in (-1, 1):
+        outline = tuple((end*x,z) for x,z in end_plate)
+        p.outline(outer*.113,.036,outline if end > 0 else outline[::-1], "paint_edge", .006)
+        for x in (1.582,1.753):
+            for z in (-.012,.052):
+                p.cylinder((end*x,outer*.127,z),(end*x,outer*.143,z),.011,"steel",6)
     for x in (-.61,.61):
         for y in (-.12,.12):
             p.cylinder((x,y,.162),(x,y,.182),.020,"cast",6)
@@ -222,6 +232,23 @@ def motor(p):
     for x in (-.050,.050):
         p.cylinder((x,-.255,.209),(x,-.294,.209),.016,"cast",8)
         p.cylinder((x,-.292,.209),(x,-.307,.209),.011,"rubber",8)
+
+    # Two housing lugs reach inboard to the underside of the adjacent cross
+    # member (Z = .881 m). Mirror along X so both motor covers stay accessible.
+    inboard = 1 if p.node.location.x < 0 else -1
+    underside = .881 - p.node.location.z
+    profile = ((.104,.103),(.150,.093),(.404,underside-.051),
+               (.421,underside-.017),(.398,underside-.004),
+               (.335,underside-.005),(.132,.156))
+    lug = tuple((inboard*x,z) for x,z in profile)
+    if inboard < 0:
+        lug = lug[::-1]  # Keep the extruded outline counterclockwise.
+    for y in (-.110,.100):
+        p.outline(y,.042,lug,"motor",.005)
+        p.box((inboard*.377,y,underside),(.086,.102,.014),"paint_edge",.004)
+        for offset in (-.034,.034):
+            p.cylinder((inboard*.377,y+offset,underside-.018),
+                       (inboard*.377,y+offset,underside-.004),.010,"steel",6)
 
 
 def gearbox(p):

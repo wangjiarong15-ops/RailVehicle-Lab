@@ -18,6 +18,19 @@ WHEEL_POSE_GAIN = .035  # keep the wheelset close to the reference rails during 
 _PARTS = ("构架", "轮对", "一系悬挂", "二系悬挂", "轴箱", "电机与传动", "制动装置", "轨道参照")
 
 
+def motion_envelope(mode):
+    """Amplitudes for the shared illustration (lateral, vertical, yaw)."""
+    return (.075 if mode in ("横向振动", "蛇行运动示意", "异常运行") else 0,
+            .065 if mode in ("垂向振动", "异常运行") else 0,
+            .049 if mode == "蛇行运动示意" else 0)
+
+
+def motion(mode, phase):
+    """Return prescribed illustration offsets in metres and radians."""
+    lateral, vertical, yaw = motion_envelope(mode)
+    return lateral*sin(phase), vertical*sin(phase), yaw*cos(phase)
+
+
 def _add(a, b):
     return tuple(x + y for x, y in zip(a, b))
 

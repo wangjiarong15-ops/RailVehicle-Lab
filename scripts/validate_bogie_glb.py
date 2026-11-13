@@ -1,20 +1,25 @@
 """Check the exported GLB against the assembly contract without Blender."""
 
 import argparse
+from dataclasses import dataclass
 import json
-from math import dist, hypot, isfinite
+from math import cos, dist, hypot, isfinite, sin, tau
 from pathlib import Path
 import struct
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from rail_vehicle.bogie_geometry import WHEEL_POSE_GAIN, motion
 from rail_vehicle.bogie_model_spec import model_contract
+from rail_vehicle.bogie_replay import TEACHING
 
 ASSETS = ROOT / "rail_vehicle/assets/bogie_viewer"
 MAX_BYTES = 2_500_000
 MAX_TRIANGLES = 48_000
 CONTACT_TOLERANCE_M = .001
+ANIMATION_CLEARANCE_M = .002
+ANIMATION_SAMPLES = 16
 TRANSFORM_KEYS = {"translation", "scale", "rotation", "matrix"}
 
 
@@ -58,10 +63,10 @@ def _rest_triangles(doc, binary, part, surface):
     for primitive in doc["meshes"][surface["mesh"]]["primitives"]:
         positions = [(x + px, -depth - pz, up + py) for px, py, pz in _read_geometry_accessor(
             doc, binary, primitive["attributes"]["POSITION"], {5126: "fff"})]
-        require(all(isfinite(v) for point in positions for v in point), "Non-finite wheel or track vertex")
+        require(all(isfinite(v) for point in positions for v in point), f"Non-finite vertex: {part['name']}")
         indices = [item[0] for item in _read_geometry_accessor(
             doc, binary, primitive["indices"], {5121: "B", 5123: "H", 5125: "I"})]
-        require(max(indices) < len(positions), "Wheel or track index outside its mesh")
+        require(max(indices) < len(positions), f"Index outside mesh: {part['name']}")
         for index in range(0, len(indices), 3):
             yield tuple(positions[i] for i in indices[index:index + 3])
 
@@ -110,6 +115,117 @@ def _validate_wheel_track_fit(doc, binary, parts, contract):
             rail = max((p[2] for p in _plane_points(track, 1, station)), default=-1.)
             radius = max((hypot(px - x, pz - z) for px, _, pz in _plane_points(wheel, 1, station)), default=0.)
             require(rail <= z - radius + CONTACT_TOLERANCE_M, f"Wheel spin envelope intersects rail: {name}")
+
+
+def _oriented_area(a, b, point):
+    return (b[0] - a[0]) * (point[1] - a[1]) - (b[1] - a[1]) * (point[0] - a[0])
+
+
+@dataclass(frozen=True)
+class _ProjectedFace:
+    points: tuple
+    min_x: float
+    max_x: float
+    min_y: float
+    max_y: float
+    min_z: float
+    max_z: float
+    area: float
+
+    def height(self, point):
+        a, b, c = self.points
+        return (_oriented_area(b, c, point) * a[2] + _oriented_area(c, a, point) * b[2] +
+                _oriented_area(a, b, point) * c[2]) / self.area
+
+
+def _projected_faces(faces):
+    for a, b, c in faces:
+        area = _oriented_area(a, b, c)
+        if abs(area) < 1e-10:  # Vertical faces have no interior in the horizontal projection.
+            continue
+        points = (a, b, c) if area > 0 else (a, c, b)
+        x, y, z = zip(*points)
+        yield _ProjectedFace(points, min(x), max(x), min(y), max(y), min(z), max(z), abs(area))
+
+
+def _overlap_polygon(lower, upper):
+    """Clip the horizontal projection of one triangle against the other."""
+    polygon = [p[:2] for p in lower.points]
+    for a, b in zip(upper.points, (*upper.points[1:], upper.points[0])):
+        if not polygon:
+            break
+        previous = polygon[-1]
+        clipped = []
+        for point in polygon:
+            last = _oriented_area(a, b, previous)
+            current = _oriented_area(a, b, point)
+            if (last >= 0) != (current >= 0):
+                fraction = last / (last - current)
+                clipped.append(tuple(u + fraction * (v - u) for u, v in zip(previous, point)))
+            if current >= 0:
+                clipped.append(point)
+            previous = point
+        polygon = clipped
+    return polygon
+
+
+def _has_clearance(upper, lower):
+    if (min(face.min_z for face in upper) - max(face.max_z for face in lower) >= ANIMATION_CLEARANCE_M or
+            max(face.max_x for face in upper) < min(face.min_x for face in lower) or
+            max(face.max_x for face in lower) < min(face.min_x for face in upper) or
+            max(face.max_y for face in upper) < min(face.min_y for face in lower) or
+            max(face.max_y for face in lower) < min(face.min_y for face in upper)):
+        return True
+    for top in upper:
+        for bottom in lower:
+            if (top.min_z - bottom.max_z >= ANIMATION_CLEARANCE_M or
+                    top.max_x < bottom.min_x or bottom.max_x < top.min_x or
+                    top.max_y < bottom.min_y or bottom.max_y < top.min_y):
+                continue
+            # The height difference is linear on this overlap. Its minimum is
+            # attained at a polygon corner, including projected edge crossings.
+            if any(top.height(p) - bottom.height(p) < ANIMATION_CLEARANCE_M
+                   for p in _overlap_polygon(bottom, top)):
+                return False
+    return True
+
+
+def _posed_faces(faces, lateral, vertical, yaw, *, spin=None, phase=0.):
+    cy, sy = cos(yaw), sin(yaw)
+    cs, ss = cos(phase), sin(phase)
+
+    def move(point):
+        x, y, z = point
+        if spin is not None:
+            x0, _, z0 = spin
+            dx, dz = x - x0, z - z0
+            x, z = x0 + dx * cs + dz * ss, z0 - dx * ss + dz * cs
+        return x * cy - y * sy, x * sy + y * cy + lateral, z + vertical
+
+    posed = {point: move(point) for point in {point for face in faces for point in face}}
+    return tuple(_projected_faces(tuple(posed[point] for point in face) for face in faces))
+
+
+def _validate_animation_clearance(doc, binary, parts, contract):
+    """Sample steady-state assembled scenes for selected vertical clearances."""
+    pairs = [("cross_members", f"wheel_{axle}_{side}") for axle in "ab" for side in "lr"]
+    pairs += [(f"side_beam_{side}", f"axlebox_{axle}_{side}") for axle in "ab" for side in "lr"]
+    names = {name for pair in pairs for name in pair}
+    meshes = {name: tuple(_rest_triangles(doc, binary, *parts[name])) for name in names}
+    spec = contract["parts"]
+    for mode in dict.fromkeys(scene.mode for scene in TEACHING.values()):
+        for step in range(ANIMATION_SAMPLES):
+            phase = step * tau / ANIMATION_SAMPLES
+            lateral, vertical, yaw = motion(mode, phase)
+            posed = {}
+            for name, faces in meshes.items():
+                offsets = (lateral, vertical, yaw) if spec[name]["parent"] == "frame" else (
+                    lateral * WHEEL_POSE_GAIN, 0., yaw * WHEEL_POSE_GAIN)
+                spin = spec[name].get("spin")
+                posed[name] = _posed_faces(faces, *offsets, spin=spin, phase=phase)
+            for upper, lower in pairs:
+                require(_has_clearance(posed[upper], posed[lower]),
+                        f"Animation clearance too small: {upper}/{lower}, {mode}, {step * 360 / ANIMATION_SAMPLES:g}°")
 
 
 def validate(path):
@@ -173,6 +289,7 @@ def validate(path):
             triangles += indices["count"]//3
     require(0 < triangles <= MAX_TRIANGLES, "Model exceeds triangle budget")
     _validate_wheel_track_fit(doc, binary, parts, contract)
+    _validate_animation_clearance(doc, binary, parts, contract)
     return dict(parts=len(parts), meshes=len(mesh_indices), triangles=triangles, bytes=size)
 
 
