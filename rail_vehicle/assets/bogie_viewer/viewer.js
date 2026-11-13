@@ -6,6 +6,7 @@ import {materials, studio} from "./lighting.js";
 import {motionClock} from "./motion.js";
 import {loadDetailedModel} from "./model-loader.js";
 import {playbackBatches} from "./playback-batches.js";
+import {partBrowser} from "./part-browser.js";
 
 export async function mount() {
   const [response, detailed] = await Promise.all([fetch("./assembly.json"), loadDetailedModel()]);
@@ -40,6 +41,7 @@ export async function mount() {
   const finishes = materials();
   const assembly = createAssembly(scene, data, finishes, detailed);
   const hidden = new Set();
+  let isolated = null;
   const batches = software && detailed ? playbackBatches(assembly, detailed) : null;
   modelStatus.textContent = detailed ? "Blender 精细模型" : "兼容几何 · GLB 不可用";
   const clock = motionClock();
@@ -51,28 +53,49 @@ export async function mount() {
   const reset = () => { if (args) rig.reset(args.view, args); };
   function select(part) {
     selection = part;
-    picker.select(part);
-    assembly.appearance({...args, hidden}, part);
+    assembly.appearance({...args, hidden, isolated}, part);
     batches?.update(args.playing && !args.spread);
-    visibleComponents = new Set(assembly.objects.filter((mesh) => mesh.visible && mesh.parent.visible)
-      .map((mesh) => mesh.userData.id ?? mesh.userData.part)).size;
+    const visible = assembly.objects.filter((mesh) => mesh.visible && mesh.parent.visible);
+    visibleComponents = new Set(visible.map((mesh) => mesh.userData.id ?? mesh.userData.part)).size;
+    const available = visible.some((mesh) => mesh.userData.id === part || mesh.userData.part === part);
+    picker.select(part, available);
+    browser?.update(part, hidden, isolated, args.visible, args.rails);
     workbench.dataset.selected = part ?? "";
-    hideControl.disabled = !assembly.partNodes.has(part);
+    workbench.dataset.hidden = hidden.size;
+    workbench.dataset.isolated = isolated ?? "";
+    illumination.platform.visible = args.rails && !isolated;
+    hideControl.disabled = !available || !assembly.partNodes.has(part);
+    restoreControl.disabled = !hidden.size;
     invalidate();
   }
-  const picker = inspection(canvas, data.parts, assembly, rig, select, reset);
+  const picker = inspection(canvas, data.parts, assembly, rig, select, reset, detailed?.parts);
+  const browser = detailed ? partBrowser(detailed.parts, {
+    select,
+    show() {
+      if (!hidden.delete(selection)) return;
+      shadowDirty = true;
+      select(selection);
+    },
+    isolate() {
+      isolated = isolated ? null : selection;
+      shadowDirty = true;
+      select(selection);
+      if (isolated) picker.zoom();
+      else reset();
+    },
+  }) : null;
   function hideSelected() {
     if (!assembly.partNodes.has(selection)) return;
     hidden.add(selection);
-    restoreControl.disabled = false;
-    workbench.dataset.hidden = hidden.size;
+    if (isolated === selection) {
+      isolated = null;
+      reset();
+    }
     shadowDirty = true;
-    select(null);
+    select(selection);
   }
   function restoreHidden() {
     hidden.clear();
-    restoreControl.disabled = true;
-    workbench.dataset.hidden = "0";
     shadowDirty = true;
     select(selection);
   }
@@ -138,6 +161,7 @@ export async function mount() {
     restoreControl.removeEventListener("click", restoreHidden);
     rig.controls.dispose();
     picker.dispose();
+    browser?.dispose();
     batches?.dispose();
     const disposable = new Set(Object.values(finishes).flat());
     scene.traverse(({geometry, material}) => {
@@ -181,7 +205,11 @@ export async function mount() {
       renderer.setPixelRatio(pixelRatio * (args.playing ? playbackScale : 1));
       if (batches) renderer.shadowMap.enabled = !args.playing;
     }
-    const reframe = !previous || previous.view !== args.view || previous.revision !== args.revision
+    const isolatedGroup = detailed?.parts.get(isolated)?.spec.group;
+    const isolationEnded = Boolean(isolated) &&
+      !(isolatedGroup === "轨道参照" ? args.rails : args.visible.includes(isolatedGroup));
+    if (isolationEnded) isolated = null;
+    const reframe = isolationEnded || !previous || previous.view !== args.view || previous.revision !== args.revision
       || Boolean(previous.spread) !== Boolean(args.spread) || previous.rails !== args.rails;
     const newAppearance = JSON.stringify([
       args.visible, args.highlight, args.focus, args.rails, args.spread, software && detailed && args.playing,
@@ -190,8 +218,7 @@ export async function mount() {
       appearance = newAppearance;
       const part = !previous || previous.focus !== args.focus ? args.focus : selection;
       const group = detailed?.parts.get(part)?.spec.group ?? part;
-      select(args.visible.includes(group) ? part : null);
-      illumination.platform.visible = args.rails;
+      select(detailed?.parts.has(part) || args.visible.includes(group) ? part : null);
       shadowDirty = true;
     }
     workbench.dataset.view = args.view;

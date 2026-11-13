@@ -30,6 +30,25 @@ canvas:active { cursor: grabbing; }
   text-align: center; color: #cfe0f2; background: #142336; padding: 12px; border-radius: 6px; }
 footer { border-top: 1px solid #34485e; justify-content: space-between; color: #c3d5e6; }
 #inspection { min-width: 0; }
+#workspace { display: grid; grid-template-columns: minmax(0, 1fr) auto; min-height: 0; position: relative; }
+#part-panel { width: clamp(162px, 25vw, 218px); min-height: 0; padding: 8px; background: #142336;
+  border-left: 1px solid #34485e; display: flex; flex-direction: column; gap: 5px; }
+#part-panel[hidden] { display: none; }
+#part-query { width: 100%; min-width: 0; background: #0b1521; color: #e3edf9; border: 1px solid #486581;
+  border-radius: 4px; font: inherit; padding: 5px 6px; color-scheme: dark; }
+#part-count { color: #a8bbce; margin: 0; font-size: 11px; }
+#part-results { overflow: auto; flex: 1; min-height: 0; }
+.part-group { color: #a8bbce; font-size: 11px; margin: 7px 0 3px; }
+.part-row { width: 100%; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 1px 6px;
+  padding: 4px 6px; text-align: left; white-space: normal; margin-bottom: 3px; }
+.part-row[aria-pressed="true"] { border-color: #82bbf6; background: #244b75; }
+.part-row[hidden] { display: none; }
+.part-state { color: #bed0e4; font-size: 11px; }
+.part-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+.part-actions button { flex: 1; }
+@media (max-width: 470px) {
+  #part-panel { position: absolute; z-index: 2; right: 0; top: 0; bottom: 0; max-width: 65%; }
+}
 .legend { white-space: nowrap; font-size: 11px; }
 .legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: #55aaff; }
 .legend i + i { background: #fca549; margin-left: 5px; }

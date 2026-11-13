@@ -10,13 +10,34 @@ DIMENSIONS = {
     "axlebox_centres": 2 * BOX_Y, "side_beam_centres": 2 * FRAME_Y,
     "frame_length": 3.72, "side_beam_width": .235,
 }
+PART_LABELS = {
+    "side_beam": "侧梁", "air_spring": "空气弹簧", "cross_members": "横梁组件",
+    "reference_track": "轨道参照", "axle": "车轴", "motor": "牵引电机", "gearbox": "齿轮箱",
+    "wheel": "车轮", "axlebox": "轴箱", "spring_seat_lower": "下弹簧座",
+    "spring_seat_upper": "上弹簧座", "disc": "制动盘", "caliper": "制动卡钳",
+    "coupling": "传动连接", "coil": "一系螺旋弹簧", "damper": "减振器",
+    "guide": "导向件", "stay": "卡钳支撑",
+}
+
+
+def part_label(name):
+    if name in PART_LABELS:
+        return PART_LABELS[name]
+    tokens = name.split("_")
+    side = {"l": "左侧", "r": "右侧"}.get(tokens[-1])
+    if side:
+        tokens.pop()
+    axle = {"a": "A 轴", "b": "B 轴"}.get(tokens[-1])
+    if axle:
+        tokens.pop()
+    return " ".join(filter(None, (axle, side, PART_LABELS["_".join(tokens)])))
 
 
 def model_contract():
     parts = {}
 
     def part(name, group, parent, origin, offset, spin=None, link=None):
-        parts[name] = dict(group=group, parent=parent, origin=origin, offset=offset)
+        parts[name] = dict(label=part_label(name), group=group, parent=parent, origin=origin, offset=offset)
         if spin is not None:
             parts[name]["spin"] = spin
         if link is not None:

@@ -7,7 +7,7 @@ const anchors = {
   "制动装置": ["wheel", [1.30, -.64, .70]],
 };
 
-export function inspection(canvas, descriptions, assembly, rig, onSelect, reset) {
+export function inspection(canvas, descriptions, assembly, rig, onSelect, reset, parts) {
   const ray = new THREE.Raycaster(), cursor = new THREE.Vector2();
   ray.layers.enable(1); // Source meshes remain pickable during batched playback.
   const focus = document.querySelector("#focus");
@@ -23,7 +23,7 @@ export function inspection(canvas, descriptions, assembly, rig, onSelect, reset)
   });
   let down, selection, pickedMesh;
   const matches = (mesh, part) => mesh.userData.id === part || mesh.userData.part === part;
-  const active = (mesh) => mesh.visible && mesh.parent.visible && mesh.userData.part !== "轨道参照";
+  const active = (mesh) => mesh.visible && mesh.parent.visible;
   function start(event) {
     down = event.button === 0 ? [event.clientX, event.clientY] : null;
   }
@@ -34,7 +34,8 @@ export function inspection(canvas, descriptions, assembly, rig, onSelect, reset)
     cursor.set(2 * (event.clientX - rect.left) / rect.width - 1,
       1 - 2 * (event.clientY - rect.top) / rect.height);
     ray.setFromCamera(cursor, rig.camera);
-    pickedMesh = ray.intersectObjects(assembly.objects.filter(active), false)[0]?.object;
+    pickedMesh = ray.intersectObjects(assembly.objects.filter((mesh) =>
+      active(mesh) && mesh.userData.part !== "轨道参照"), false)[0]?.object;
     onSelect(pickedMesh?.userData.id ?? pickedMesh?.userData.part ?? null);
   }
   function zoom() {
@@ -54,13 +55,16 @@ export function inspection(canvas, descriptions, assembly, rig, onSelect, reset)
   resetButton.disabled = false;
   const point = new THREE.Vector3();
   return {
-    select(part) {
+    zoom,
+    select(part, available) {
       if (pickedMesh && !matches(pickedMesh, part)) pickedMesh = null;
       selection = part;
-      focus.disabled = !part;
-      const group = pickedMesh?.userData.part ?? part;
-      inspectionText.textContent = part ? (group === part ? part : group + " · " + part) + " · " + descriptions[group]
-        : "点击零件查看名称、作用和安装位置";
+      focus.disabled = !part || !available;
+      const spec = parts?.get(part)?.spec;
+      const group = spec?.group ?? part;
+      const title = spec?.label ? spec.label + " (" + part + ")" : part;
+      inspectionText.textContent = part ? [title, descriptions[group], available ? "" : "当前不可见"]
+        .filter(Boolean).join(" · ") : "点击零件查看名称、作用和安装位置";
     },
     labels(args, width, height) {
       labelLayer.hidden = !args.labels;

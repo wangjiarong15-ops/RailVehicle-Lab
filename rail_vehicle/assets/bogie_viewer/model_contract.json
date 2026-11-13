@@ -15,6 +15,7 @@
   },
   "parts": {
     "side_beam_l": {
+      "label": "左侧 侧梁",
       "group": "构架",
       "parent": "frame",
       "origin": [
@@ -29,6 +30,7 @@
       ]
     },
     "air_spring_l": {
+      "label": "左侧 空气弹簧",
       "group": "二系悬挂",
       "parent": "frame",
       "origin": [
@@ -43,6 +45,7 @@
       ]
     },
     "side_beam_r": {
+      "label": "右侧 侧梁",
       "group": "构架",
       "parent": "frame",
       "origin": [
@@ -57,6 +60,7 @@
       ]
     },
     "air_spring_r": {
+      "label": "右侧 空气弹簧",
       "group": "二系悬挂",
       "parent": "frame",
       "origin": [
@@ -71,6 +75,7 @@
       ]
     },
     "cross_members": {
+      "label": "横梁组件",
       "group": "构架",
       "parent": "frame",
       "origin": [
@@ -85,6 +90,7 @@
       ]
     },
     "reference_track": {
+      "label": "轨道参照",
       "group": "轨道参照",
       "parent": "fixed",
       "origin": [
@@ -99,6 +105,7 @@
       ]
     },
     "axle_a": {
+      "label": "A 轴 车轴",
       "group": "轮对",
       "parent": "wheel",
       "origin": [
@@ -118,6 +125,7 @@
       ]
     },
     "motor_a": {
+      "label": "A 轴 牵引电机",
       "group": "电机与传动",
       "parent": "frame",
       "origin": [
@@ -132,6 +140,7 @@
       ]
     },
     "gearbox_a": {
+      "label": "A 轴 齿轮箱",
       "group": "电机与传动",
       "parent": "wheel",
       "origin": [
@@ -146,6 +155,7 @@
       ]
     },
     "wheel_a_l": {
+      "label": "A 轴 左侧 车轮",
       "group": "轮对",
       "parent": "wheel",
       "origin": [
@@ -165,6 +175,7 @@
       ]
     },
     "axlebox_a_l": {
+      "label": "A 轴 左侧 轴箱",
       "group": "轴箱",
       "parent": "wheel",
       "origin": [
@@ -179,6 +190,7 @@
       ]
     },
     "spring_seat_lower_a_l": {
+      "label": "A 轴 左侧 下弹簧座",
       "group": "一系悬挂",
       "parent": "wheel",
       "origin": [
@@ -193,6 +205,7 @@
       ]
     },
     "spring_seat_upper_a_l": {
+      "label": "A 轴 左侧 上弹簧座",
       "group": "一系悬挂",
       "parent": "frame",
       "origin": [
@@ -207,6 +220,7 @@
       ]
     },
     "disc_a_l": {
+      "label": "A 轴 左侧 制动盘",
       "group": "制动装置",
       "parent": "wheel",
       "origin": [
@@ -226,6 +240,7 @@
       ]
     },
     "caliper_a_l": {
+      "label": "A 轴 左侧 制动卡钳",
       "group": "制动装置",
       "parent": "wheel",
       "origin": [
@@ -240,6 +255,7 @@
       ]
     },
     "wheel_a_r": {
+      "label": "A 轴 右侧 车轮",
       "group": "轮对",
       "parent": "wheel",
       "origin": [
@@ -259,6 +275,7 @@
       ]
     },
     "axlebox_a_r": {
+      "label": "A 轴 右侧 轴箱",
       "group": "轴箱",
       "parent": "wheel",
       "origin": [
@@ -273,6 +290,7 @@
       ]
     },
     "spring_seat_lower_a_r": {
+      "label": "A 轴 右侧 下弹簧座",
       "group": "一系悬挂",
       "parent": "wheel",
       "origin": [
@@ -287,6 +305,7 @@
       ]
     },
     "spring_seat_upper_a_r": {
+      "label": "A 轴 右侧 上弹簧座",
       "group": "一系悬挂",
       "parent": "frame",
       "origin": [
@@ -301,6 +320,7 @@
       ]
     },
     "disc_a_r": {
+      "label": "A 轴 右侧 制动盘",
       "group": "制动装置",
       "parent": "wheel",
       "origin": [
@@ -320,6 +340,7 @@
       ]
     },
     "caliper_a_r": {
+      "label": "A 轴 右侧 制动卡钳",
       "group": "制动装置",
       "parent": "wheel",
       "origin": [
@@ -334,6 +355,7 @@
       ]
     },
     "axle_b": {
+      "label": "B 轴 车轴",
       "group": "轮对",
       "parent": "wheel",
       "origin": [
@@ -353,6 +375,7 @@
       ]
     },
     "motor_b": {
+      "label": "B 轴 牵引电机",
       "group": "电机与传动",
       "parent": "frame",
       "origin": [
@@ -367,6 +390,7 @@
       ]
     },
     "gearbox_b": {
+      "label": "B 轴 齿轮箱",
       "group": "电机与传动",
       "parent": "wheel",
       "origin": [
@@ -381,6 +405,7 @@
       ]
     },
     "wheel_b_l": {
+      "label": "B 轴 左侧 车轮",
       "group": "轮对",
       "parent": "wheel",
       "origin": [
@@ -400,6 +425,7 @@
       ]
     },
     "axlebox_b_l": {
+      "label": "B 轴 左侧 轴箱",
       "group": "轴箱",
       "parent": "wheel",
       "origin": [
@@ -414,6 +440,7 @@
       ]
     },
     "spring_seat_lower_b_l": {
+      "label": "B 轴 左侧 下弹簧座",
       "group": "一系悬挂",
       "parent": "wheel",
       "origin": [
@@ -428,6 +455,7 @@
       ]
     },
     "spring_seat_upper_b_l": {
+      "label": "B 轴 左侧 上弹簧座",
       "group": "一系悬挂",
       "parent": "frame",
       "origin": [
@@ -442,6 +470,7 @@
       ]
     },
     "disc_b_l": {
+      "label": "B 轴 左侧 制动盘",
       "group": "制动装置",
       "parent": "wheel",
       "origin": [
@@ -461,6 +490,7 @@
       ]
     },
     "caliper_b_l": {
+      "label": "B 轴 左侧 制动卡钳",
       "group": "制动装置",
       "parent": "wheel",
       "origin": [
@@ -475,6 +505,7 @@
       ]
     },
     "wheel_b_r": {
+      "label": "B 轴 右侧 车轮",
       "group": "轮对",
       "parent": "wheel",
       "origin": [
@@ -494,6 +525,7 @@
       ]
     },
     "axlebox_b_r": {
+      "label": "B 轴 右侧 轴箱",
       "group": "轴箱",
       "parent": "wheel",
       "origin": [
@@ -508,6 +540,7 @@
       ]
     },
     "spring_seat_lower_b_r": {
+      "label": "B 轴 右侧 下弹簧座",
       "group": "一系悬挂",
       "parent": "wheel",
       "origin": [
@@ -522,6 +555,7 @@
       ]
     },
     "spring_seat_upper_b_r": {
+      "label": "B 轴 右侧 上弹簧座",
       "group": "一系悬挂",
       "parent": "frame",
       "origin": [
@@ -536,6 +570,7 @@
       ]
     },
     "disc_b_r": {
+      "label": "B 轴 右侧 制动盘",
       "group": "制动装置",
       "parent": "wheel",
       "origin": [
@@ -555,6 +590,7 @@
       ]
     },
     "caliper_b_r": {
+      "label": "B 轴 右侧 制动卡钳",
       "group": "制动装置",
       "parent": "wheel",
       "origin": [
@@ -569,6 +605,7 @@
       ]
     },
     "coupling_a": {
+      "label": "A 轴 传动连接",
       "group": "电机与传动",
       "parent": "links",
       "origin": [
@@ -584,6 +621,7 @@
       "link": 0
     },
     "coil_a_l": {
+      "label": "A 轴 左侧 一系螺旋弹簧",
       "group": "一系悬挂",
       "parent": "links",
       "origin": [
@@ -599,6 +637,7 @@
       "link": 1
     },
     "damper_a_l": {
+      "label": "A 轴 左侧 减振器",
       "group": "一系悬挂",
       "parent": "links",
       "origin": [
@@ -614,6 +653,7 @@
       "link": 2
     },
     "guide_a_l": {
+      "label": "A 轴 左侧 导向件",
       "group": "一系悬挂",
       "parent": "links",
       "origin": [
@@ -629,6 +669,7 @@
       "link": 3
     },
     "stay_a_l": {
+      "label": "A 轴 左侧 卡钳支撑",
       "group": "制动装置",
       "parent": "links",
       "origin": [
@@ -644,6 +685,7 @@
       "link": 4
     },
     "coil_a_r": {
+      "label": "A 轴 右侧 一系螺旋弹簧",
       "group": "一系悬挂",
       "parent": "links",
       "origin": [
@@ -659,6 +701,7 @@
       "link": 5
     },
     "damper_a_r": {
+      "label": "A 轴 右侧 减振器",
       "group": "一系悬挂",
       "parent": "links",
       "origin": [
@@ -674,6 +717,7 @@
       "link": 6
     },
     "guide_a_r": {
+      "label": "A 轴 右侧 导向件",
       "group": "一系悬挂",
       "parent": "links",
       "origin": [
@@ -689,6 +733,7 @@
       "link": 7
     },
     "stay_a_r": {
+      "label": "A 轴 右侧 卡钳支撑",
       "group": "制动装置",
       "parent": "links",
       "origin": [
@@ -704,6 +749,7 @@
       "link": 8
     },
     "coupling_b": {
+      "label": "B 轴 传动连接",
       "group": "电机与传动",
       "parent": "links",
       "origin": [
@@ -719,6 +765,7 @@
       "link": 9
     },
     "coil_b_l": {
+      "label": "B 轴 左侧 一系螺旋弹簧",
       "group": "一系悬挂",
       "parent": "links",
       "origin": [
@@ -734,6 +781,7 @@
       "link": 10
     },
     "damper_b_l": {
+      "label": "B 轴 左侧 减振器",
       "group": "一系悬挂",
       "parent": "links",
       "origin": [
@@ -749,6 +797,7 @@
       "link": 11
     },
     "guide_b_l": {
+      "label": "B 轴 左侧 导向件",
       "group": "一系悬挂",
       "parent": "links",
       "origin": [
@@ -764,6 +813,7 @@
       "link": 12
     },
     "stay_b_l": {
+      "label": "B 轴 左侧 卡钳支撑",
       "group": "制动装置",
       "parent": "links",
       "origin": [
@@ -779,6 +829,7 @@
       "link": 13
     },
     "coil_b_r": {
+      "label": "B 轴 右侧 一系螺旋弹簧",
       "group": "一系悬挂",
       "parent": "links",
       "origin": [
@@ -794,6 +845,7 @@
       "link": 14
     },
     "damper_b_r": {
+      "label": "B 轴 右侧 减振器",
       "group": "一系悬挂",
       "parent": "links",
       "origin": [
@@ -809,6 +861,7 @@
       "link": 15
     },
     "guide_b_r": {
+      "label": "B 轴 右侧 导向件",
       "group": "一系悬挂",
       "parent": "links",
       "origin": [
@@ -824,6 +877,7 @@
       "link": 16
     },
     "stay_b_r": {
+      "label": "B 轴 右侧 卡钳支撑",
       "group": "制动装置",
       "parent": "links",
       "origin": [

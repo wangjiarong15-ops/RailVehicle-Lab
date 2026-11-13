@@ -150,12 +150,15 @@ export function createAssembly(scene, data, material, detailed) {
       }
       for (const mesh of objects) {
         const {part, tone, id, original} = mesh.userData;
-        mesh.visible = visible.has(part) && !args.hidden?.has(id);
+        mesh.visible = visible.has(part) && !args.hidden?.has(id) && (!args.isolated || args.isolated === id);
         const finish = highlight.has(part) ? "alert" : part === selected || id && id === selected ? "focus" : null;
         const surface = !finish ? original : tone === null ? material[finish] : material[finish][tone];
         mesh.material = surface;
       }
-      for (const {node, part, id} of links) node.visible = (id || !spread) && visible.has(part) && !args.hidden?.has(id);
+      for (const {node, part, id} of links) {
+        node.visible = (id || !spread) && visible.has(part) && !args.hidden?.has(id) &&
+          (!args.isolated || args.isolated === id);
+      }
     },
     pose(phase, lateral, vertical, yaw) {
       frame.position.set(0, lateral, vertical);

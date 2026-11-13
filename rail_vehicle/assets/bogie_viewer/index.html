@@ -16,15 +16,28 @@
         <option>俯视图</option><option>底视图</option>
       </select>
       <button id="focus" disabled type="button">聚焦零件</button>
+      <button id="browse-parts" type="button" aria-controls="part-panel" aria-expanded="false" hidden>零件清单</button>
       <button id="hide" disabled type="button">隐藏零件</button>
       <button id="restore" disabled type="button">恢复隐藏</button>
       <button id="reset" disabled type="button">恢复视角</button>
     </header>
-    <div id="stage">
-      <div id="surface"></div>
-      <div id="labels" aria-hidden="true"></div>
-      <div id="axes" aria-hidden="true"><b>X</b> 纵向 <b>Y</b> 横向 <b>Z</b> 垂向</div>
-      <p id="message" role="status">正在载入本地三维模型…</p>
+    <div id="workspace">
+      <div id="stage">
+        <div id="surface"></div>
+        <div id="labels" aria-hidden="true"></div>
+        <div id="axes" aria-hidden="true"><b>X</b> 纵向 <b>Y</b> 横向 <b>Z</b> 垂向</div>
+        <p id="message" role="status">正在载入本地三维模型…</p>
+      </div>
+      <aside id="part-panel" aria-label="零件清单" hidden>
+        <label for="part-query">查找零件</label>
+        <input id="part-query" type="search" placeholder="名称、类别或编号" autocomplete="off">
+        <p id="part-count" role="status"></p>
+        <div id="part-results"></div>
+        <div class="part-actions">
+          <button id="show-part" type="button" disabled>恢复所选</button>
+          <button id="isolate-part" type="button" aria-pressed="false" disabled>仅看所选</button>
+        </div>
+      </aside>
     </div>
     <footer>
       <span id="inspection" aria-live="polite">点击零件查看名称、作用和安装位置</span>

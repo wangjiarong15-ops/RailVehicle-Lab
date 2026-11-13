@@ -94,6 +94,44 @@ async function audit(browser, width, height, complete = true) {
     await frame.getByRole("button", {name: "恢复隐藏"}).click();
     await until(data, (d) => d.hidden === "0" && d.visibleComponents === initial.visibleComponents, "Part was not restored");
 
+    const partsButton = frame.getByRole("button", {name: "零件清单"});
+    const search = frame.getByRole("searchbox", {name: "查找零件"});
+    const disc = frame.locator('[data-part="disc_a_l"]');
+    await partsButton.click();
+    await search.fill("无匹配测试");
+    await frame.getByText("没有匹配的零件", {exact: true}).waitFor();
+    await search.fill("制动盘");
+    assert.equal(await frame.locator(".part-row:visible").count(), 4);
+    await search.fill("disc_a_l");
+    assert.equal(await frame.locator(".part-row:visible").count(), 1);
+    await disc.click();
+    await until(data, (d) => d.selected === "disc_a_l", "Search selection did not select the GLB part");
+    assert((await frame.locator("#inspection").textContent()).includes("A 轴 左侧 制动盘"));
+    await frame.getByRole("button", {name: "隐藏零件"}).click();
+    await disc.getByText("已隐藏").waitFor();
+    await frame.getByRole("button", {name: "恢复所选"}).click();
+    await until(data, (d) => d.selected === "disc_a_l" && d.hidden === "0", "Selected part did not restore");
+    await frame.getByRole("button", {name: "仅看所选"}).click();
+    await until(data, (d) => d.isolated === "disc_a_l" && d.visibleComponents === "1",
+      "Isolating a disc did not leave exactly one part");
+    await screenshot(page, "bogie-glb-part-inspector");
+    await frame.getByRole("button", {name: "退出隔离"}).click();
+    await until(data, (d) => d.isolated === "" && d.visibleComponents === initial.visibleComponents,
+      "Leaving isolation did not restore the assembly");
+    await search.fill("轨道参照");
+    await frame.locator('[data-part="reference_track"]').click();
+    await frame.getByRole("button", {name: "仅看所选"}).click();
+    await until(data, (d) => d.isolated === "reference_track", "Reference track was not isolated");
+    await frame.getByRole("combobox", {name: "视窗视角"}).selectOption("底视图");
+    await until(data, (d) => d.view === "底视图" && d.isolated === "" &&
+      Number(d.visibleComponents) === Number(initial.visibleComponents) - 1,
+    "Changing to an underside view should release isolation and hide the reference track");
+    await frame.getByRole("combobox", {name: "视窗视角"}).selectOption("整体视图");
+    await until(data, (d) => d.view === "整体视图" && d.visibleComponents === initial.visibleComponents,
+      "Return to the main view did not restore the reference track");
+    await search.press("Escape");
+    await frame.getByRole("complementary", {name: "零件清单"}).waitFor({state: "hidden"});
+
     await page.getByText("视角与部件", {exact: true}).click();
     for (const view of ["侧视图", "正视图", "俯视图", "底视图", "整体视图"]) {
       await frame.getByRole("combobox", {name: "视窗视角"}).selectOption(view);
@@ -214,6 +252,7 @@ async function checkFallback(browser, response) {
     const root = frame.locator("#workbench[data-status=ready][data-model=procedural][data-frames]");
     await root.waitFor();
     assert.equal(await root.getAttribute("data-parts"), "7");
+    assert.equal(await frame.locator("#browse-parts").isVisible(), false);
     await page.locator(".st-key-bogie_play button").click();
     await frame.locator('#workbench[data-playing="true"]').waitFor();
     await until(() => root.getAttribute("data-phase"), (phase) => Math.abs(Number(phase)) > .02,
