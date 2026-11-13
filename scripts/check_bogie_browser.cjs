@@ -1,7 +1,7 @@
 // Run against an already running offline demo server:
 //   node scripts/check_bogie_browser.cjs http://127.0.0.1:8501 screenshots
 const assert = require("node:assert/strict");
-const {mkdir} = require("node:fs/promises");
+const {mkdir, readFile} = require("node:fs/promises");
 const {join} = require("node:path");
 const {chromium} = require(process.env.RAIL_PLAYWRIGHT_MODULE || "playwright");
 
@@ -37,6 +37,45 @@ async function until(read, check, reason) {
 }
 async function screenshot(page, name) {
   if (output) await page.screenshot({path: join(output, name.replace("webgl", "glb") + ".png")});
+}
+
+async function checkInspectionExport(page, frame, canvas) {
+  const size = await canvas.evaluate((element) => ({width: element.width, height: element.height}));
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    frame.getByRole("button", {name: "导出检查图", exact: true}).click(),
+  ]);
+  assert.equal(download.suggestedFilename(), "railvehicle-bogie-inspection.png");
+  const png = await readFile(await download.path());
+  assert.deepEqual(png.subarray(0, 8), Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  assert.equal(png.toString("ascii", 12, 16), "IHDR");
+  assert(png.readUInt32BE(16) >= size.width, "Export shrank the model horizontally");
+  assert(png.readUInt32BE(20) > size.height, "Export did not leave space for inspection details");
+
+  const modelPixels = await page.evaluate(async (base64) => {
+    const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
+    const bitmap = await createImageBitmap(new Blob([bytes], {type: "image/png"}));
+    try {
+      const sample = document.createElement("canvas");
+      sample.width = sample.height = 80;
+      const context = sample.getContext("2d");
+      context.drawImage(bitmap, 0, 0, 80, 80);
+      const {data} = context.getImageData(12, 24, 56, 32);
+      let count = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        // The selected brake disc is highlighted blue. The dark background and
+        // surrounding text do not have enough blue saturation to pass this test.
+        if (data[i + 2] > 100 && data[i + 2] - data[i] > 35 && data[i + 3] === 255) count++;
+      }
+      return count;
+    } finally {
+      bitmap.close();
+    }
+  }, png.toString("base64"));
+  assert(modelPixels > 80, "The exported PNG does not contain the highlighted model");
+  await until(() => frame.locator("#export-status").textContent(),
+    (status) => /已导出|导出成功|已下载/.test(status), "The workbench did not report a successful export");
+  if (output) await download.saveAs(join(output, "railvehicle-bogie-inspection.png"));
 }
 
 async function checkSection(page, frame, canvas, data) {
@@ -191,6 +230,7 @@ async function audit(browser, width, height, complete = true) {
     assert.equal(measured.selected, "disc_a_l", "Measurement clicks changed the inspected part");
     assert.match(await measurementStatus.textContent(), /m|米/);
     await screenshot(page, "bogie-glb-measurement");
+    await checkInspectionExport(page, frame, canvas);
     await clearPoints.click();
     await until(data, (d) => d.measurePoints === "0" && !d.measureDistance, "Clear did not remove measurement points");
     await measureAt(.40, .50);

@@ -9,6 +9,7 @@ import {playbackBatches} from "./playback-batches.js";
 import {partBrowser} from "./part-browser.js";
 import {measurement} from "./measurement.js";
 import {sectionPlane} from "./section-plane.js";
+import {exportInspectionPng} from "./inspection-export.js";
 
 export async function mount() {
   const [response, detailed] = await Promise.all([fetch("./assembly.json"), loadDetailedModel()]);
@@ -25,6 +26,8 @@ export async function mount() {
   const measurementPanel = document.querySelector("#measurement-panel");
   const measurementStatus = document.querySelector("#measurement-status");
   const clearMeasurementControl = document.querySelector("#clear-measurement");
+  const exportControl = document.querySelector("#export-inspection");
+  const exportStatus = document.querySelector("#export-status");
   const modelStatus = document.querySelector("#model-status");
   const renderer = new THREE.WebGLRenderer({antialias: true, alpha: true, powerPreference: "high-performance"});
   const gl = renderer.getContext();
@@ -59,7 +62,50 @@ export async function mount() {
   const gauge = measurement(scene, invalidate);
   let measuring = false;
   let settling = false;
+  let exportPending = false;
+  let exporting = false;
   const inspectionText = document.querySelector("#inspection");
+  function setExportStatus(text) {
+    exportStatus.textContent = text;
+    exportStatus.hidden = !text;
+  }
+  function updateExportButton() {
+    exportControl.disabled = !args || args.playing || settling || exportPending || exporting;
+  }
+  function requestExport() {
+    if (exportControl.disabled) return;
+    exportPending = true;
+    setExportStatus("");
+    updateExportButton();
+    invalidate();
+  }
+  function partName(id) {
+    return detailed?.parts.get(id)?.spec.label ?? id ?? "";
+  }
+  function saveInspection() {
+    exportPending = false;
+    exporting = true;
+    updateExportButton();
+    const part = partName(selection);
+    const isolatedName = partName(isolated);
+    const metadata = {
+      model: modelStatus.textContent,
+      view: args.view + (args.spread ? " · 拆解 " + Math.round(args.spread * 100) + "%" : ""),
+      part: [part, isolatedName ? "仅显示 " + isolatedName : ""].filter(Boolean).join(" · "),
+      section: section.enabled ? document.querySelector("#section-value").textContent : "",
+      measurement: gauge.getState().count === 2 ? measurementStatus.textContent : "",
+    };
+    // Read the framebuffer in this render callback before WebGL clears it.
+    exportInspectionPng(canvas, metadata).then(() => {
+      if (alive) setExportStatus("已导出 PNG");
+    }).catch(() => {
+      if (alive) setExportStatus("导出失败，请重试");
+    }).finally(() => {
+      exporting = false;
+      if (alive) updateExportButton();
+    });
+  }
+  exportControl.addEventListener("click", requestExport);
   function updateMeasurement() {
     const {count, distance, delta} = gauge.getState();
     workbench.dataset.measuring = String(measuring);
@@ -181,6 +227,7 @@ export async function mount() {
     if (settling !== pose.settling) {
       settling = pose.settling;
       updateMeasurement();
+      updateExportButton();
     }
     rig.controls.update();
     if (!(dirty || pose.running || pose.settling)) return;
@@ -194,6 +241,7 @@ export async function mount() {
       shadowDirty = false;
     }
     renderer.render(scene, rig.camera);
+    if (exportPending && !args.playing && !settling) saveInspection();
     picker.labels(args, width, height);
     dirty = false;
     // Lightweight diagnostics for checking interaction and renderer performance.
@@ -221,6 +269,7 @@ export async function mount() {
     restoreControl.removeEventListener("click", restoreHidden);
     measureControl.removeEventListener("click", toggleMeasurement);
     clearMeasurementControl.removeEventListener("click", clearMeasurement);
+    exportControl.removeEventListener("click", requestExport);
     rig.controls.dispose();
     picker.dispose();
     browser?.dispose();
@@ -264,6 +313,11 @@ export async function mount() {
     const previous = args;
     const view = localView || next.view;
     args = {...next, view, rails: next.rails && view !== "底视图"};
+    if (args.playing) {
+      exportPending = false;
+      setExportStatus("");
+    }
+    updateExportButton();
     if (args.playing || args.spread) measuring = false;
     if (previous && (previous.phase !== args.phase || previous.mode !== args.mode ||
         previous.rails !== args.rails || previous.spread !== args.spread ||

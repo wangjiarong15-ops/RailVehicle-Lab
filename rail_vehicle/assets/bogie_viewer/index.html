@@ -21,6 +21,7 @@
       <button id="restore" disabled type="button">恢复隐藏</button>
       <button id="measure" type="button" aria-pressed="false" disabled>两点测距</button>
       <button id="section-toggle" type="button" aria-controls="section-controls" aria-pressed="false" disabled>剖切视图</button>
+      <button id="export-inspection" type="button" aria-describedby="export-status" disabled>导出检查图</button>
       <button id="reset" disabled type="button">恢复视角</button>
       <div id="section-controls" hidden>
         <select id="section-axis" aria-label="剖切轴">
@@ -55,6 +56,7 @@
         <span id="measurement-status" role="status"></span>
         <button id="clear-measurement" type="button" disabled>清除测点</button>
       </div>
+      <span id="export-status" role="status" hidden></span>
       <span class="legend"><i></i> 检查 <i></i> 异常</span>
     </footer>
   </main>

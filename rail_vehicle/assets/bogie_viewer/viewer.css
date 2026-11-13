@@ -30,6 +30,7 @@ canvas:active { cursor: grabbing; }
   text-align: center; color: #cfe0f2; background: #142336; padding: 12px; border-radius: 6px; }
 footer { border-top: 1px solid #34485e; justify-content: space-between; color: #c3d5e6; }
 #inspection { min-width: 0; }
+#export-status { color: #a6d9ef; font-size: 11px; }
 #measure[aria-pressed="true"] { border-color: #7ee6c3; background: #1e4d49; }
 #section-toggle[aria-pressed="true"], #section-flip[aria-pressed="true"] {
   border-color: #82bbf6; background: #244b75;
