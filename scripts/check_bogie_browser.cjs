@@ -138,10 +138,29 @@ async function audit(browser, width, height, complete = true) {
       if (mode !== "正常运行") await until(data, (d) =>
         d.pose.split(",").some((v) => Math.abs(Number(v)) > .01), "Model did not move in the chosen scene");
       if (scenario === "正常运行") {
+        if (running.renderer === "software") {
+          assert(Number(running.calls) < Number(initial.calls) / 2, "Software playback did not batch the model");
+          assert.equal(running.triangles, initial.triangles, "Software playback dropped geometry");
+          const playingBox = await canvas.boundingBox();
+          for (const [x, y] of [[.28,.57],[.37,.57],[.41,.52],[.55,.45],[.61,.60]]) {
+            await canvas.click({position: {x: playingBox.width * x, y: playingBox.height * y}});
+            if ((await data()).selected) break;
+          }
+          const picked = await data();
+          assert(picked.selected && picked.playing === "true", "Part could not be picked during batched playback");
+          await frame.getByRole("button", {name: "隐藏零件"}).click();
+          await until(data, (d) => d.playing === "true" && d.hidden === "1" &&
+            Number(d.visibleComponents) === Number(initial.visibleComponents) - 1,
+          "Batch did not reflect a hidden part during playback");
+          await frame.getByRole("button", {name: "恢复隐藏"}).click();
+          await until(data, (d) => d.playing === "true" && d.hidden === "0" &&
+            d.visibleComponents === initial.visibleComponents, "Batch did not restore the hidden part");
+        }
+        const beforeSample = await data();
         const started = Date.now();
         await new Promise((resolve) => setTimeout(resolve, 3200));
         const later = await data();
-        const fps = (Number(later.frames) - Number(running.frames)) * 1000 / (Date.now() - started);
+        const fps = (Number(later.frames) - Number(beforeSample.frames)) * 1000 / (Date.now() - started);
         assert(fps > 5, "Browser stopped drawing during continuous playback");
         console.log("Normal playback", JSON.stringify({width, height, fps: Math.round(fps),
           triangles: Number(later.triangles), drawCalls: Number(later.calls), renderer: later.renderer}));

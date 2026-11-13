@@ -5,6 +5,7 @@ import {inspection} from "./interaction.js";
 import {materials, studio} from "./lighting.js";
 import {motionClock} from "./motion.js";
 import {loadDetailedModel} from "./model-loader.js";
+import {playbackBatches} from "./playback-batches.js";
 
 export async function mount() {
   const [response, detailed] = await Promise.all([fetch("./assembly.json"), loadDetailedModel()]);
@@ -39,7 +40,7 @@ export async function mount() {
   const finishes = materials();
   const assembly = createAssembly(scene, data, finishes, detailed);
   const hidden = new Set();
-  const playbackMaterials = new Map();
+  const batches = software && detailed ? playbackBatches(assembly, detailed) : null;
   modelStatus.textContent = detailed ? "Blender 精细模型" : "兼容几何 · GLB 不可用";
   const clock = motionClock();
   let args, serverArgs, localView, selection = null, appearance = "", angle = 0, width = 0, height = 0;
@@ -48,19 +49,11 @@ export async function mount() {
   const invalidate = () => { dirty = true; };
   const rig = cameraRig(canvas, invalidate);
   const reset = () => { if (args) rig.reset(args.view, args); };
-  function resolveMaterial(material) {
-    if (!(software && detailed && args.playing)) return material;
-    if (!playbackMaterials.has(material)) {
-      // CPU renderers get lighter shading during playback; restore PBR on pause.
-      const simplified = new THREE.MeshLambertMaterial({color: material.color, side: material.side});
-      playbackMaterials.set(material, simplified);
-    }
-    return playbackMaterials.get(material);
-  }
   function select(part) {
     selection = part;
     picker.select(part);
-    assembly.appearance({...args, hidden}, part, resolveMaterial);
+    assembly.appearance({...args, hidden}, part);
+    batches?.update(args.playing && !args.spread);
     visibleComponents = new Set(assembly.objects.filter((mesh) => mesh.visible && mesh.parent.visible)
       .map((mesh) => mesh.userData.id ?? mesh.userData.part)).size;
     workbench.dataset.selected = part ?? "";
@@ -145,8 +138,8 @@ export async function mount() {
     restoreControl.removeEventListener("click", restoreHidden);
     rig.controls.dispose();
     picker.dispose();
+    batches?.dispose();
     const disposable = new Set(Object.values(finishes).flat());
-    for (const item of playbackMaterials.values()) disposable.add(item);
     scene.traverse(({geometry, material}) => {
       if (geometry) disposable.add(geometry);
       for (const item of [material].flat()) if (item) disposable.add(item);
@@ -184,8 +177,9 @@ export async function mount() {
     const view = localView || next.view;
     args = {...next, view, rails: next.rails && view !== "底视图"};
     if (software && previous?.playing !== args.playing) {
-      const playbackScale = detailed ? .48 : .66;
+      const playbackScale = detailed ? .60 : .66;
       renderer.setPixelRatio(pixelRatio * (args.playing ? playbackScale : 1));
+      if (batches) renderer.shadowMap.enabled = !args.playing;
     }
     const reframe = !previous || previous.view !== args.view || previous.revision !== args.revision
       || Boolean(previous.spread) !== Boolean(args.spread) || previous.rails !== args.rails;

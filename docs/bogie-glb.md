@@ -23,4 +23,4 @@ python scripts/validate_bogie_glb.py
 
 更换网格时保留 `rail_bogie` 根节点、四个父层、各部件的稳定名称和自定义属性、原点及静置坐标。在 Blender 导出面板中使用 GLB、+Y Up、Custom Properties 和法线，关闭动画和 Draco 压缩。校验脚本会检查结构、坐标、内嵌资源和网格预算。前端通过 [Three.js GLTFLoader](https://threejs.org/docs/pages/GLTFLoader.html) 加载资产并检查装配层级和零件原点。
 
-检测到软件 WebGL 时，播放过程中会降低绘制分辨率并简化 GLB 材质，暂停后恢复清晰度与 PBR。硬件 WebGL 保留 PBR 播放。
+检测到软件 WebGL 时，播放过程中按构架、走行机构、轮轴及悬挂连杆合批绘制，使用简化光照并降低绘制分辨率。单件拾取和隐藏仍使用原装配节点。暂停后恢复完整分辨率、阴影和 PBR。硬件 WebGL 保留 PBR 播放。

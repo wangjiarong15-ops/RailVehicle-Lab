@@ -9,6 +9,7 @@ const anchors = {
 
 export function inspection(canvas, descriptions, assembly, rig, onSelect, reset) {
   const ray = new THREE.Raycaster(), cursor = new THREE.Vector2();
+  ray.layers.enable(1); // Source meshes remain pickable during batched playback.
   const focus = document.querySelector("#focus");
   const resetButton = document.querySelector("#reset");
   const inspectionText = document.querySelector("#inspection");
