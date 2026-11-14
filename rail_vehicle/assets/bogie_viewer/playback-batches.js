@@ -8,7 +8,7 @@ export function playbackBatches(assembly, model) {
   const axles = new Map();
   const local = new THREE.Matrix4();
   assembly.pose(0, 0, 0, 0);
-  for (const [id, {spec, meshes}] of model.parts) {
+  for (const [id, {spec, meshes, damperRod, rodMeshes}] of model.parts) {
     let anchor = assembly.partNodes.get(id).parent;
     if (spec.spin) {
       const x = spec.spin[0];
@@ -17,12 +17,14 @@ export function playbackBatches(assembly, model) {
     } else if (spec.parent !== "links") {
       anchor = assembly.layers[spec.parent];
     }
-    anchor.updateWorldMatrix(true, false);
-    if (!groups.has(anchor)) groups.set(anchor, {sources: [], mesh: null});
-    const batch = groups.get(anchor);
     for (const mesh of meshes) {
+      // The piston slides independently of the cylinder once the batch is built.
+      const transform = rodMeshes?.has(mesh) ? damperRod : anchor;
+      transform.updateWorldMatrix(true, false);
+      if (!groups.has(transform)) groups.set(transform, {sources: [], mesh: null});
+      const batch = groups.get(transform);
       mesh.updateWorldMatrix(true, false);
-      local.copy(anchor.matrixWorld).invert().multiply(mesh.matrixWorld);
+      local.copy(transform.matrixWorld).invert().multiply(mesh.matrixWorld);
       const original = mesh.geometry;
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute("position", original.getAttribute("position").clone());

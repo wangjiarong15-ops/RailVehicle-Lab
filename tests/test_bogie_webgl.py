@@ -40,7 +40,7 @@ def test_blender_glb_matches_offline_contract():
     contract = model_contract()
     assert json.loads((ASSETS / "model_contract.json").read_text(encoding="utf-8")) == json.loads(json.dumps(contract))
     counts = validate(ASSETS / "bogie.glb")
-    assert counts["parts"] == 54
+    assert (counts["parts"], counts["meshes"]) == (54, 58)
     parts = contract["parts"]
     assert {p["link"] for p in parts.values() if "link" in p} == set(range(len(tuple(connection_anchors()))))
     for axle in ("a", "b"):
@@ -58,13 +58,15 @@ def test_truncated_glb_is_rejected(tmp_path):
         validate(broken)
 
 
-def _rewrite_part_vertices(target, part_name, axis, change):
+def _rewrite_part_vertices(target, part_name, axis, change, *, segment=None):
     source = ASSETS / "bogie.glb"
     doc, binary, _ = read_glb(source)
     raw = bytearray(source.read_bytes())
     binary_start = len(raw) - len(binary)
     part = next(node for node in doc["nodes"] if node["name"] == part_name)
-    mesh = doc["meshes"][doc["nodes"][part["children"][0]]["mesh"]]
+    surface = next(doc["nodes"][i] for i in part["children"]
+                   if doc["nodes"][i].get("extras", {}).get("rail_damper_segment") == segment)
+    mesh = doc["meshes"][surface["mesh"]]
     point = Struct("<fff")
     for index in {primitive["attributes"]["POSITION"] for primitive in mesh["primitives"]}:
         accessor = doc["accessors"][index]
@@ -99,4 +101,16 @@ def test_glb_detects_frame_intrusion_only_in_a_moving_pose(tmp_path, upper, lowe
     broken = tmp_path / f"{upper}.glb"
     _rewrite_part_vertices(broken, upper, 1, lambda height: height - .12)
     with pytest.raises(ValueError, match=f"Animation clearance too small: {upper}/{lower}, 垂向振动,"):
+        validate(broken)
+
+
+@pytest.mark.parametrize(("segment", "axis", "change"), [
+    ("rod", 0, lambda value: value + .007),  # Off-axis but still reaches both axial positions.
+    # A raised floor clears the nominal rod tip at 113 mm but meets it during compression.
+    ("body", 2, lambda value: -.085 if abs(value + .007) < .001 else value),
+])
+def test_glb_checks_sliding_damper_against_actual_bore(tmp_path, segment, axis, change):
+    broken = tmp_path / f"damper-{segment}.glb"
+    _rewrite_part_vertices(broken, "damper_a_l", axis, change, segment=segment)
+    with pytest.raises(ValueError, match="Damper rod intersects its bore or bottom stop: damper_a_l"):
         validate(broken)

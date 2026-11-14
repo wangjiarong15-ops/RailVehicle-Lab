@@ -10,7 +10,9 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from rail_vehicle.bogie_geometry import WHEEL_POSE_GAIN, motion
+from rail_vehicle.bogie_geometry import (
+    DAMPER_BODY_RATIO, DAMPER_ROD_RATIO, WHEEL_POSE_GAIN, connection_anchors, motion,
+)
 from rail_vehicle.bogie_model_spec import model_contract
 from rail_vehicle.bogie_replay import TEACHING
 
@@ -20,6 +22,7 @@ MAX_TRIANGLES = 48_000
 CONTACT_TOLERANCE_M = .001
 ANIMATION_CLEARANCE_M = .002
 ANIMATION_SAMPLES = 16
+DAMPER_INSERTION_M = .010
 TRANSFORM_KEYS = {"translation", "scale", "rotation", "matrix"}
 
 
@@ -57,18 +60,21 @@ def _read_geometry_accessor(doc, binary, index, components):
     return [record.unpack_from(binary, offset + i * stride) for i in range(count)]
 
 
-def _rest_triangles(doc, binary, part, surface):
-    require(not TRANSFORM_KEYS.intersection(surface), f"Surface must align with part axes: {part['name']}")
-    x, up, depth = part.get("translation", (0, 0, 0))
+def _local_triangles(doc, binary, surface):
     for primitive in doc["meshes"][surface["mesh"]]["primitives"]:
-        positions = [(x + px, -depth - pz, up + py) for px, py, pz in _read_geometry_accessor(
-            doc, binary, primitive["attributes"]["POSITION"], {5126: "fff"})]
-        require(all(isfinite(v) for point in positions for v in point), f"Non-finite vertex: {part['name']}")
+        positions = _read_geometry_accessor(doc, binary, primitive["attributes"]["POSITION"], {5126: "fff"})
+        require(all(isfinite(v) for point in positions for v in point), f"Non-finite vertex: {surface['name']}")
         indices = [item[0] for item in _read_geometry_accessor(
             doc, binary, primitive["indices"], {5121: "B", 5123: "H", 5125: "I"})]
-        require(max(indices) < len(positions), f"Index outside mesh: {part['name']}")
+        require(max(indices) < len(positions), f"Index outside mesh: {surface['name']}")
         for index in range(0, len(indices), 3):
             yield tuple(positions[i] for i in indices[index:index + 3])
+
+
+def _rest_triangles(doc, binary, part, surface):
+    x, up, depth = part.get("translation", (0, 0, 0))
+    for face in _local_triangles(doc, binary, surface):
+        yield tuple((x + px, -depth - pz, up + py) for px, py, pz in face)
 
 
 def _plane_points(faces, axis, coordinate):
@@ -119,6 +125,78 @@ def _validate_wheel_track_fit(doc, binary, parts, contract):
 
 def _oriented_area(a, b, point):
     return (b[0] - a[0]) * (point[1] - a[1]) - (b[1] - a[1]) * (point[0] - a[0])
+
+
+def _rod_axis_distance(face, start):
+    """Closest radial distance from the axis to the surface above the deepest rod position."""
+    polygon = []
+    for a, b in zip(face, (*face[1:], face[0])):
+        if a[0] >= start:
+            polygon.append(a[1:])
+        if (a[0] - start) * (b[0] - start) < 0:
+            ratio = (start - a[0]) / (b[0] - a[0])
+            polygon.append(tuple(u + ratio * (v-u) for u, v in zip(a[1:], b[1:])))
+    if not polygon:
+        return float("inf")
+    edges = tuple(zip(polygon, (*polygon[1:], polygon[0])))
+    signs = [_oriented_area(a, b, (0, 0)) for a, b in edges]
+    if abs(sum(signs)) > 1e-12 and (min(signs) >= 0 or max(signs) <= 0):
+        return 0.  # A face across the bore can cover the axis without any vertex at its centre.
+    closest = float("inf")
+    for (x, y), (u, v) in edges:
+        dx, dy = u-x, v-y
+        norm2 = dx*dx + dy*dy
+        t = max(0., min(1., -(x*dx + y*dy) / norm2)) if norm2 else 0.
+        closest = min(closest, hypot(x + t*dx, y + t*dy))
+    return closest
+
+
+def _joint_position(point, lateral, vertical, yaw):
+    x, y, z = point
+    cy, sy = cos(yaw), sin(yaw)
+    return x * cy - y * sy, x * sy + y * cy + lateral, z + vertical
+
+
+def _validate_dampers(doc, binary, dampers, contract):
+    """Check the two rigid surfaces over sampled illustration poses, not physical damper travel."""
+    anchors = tuple(connection_anchors())
+    offsets = tuple(motion(mode, step * tau / ANIMATION_SAMPLES)
+                    for mode in dict.fromkeys(scene.mode for scene in TEACHING.values())
+                    for step in range(ANIMATION_SAMPLES))
+    for name, (part, segments) in dampers.items():
+        _, kind, a, b = anchors[contract["parts"][name]["link"]]
+        rest = dist(a, b)
+        direction = tuple((end-start) / rest for start, end in zip(a, b))
+        x, y, z, w = part.get("rotation", (0, 0, 0, 1))
+        # glTF axes are Y up; the local sliding axis (+Y in Blender) is -Z here.
+        gltf_axis = (-2*(x*z + w*y), 2*(w*x - y*z), -1 + 2*(x*x + y*y))
+        require(kind == "damper" and abs(hypot(x, y, z, w) - 1.) < 1e-5 and
+                dist((gltf_axis[0], -gltf_axis[2], gltf_axis[1]), direction) < .0001,
+                f"Damper sliding axis does not connect its pivots: {name}")
+
+        def axial_triangles(segment):
+            return tuple(tuple((-pz, px, py) for px, py, pz in face)
+                         for face in _local_triangles(doc, binary, segments[segment]))
+
+        body, rod = axial_triangles("body"), axial_triangles("rod")
+        body_stations = [p[0] for triangle in body for p in triangle]
+        rod_points = [p for triangle in rod for p in triangle]
+        mouth = max(body_stations)
+        rod_tip, rod_end = min(p[0] for p in rod_points), max(p[0] for p in rod_points)
+        require(abs(min(body_stations)) <= CONTACT_TOLERANCE_M and
+                abs(mouth - rest * DAMPER_BODY_RATIO) <= CONTACT_TOLERANCE_M and
+                abs(rod_end - rest) <= CONTACT_TOLERANCE_M and
+                abs(rod_tip - rest * (1 - DAMPER_ROD_RATIO)) <= CONTACT_TOLERANCE_M,
+                f"Damper surfaces miss a nominal pivot or length: {name}")
+        tip_positions = []
+        for lateral, vertical, yaw in offsets:
+            lower = _joint_position(a, lateral * WHEEL_POSE_GAIN, 0., yaw * WHEEL_POSE_GAIN)
+            upper = _joint_position(b, lateral, vertical, yaw)
+            tip_positions.append(rod_tip + dist(lower, upper) - rest)
+        require(mouth - max(tip_positions) >= DAMPER_INSERTION_M, f"Damper rod leaves its bore: {name}")
+        radius = max(hypot(px, py) for _, px, py in rod_points)
+        clearance = min(_rod_axis_distance(face, min(tip_positions)) for face in body) - radius
+        require(clearance >= ANIMATION_CLEARANCE_M, f"Damper rod intersects its bore or bottom stop: {name}")
 
 
 @dataclass(frozen=True)
@@ -249,13 +327,14 @@ def validate(path):
     require(set(layers) == {"rail_" + layer for layer in contract["layers"]}, "Wrong assembly layers")
     visited = {root_index, *root["children"]}
     expected = contract["parts"]
-    parts, mesh_indices = {}, set()
+    parts, dampers, mesh_indices = {}, {}, set()
     for layer, node in layers.items():
         require(not TRANSFORM_KEYS.intersection(node), "Layer must use scene origin")
         for index in node["children"]:
             item = nodes[index]
             name = item["name"]
-            require(index not in visited and name in expected and name not in parts, f"Unexpected part {name}")
+            require(index not in visited and name in expected and name not in parts and name not in dampers,
+                    f"Unexpected part {name}")
             spec = expected[name]
             visited.add(index)
             require(layer == "rail_" + spec["parent"] and item.get("extras") ==
@@ -264,13 +343,26 @@ def validate(path):
             require(dist((x,-depth,up), spec["origin"]) < .0001, f"Invalid pivot: {name}")
             require(not {"matrix", "scale"}.intersection(item), f"Invalid part transform: {name}")
             require("rotation" not in item or spec["parent"] == "links", f"Rigid part must align with axes: {name}")
-            surface, = item["children"]
-            require(surface not in visited and "mesh" in nodes[surface] and not nodes[surface].get("children"),
-                    f"Invalid surface: {name}")
-            visited.add(surface)
-            parts[name] = item, nodes[surface]
-            mesh_indices.add(nodes[surface]["mesh"])
-    require(parts.keys() == expected.keys() and len(visited) == len(nodes), "Incomplete assembly")
+            is_damper = name.startswith("damper_")
+            children = item["children"]
+            require(len(children) == (2 if is_damper else 1), f"Invalid surface count: {name}")
+            surfaces = {}
+            for child in children:
+                surface = nodes[child]
+                require(child not in visited and "mesh" in surface and not surface.get("children") and
+                        not TRANSFORM_KEYS.intersection(surface), f"Invalid surface or transform: {name}")
+                visited.add(child)
+                require(surface["mesh"] not in mesh_indices, f"Shared surface mesh: {name}")
+                mesh_indices.add(surface["mesh"])
+                role = surface.get("extras", {}).get("rail_damper_segment")
+                valid_role = role in ("body", "rod") and role not in surfaces if is_damper else role is None
+                require(valid_role, f"Invalid damper surface tag: {name}")
+                surfaces[role] = surface
+            if is_damper:
+                dampers[name] = item, surfaces
+            else:
+                parts[name] = item, surfaces[None]
+    require(parts.keys() | dampers.keys() == expected.keys() and len(visited) == len(nodes), "Incomplete assembly")
     require(mesh_indices == set(range(len(doc["meshes"]))), "Orphan mesh")
     triangles = 0
     for mesh in doc["meshes"]:
@@ -288,9 +380,10 @@ def validate(path):
                     "Invalid triangle index count")
             triangles += indices["count"]//3
     require(0 < triangles <= MAX_TRIANGLES, "Model exceeds triangle budget")
+    _validate_dampers(doc, binary, dampers, contract)
     _validate_wheel_track_fit(doc, binary, parts, contract)
     _validate_animation_clearance(doc, binary, parts, contract)
-    return dict(parts=len(parts), meshes=len(mesh_indices), triangles=triangles, bytes=size)
+    return dict(parts=len(parts) + len(dampers), meshes=len(mesh_indices), triangles=triangles, bytes=size)
 
 
 if __name__ == "__main__":

@@ -58,7 +58,7 @@ export function createAssembly(scene, data, material, detailed) {
   const parents = {frame, wheel, fixed};
   const objects = [], spins = [], links = [], partNodes = new Map();
   function track(mesh, part, tone = null, id = null) {
-    mesh.userData = {part, tone, id, original: mesh.material};
+    Object.assign(mesh.userData, {part, tone, id, original: mesh.material});
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     objects.push(mesh);
@@ -120,7 +120,12 @@ export function createAssembly(scene, data, material, detailed) {
       const length = orient(node, start, end);
       node.attach(imported.node);
       partNodes.set(imported.id, imported.node);
-      links.push({node, a: start, b: end, part, id: imported.id, length, offset: new THREE.Vector3(...imported.spec.offset)});
+      const slide = imported.damperRod && ((current) => {
+        // glTF encodes Blender's local +Y link axis as -Z.
+        imported.damperRod.position.z = length - current;
+      });
+      links.push({node, a: start, b: end, part, id: imported.id, length, slide,
+        offset: new THREE.Vector3(...imported.spec.offset)});
       continue;
     }
     const add = (geo, tone) => {
@@ -128,9 +133,20 @@ export function createAssembly(scene, data, material, detailed) {
       node.add(mesh);
       return mesh;
     };
+    if (kind === "damper") {
+      const length = start.distanceTo(end);
+      const [bodyLength, rodLength] = data.damperRatios.map((ratio) => ratio * length);
+      const body = add(cylinder, 2), rod = add(cylinder, 1);
+      body.position.y = bodyLength / 2;
+      body.scale.set(.032, bodyLength, .032);
+      rod.scale.set(.019, rodLength, .019);
+      links.push({node, a: start, b: end, part, length, slide(current) {
+        rod.position.y = current - rodLength / 2;
+      }});
+      continue;
+    }
     const segments = kind === "coil" ? [[add(coil, 0), 0, 1, null]]
-      : kind === "damper" ? [[add(cylinder, 2), 0, .59, .032], [add(cylinder, 1), .57, 1, .019]]
-        : [[add(cylinder, kind === "coupling" ? 1 : 2), 0, 1, kind === "coupling" ? .063 : .028]];
+      : [[add(cylinder, kind === "coupling" ? 1 : 2), 0, 1, kind === "coupling" ? .063 : .028]];
     links.push({node, a: start, b: end, segments, part});
   }
 
@@ -169,19 +185,21 @@ export function createAssembly(scene, data, material, detailed) {
       for (const axle of spins) axle.rotation.y = phase;
       frame.updateMatrixWorld(true);
       wheel.updateMatrixWorld(true);
-      for (const {node, a, b, segments, length: restLength, offset} of links) {
+      for (const {node, a, b, segments, length: restLength, offset, slide} of links) {
         if (!node.visible) continue;
         if (spread && offset) {
           orient(node, a, b);
           node.position.addScaledVector(offset, spread);
           node.scale.y = 1;
+          slide?.(restLength);
           continue;
         }
         lower.copy(a).applyMatrix4(wheel.matrixWorld);
         upper.copy(b).applyMatrix4(frame.matrixWorld);
         const length = orient(node, lower, upper);
-        if (restLength) {
-          node.scale.y = length / restLength;
+        if (slide || restLength) {
+          if (slide) slide(length);
+          else node.scale.y = length / restLength;
           continue;
         }
         for (const [mesh, start, end, radius] of segments) {

@@ -1,5 +1,5 @@
 // Run against an already running offline demo server:
-//   node scripts/check_bogie_browser.cjs http://127.0.0.1:8501 screenshots
+//   node scripts/check_bogie_browser.cjs http://127.0.0.1:8501 screenshots [legacy-model.glb]
 const assert = require("node:assert/strict");
 const {mkdir, readFile} = require("node:fs/promises");
 const {join} = require("node:path");
@@ -9,6 +9,7 @@ const url = new URL(process.argv[2] || "http://127.0.0.1:8501");
 assert(["127.0.0.1", "localhost"].includes(url.hostname), "Use a local demo server");
 url.searchParams.set("embed_options", "dark_theme");
 const output = process.argv[3];
+const legacyModel = process.argv[4];
 const executablePath = process.env.RAIL_BROWSER_PATH;
 const args = process.env.RAIL_SOFTWARE_WEBGL ? ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"] : [];
 const button = (page, name) => page.getByRole("button", {name, exact: true});
@@ -170,6 +171,97 @@ async function checkSection(page, frame, canvas, data) {
   assert.equal((await data()).selected, "", "Clicking the background did not clear the test selection");
 }
 
+async function checkDamperGeometry(root, format) {
+  // Build a separate scene from the real component modules, so the endpoints can
+  // be checked at exact poses without polling or instrumenting the live viewer.
+  const checked = await root.evaluate(async (_, format) => {
+    const [THREE, {createAssembly}, {loadDetailedModel}, {materials}, {playbackBatches}, data] =
+      await Promise.all([import("./vendor/three.module.min.js"), import("./geometry.js"),
+        import("./model-loader.js"), import("./lighting.js"), import("./playback-batches.js"),
+        fetch("./assembly.json").then((response) => response.json())]);
+    const useGlb = format !== "procedural", legacy = format === "legacy";
+    const model = useGlb ? await loadDetailedModel() : null;
+    if (useGlb && !model) throw new Error("Could not load the damper meshes from GLB");
+    const scene = new THREE.Scene();
+    const assembly = createAssembly(scene, data, materials(), model);
+    const visible = {visible: Object.keys(data.parts), rails: true, highlight: [], spread: 0};
+    assembly.appearance(visible);
+    assembly.pose(0, 0, 0, 0);
+    scene.updateMatrixWorld(true);
+    const vector = (point) => new THREE.Vector3(...point);
+    const dampers = data.links.flatMap(([, kind, a, b], index) => {
+      if (kind !== "damper") return [];
+      const imported = model && [...model.parts.values()].find(({spec}) => spec.link === index);
+      if (model && (!imported || Boolean(imported.damperRod) === legacy))
+        throw new Error(`Wrong damper hierarchy at link ${index} for ${format}`);
+      // Compatibility geometry has no single-part IDs. Find its link by its
+      // lower joint and its pair of cylindrical meshes.
+      const node = imported ? imported.node.parent : scene.children.find((candidate) =>
+        candidate.position.distanceTo(vector(a)) < 1e-6 && candidate.children.filter((mesh) => mesh.isMesh).length === 2);
+      if (!node) throw new Error(`Damper missing at link ${index}`);
+      return [{a: vector(a), b: vector(b), node, offset: imported && vector(imported.spec.offset),
+        meshes: imported?.meshes ?? node.children.filter((mesh) => mesh.isMesh)}];
+    });
+    const compare = (actual, expected, message) => {
+      if (!Number.isFinite(actual) || Math.abs(actual - expected) > 1e-5)
+        throw new Error(`${message}: ${actual} versus ${expected}`);
+    };
+    const bounds = (meshes, a, b) => {
+      const axis = b.clone().sub(a).normalize();
+      return meshes.map((mesh) => {
+        const position = mesh.geometry.getAttribute("position"), vertex = new THREE.Vector3();
+        let min = Infinity, max = -Infinity;
+        for (let i = 0; i < position.count; i++) {
+          const station = vertex.fromBufferAttribute(position, i).applyMatrix4(mesh.matrixWorld).sub(a).dot(axis);
+          min = Math.min(min, station);
+          max = Math.max(max, station);
+        }
+        return {min, max};
+      }).sort((a, b) => a.min - b.min);
+    };
+    const batches = model && playbackBatches(assembly, model);
+    const neutral = dampers.map(({meshes, a, b}) => bounds(meshes, a, b));
+    const poses = [[0, 0, 0, 0], [1.57, 0, -.065, 0], [4.71, .075, .065, 0], [0, 0, 0, -.049]];
+    if (model) poses.push([0, 0, 0, 0, .8]);
+    for (const [phase, lateral, vertical, yaw, spread = 0] of poses) {
+      assembly.appearance({...visible, spread});
+      batches?.update(!spread);
+      assembly.pose(phase, lateral, vertical, yaw);
+      scene.updateMatrixWorld(true);
+      for (const [index, {a, b, meshes, node, offset}] of dampers.entries()) {
+        const lower = a.clone().applyMatrix4(assembly.wheel.matrixWorld);
+        const upper = b.clone().applyMatrix4(assembly.frame.matrixWorld);
+        if (spread) for (const joint of [lower, upper]) joint.addScaledVector(offset, spread);
+        const [body, rod] = bounds(meshes, lower, upper);
+        const [restBody, restRod] = neutral[index];
+        compare(body.min, 0, "The cylinder left its lower joint");
+        compare(rod.max, lower.distanceTo(upper), "The rod left its upper joint");
+        const scale = legacy ? lower.distanceTo(upper) / a.distanceTo(b) : 1;
+        compare(body.max - body.min, scale * (restBody.max - restBody.min), "Unexpected cylinder length");
+        compare(rod.max - rod.min, scale * (restRod.max - restRod.min), "Unexpected rod length");
+        if (body.max <= rod.min) throw new Error("The rod disengaged from the cylinder");
+        if (batches && !spread) {
+          const merged = [];
+          node.traverse((mesh) => {
+            if (mesh.isMesh && mesh.material.vertexColors && mesh.layers.mask === 1) merged.push(mesh);
+          });
+          if (merged.length !== (legacy ? 1 : 2))
+            throw new Error("Unexpected count of damper software batches");
+          const [batchBody, batchRod] = bounds(merged, lower, upper);
+          compare((batchRod ?? batchBody).max, rod.max, "The batched rod is out of position");
+          if (batchRod) {
+            compare(batchBody.max, body.max, "The batched cylinder moved away from the visible source");
+            compare(batchRod.min, rod.min, "The batched rod did not follow the upper joint");
+          }
+        }
+      }
+    }
+    batches?.dispose();
+    return dampers.length;
+  }, format);
+  assert.equal(checked, 4, `All four dampers must remain connected in ${format}`);
+}
+
 async function audit(browser, width, height, complete = true) {
   const page = await browser.newPage({viewport: {width, height}, screen: {width, height}});
   page.setDefaultTimeout(20000);
@@ -195,6 +287,7 @@ async function audit(browser, width, height, complete = true) {
     assert.equal((await data()).parts, "7");
     await screenshot(page, "bogie-webgl-" + width);
     if (!complete) return;
+    await checkDamperGeometry(root, "glb");
     await page.setViewportSize({width: 1366, height: 768});
     await until(() => canvas.boundingBox(), (resized) => resized.height < box.height - 100, "Viewport did not resize");
     await page.setViewportSize({width, height});
@@ -232,6 +325,21 @@ async function audit(browser, width, height, complete = true) {
     await partsButton.click();
     await search.fill("无匹配测试");
     await frame.getByText("没有匹配的零件", {exact: true}).waitFor();
+    await search.fill("damper_a_l");
+    assert.equal(await frame.locator(".part-row:visible").count(), 1);
+    await frame.locator('[data-part="damper_a_l"]').click();
+    await until(data, (d) => d.selected === "damper_a_l", "Damper selection lost its stable ID");
+    await frame.getByRole("button", {name: "仅看所选"}).click();
+    await until(data, (d) => d.isolated === "damper_a_l" && d.visibleComponents === "1",
+      "The cylinder and rod did not isolate as one damper");
+    await screenshot(page, "bogie-glb-damper");
+    await frame.getByRole("button", {name: "退出隔离"}).click();
+    await frame.getByRole("button", {name: "隐藏零件"}).click();
+    await until(data, (d) => d.hidden === "1" && Number(d.visibleComponents) === Number(initial.visibleComponents) - 1,
+      "Both damper surfaces should be hidden together");
+    await frame.getByRole("button", {name: "恢复所选"}).click();
+    await until(data, (d) => d.hidden === "0" && d.visibleComponents === initial.visibleComponents,
+      "The damper did not restore as one part");
     await search.fill("制动盘");
     assert.equal(await frame.locator(".part-row:visible").count(), 4);
     await search.fill("disc_a_l");
@@ -413,7 +521,7 @@ async function audit(browser, width, height, complete = true) {
   }
 }
 
-async function checkFallback(browser, response) {
+async function checkFallback(browser, response, checkDampers = false) {
   const page = await browser.newPage({viewport: {width: 1366, height: 768}});
   page.setDefaultTimeout(20000);
   try {
@@ -424,6 +532,7 @@ async function checkFallback(browser, response) {
     const frame = page.frameLocator("iframe[title*=bogie_viewer]").first();
     const root = frame.locator("#workbench[data-status=ready][data-model=procedural][data-frames]");
     await root.waitFor();
+    if (checkDampers) await checkDamperGeometry(root, "procedural");
     assert.equal(await root.getAttribute("data-parts"), "7");
     assert.equal(await frame.locator("#browse-parts").isVisible(), false);
     const section = frame.getByRole("button", {name: "剖切视图", exact: true});
@@ -438,6 +547,25 @@ async function checkFallback(browser, response) {
     await until(() => root.getAttribute("data-phase"), (phase) => Math.abs(Number(phase)) > .02,
       "Procedural fallback did not animate");
     assert.equal(await page.getByTestId("stException").count(), 0);
+  } finally {
+    await page.close();
+  }
+}
+
+async function checkLegacyModel(browser, path) {
+  const page = await browser.newPage({viewport: {width: 1366, height: 768}});
+  page.setDefaultTimeout(20000);
+  try {
+    const binary = await readFile(path);
+    await page.route("**/bogie.glb", (route) => route.fulfill({contentType: "model/gltf-binary", body: binary}));
+    const address = new URL(url);
+    address.searchParams.set("rail_page", "三维转向架仿真");
+    await page.goto(address.href);
+    const frame = page.frameLocator("iframe[title*=bogie_viewer]").first();
+    const root = frame.locator('#workbench[data-status=ready][data-model=glb][data-components="54"][data-frames]');
+    await root.waitFor();
+    await checkDamperGeometry(root, "legacy");
+    console.log("Legacy GLB loaded and retained compatible damper motion");
   } finally {
     await page.close();
   }
@@ -575,8 +703,10 @@ async function checkBookmarks(browser) {
     await audit(browser, 1920, 1080);
     await audit(browser, 1366, 768, false);
     await checkBookmarks(browser);
-    await checkFallback(browser, {status: 404, body: "Missing"});
+    await checkFallback(browser, {status: 404, body: "Missing"}, true);
     await checkFallback(browser, {status: 200, contentType: "model/gltf-binary", body: "Corrupt GLB"});
+    console.log("Rigid damper joints, lengths, software batches, and one-part inspection passed");
+    if (legacyModel) await checkLegacyModel(browser, legacyModel);
     console.log("Procedural fallback passed for missing and corrupt GLB");
     console.log("Desktop layout passed at 1920x1080 and 1366x768");
   } finally {

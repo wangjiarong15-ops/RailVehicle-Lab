@@ -7,7 +7,10 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from rail_vehicle.bogie import PART_DESCRIPTIONS
-from rail_vehicle.bogie_geometry import AXLE_X, AXLE_Z, WHEEL_POSE_GAIN, WHEEL_Y, _rigid_template, connection_anchors
+from rail_vehicle.bogie_geometry import (
+    AXLE_X, AXLE_Z, DAMPER_BODY_RATIO, DAMPER_ROD_RATIO, WHEEL_POSE_GAIN, WHEEL_Y, _rigid_template,
+    connection_anchors,
+)
 from rail_vehicle.bogie_model_spec import model_contract
 
 OUTPUT = Path(__file__).resolve().parents[1] / "rail_vehicle/assets/bogie_viewer/assembly.json"
@@ -21,6 +24,7 @@ def mesh_document():
         "axleZ": AXLE_Z,
         "wheelY": WHEEL_Y,
         "wheelPoseGain": WHEEL_POSE_GAIN,
+        "damperRatios": [DAMPER_BODY_RATIO, DAMPER_ROD_RATIO],
         "parts": PART_DESCRIPTIONS,
         "links": tuple(connection_anchors()),
         "mesh": [

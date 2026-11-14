@@ -12,7 +12,8 @@ from mathutils import Vector
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from rail_vehicle.bogie_geometry import (
-    AXLE_X, AXLE_Z, RAILHEAD_WIDTH, RAILHEAD_Z, TREAD_BAND, WHEEL_Y, Assembly, connection_anchors,
+    AXLE_X, AXLE_Z, DAMPER_BODY_RATIO, DAMPER_ROD_RATIO, RAILHEAD_WIDTH, RAILHEAD_Z, TREAD_BAND,
+    WHEEL_Y, Assembly, connection_anchors,
 )
 from rail_vehicle.bogie_model_spec import DIMENSIONS, model_contract
 
@@ -75,7 +76,7 @@ class Part:
                     faces.extend(((a, b, b+radial), (a, b+radial, a+radial)))
         self.mesh.mesh("part", None).add(vertices, faces, NAMES.index("polished"), lambda v: v)
 
-    def finish(self, materials, collection):
+    def finish(self, materials, collection, *, segment=None):
         vertices, faces, tones = [], [], []
         for mesh in self.mesh.meshes.values():
             start = len(vertices)
@@ -84,7 +85,8 @@ class Part:
             tones.extend(mesh.tones)
         if not faces:
             raise ValueError(f"Empty assembly part: {self.node.name}")
-        mesh = bpy.data.meshes.new(self.node.name + "_mesh")
+        name = self.node.name + (f"_{segment}" if segment else "")
+        mesh = bpy.data.meshes.new(name + "_mesh")
         mesh.from_pydata(vertices, [], faces, shade_flat=False)
         mesh.update()
         used = {tone: index for index, tone in enumerate(sorted(set(tones)))}
@@ -94,9 +96,11 @@ class Part:
             polygon.material_index = used[tone]
         # Blender 4.5 stores crease decisions on mesh edges for the exporter.
         mesh.set_sharp_from_angle(angle=.66)
-        obj = bpy.data.objects.new(self.node.name + "_surface", mesh)
+        obj = bpy.data.objects.new(name + "_surface", mesh)
         collection.objects.link(obj)
         obj.parent = self.node
+        if segment:
+            obj["rail_damper_segment"] = segment
 
 
 def side_beam(p):
@@ -315,22 +319,38 @@ def track(p):
             p.box((x,y,-.132),(.158,.205,.030),"cast",.004)
 
 
-def link(p, anchors, kind):
+def orient_link(node, anchors):
     _, _, start, end = anchors
     axis = Vector(end) - Vector(start)
-    length = axis.length
-    p.node.rotation_mode = "QUATERNION"
-    p.node.rotation_quaternion = Vector((0,1,0)).rotation_difference(axis.normalized())
+    node.rotation_mode = "QUATERNION"
+    node.rotation_quaternion = Vector((0,1,0)).rotation_difference(axis.normalized())
+    return axis.length
+
+
+def link(p, anchors, kind):
+    length = orient_link(p.node, anchors)
     if kind == "coil":
         p.coil(length)
-    elif kind == "damper":
-        p.cylinder((0,0,0),(0,.58*length,0),.034,"cast")
-        p.cylinder((0,.56*length,0),(0,length,0),.019,"polished")
     else:
         radius = {"coupling": .062, "guide": .031, "stay": .026}[kind]
         p.cylinder((0,0,0),(0,length,0),radius,"cast")
         for y in (0,length):
             p.cylinder((-.046,y,0),(.046,y,0),radius*1.22,"steel",16)
+
+
+def damper(body, anchors, materials, collection):
+    length = orient_link(body.node, anchors)
+    mouth = DAMPER_BODY_RATIO * length
+    # The closed profile doubles back down the bore. Only the mounting end
+    # closes on the axis, leaving the gland open for the moving rod.
+    body.profile((0,0,0), (0,1,0), [
+        (0,0,"cast"), (0,.034,"cast"), (mouth-.009,.034,"steel"),
+        (mouth,.030,"steel"), (mouth,.022,"cast"), (.007,.022,"cast"), (.007,0,"cast"),
+    ], sides=16)
+    body.finish(materials, collection, segment="body")
+    rod = Part(body.node)
+    rod.cylinder((0,(1-DAMPER_ROD_RATIO)*length,0), (0,length,0), .019, "polished", 16)
+    rod.finish(materials, collection, segment="rod")
 
 
 def create_scene():
@@ -374,7 +394,12 @@ def create_scene():
         p = Part(node)
         side = -1 if name.endswith("_l") else 1
         if "link" in spec:
-            link(p, anchors[spec["link"]], name.split("_")[0])
+            anchor = anchors[spec["link"]]
+            kind = anchor[1]
+            if kind == "damper":
+                damper(p, anchor, material_objects, collection)
+                continue
+            link(p, anchor, kind)
         elif name.startswith("spring_seat"):
             upper = name.startswith("spring_seat_upper")
             z0,z1 = (0,.028) if upper else (-.026,0)

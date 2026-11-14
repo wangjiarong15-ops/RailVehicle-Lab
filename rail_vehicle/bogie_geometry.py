@@ -15,6 +15,8 @@ TREAD_BAND = (-.058, .012)  # measured outwards from each wheel centre
 RAILHEAD_Z = AXLE_Z - TREAD_RADIUS
 RAILHEAD_WIDTH = .092
 WHEEL_POSE_GAIN = .035  # keep the wheelset close to the reference rails during schematic motion
+DAMPER_BODY_RATIO = .62  # rigid lengths as fractions of the nominal joint spacing
+DAMPER_ROD_RATIO = .67
 _PARTS = ("构架", "轮对", "一系悬挂", "二系悬挂", "轴箱", "电机与传动", "制动装置", "轨道参照")
 
 
@@ -365,9 +367,11 @@ def _connections(a):
         if kind == "coil":
             a.spring(lower, upper)
         elif kind == "damper":
-            middle = _add(lower, _scale(_sub(upper, lower), .59))
-            a.cylinder(part, lower, middle, .032, tone=2)
-            a.cylinder(part, middle, upper, .019, tone=1)
+            axis = _sub(upper, lower)
+            nominal = hypot(*_sub(frame, wheel))
+            direction = _scale(axis, nominal / hypot(*axis))
+            a.cylinder(part, lower, _add(lower, _scale(direction, DAMPER_BODY_RATIO)), .032, tone=2)
+            a.cylinder(part, _add(upper, _scale(direction, -DAMPER_ROD_RATIO)), upper, .019, tone=1)
         else:
             a.cylinder(part, lower, upper, .063 if kind == "coupling" else .028,
                        tone=1 if kind == "coupling" else 2)

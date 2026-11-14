@@ -28,7 +28,22 @@ function inspect(gltf, contract) {
     const meshes = [];
     node.traverse((item) => { if (item.isMesh) meshes.push(item); });
     if (!meshes.length) throw new Error("Missing part mesh: " + id);
-    return [id, {node, spec, meshes}];
+    const entry = {node, spec, meshes};
+    if (id.startsWith("damper_") && node.children.length !== 1) {
+      const body = node.children.find((child) => child.userData.rail_damper_segment === "body");
+      const rod = node.children.find((child) => child.userData.rail_damper_segment === "rod");
+      // GLTFLoader represents a mesh with several material primitives as a Group.
+      if (node.children.length !== 2 || !body || !rod || ![body, rod].every((child) =>
+        (child.isMesh || child.children.length && child.children.every((mesh) => mesh.isMesh && !mesh.children.length)) &&
+        child.position.lengthSq() === 0 &&
+        child.quaternion.equals(new THREE.Quaternion()) && child.scale.equals(new THREE.Vector3(1, 1, 1))))
+        throw new Error("Invalid damper segments: " + id);
+      entry.damperRod = rod;
+      entry.rodMeshes = new Set(rod.isMesh ? [rod] : rod.children);
+    } else if (node.children.some((child) => child.userData.rail_damper_segment !== undefined)) {
+      throw new Error("Incomplete damper segments: " + id);
+    }
+    return [id, entry];
   }));
   return {root, parts};
 }
