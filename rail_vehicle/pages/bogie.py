@@ -31,6 +31,7 @@ STATE_KEY = "bogie_playback"
 FRAME_KEY = "bogie_paused_row"
 LOOP_KEY = "bogie_event_loop"
 EVIDENCE_KEY = "bogie_window_csv"
+REVIEW_KEY = "bogie_related_review"
 EVENTS_PER_PAGE = 100
 DEMO = "内置虚构演示"
 HISTORY = "历史运行批次"
@@ -59,13 +60,15 @@ class Inspection:
 
 
 def _model_view(mode, phase, state, inspection, highlight, height, key, renderer, continuous,
-                *, labels=False, focus=None, exploded=False, export_context=None, reference=False, periodic=False):
+                *, labels=False, focus=None, exploded=False, export_context=None, reference=False, periodic=False,
+                related_review=()):
     camera = dict(height=height, rails=inspection.rails, camera_revision=inspection.camera_revision)
     if renderer == WEBGL:
         render_webgl(mode=mode, phase=phase, state=state, visible=inspection.visible, highlight=highlight,
                      view=inspection.view, focus=focus, labels=labels, exploded=exploded,
                      spread=inspection.spread, continuous=continuous and not exploded, key=key,
-                     export_context=export_context, reference=reference, periodic=periodic, **camera)
+                     export_context=export_context, reference=reference, periodic=periodic,
+                     related_review=related_review, **camera)
     else:
         plot_chart(build_bogie(mode, phase, inspection.visible, highlight, inspection.view,
                               labels=labels, exploded=exploded, spread=inspection.spread,
@@ -114,6 +117,7 @@ def _seek(position, row=None):
     rate = st.session_state.get(STATE_KEY, ReplayState()).rate
     st.session_state[STATE_KEY] = ReplayState(position=position, rate=rate)
     st.session_state[FRAME_KEY] = row
+    st.session_state.pop(REVIEW_KEY, None)
 
 
 def _clear_loop(*, pause=False):
@@ -264,7 +268,7 @@ def _load(source, target):
 
 
 def _display(track, duration, threshold, cutoff, teaching, inspection, event_index, show_signals,
-             window, renderer, source, batch_id):
+             window, renderer, source, selection):
     state = st.session_state[STATE_KEY]
     now = monotonic()
     if window:
@@ -286,12 +290,19 @@ def _display(track, duration, threshold, cutoff, teaching, inspection, event_ind
         scene = replay_scene(track, state.position, index, threshold, cutoff)
     else:
         scene = TEACHING[teaching]
+    review_scope = (selection, state.position, index, threshold, teaching, scene, inspection, window)
+    can_review = renderer == WEBGL and bool(scene.parts) and not (state.playing or inspection.exploded)
+    reviewing = can_review and st.session_state.get(REVIEW_KEY) == review_scope
+    if not reviewing:
+        st.session_state.pop(REVIEW_KEY, None)
+    related_review = scene.parts if reviewing else ()
     phase = 0 if scene is GAP else illustration_phase(state.position)
     export_context = None
     if renderer == WEBGL and not state.playing:
         export_context = inspection_context(
             sample=sample, index=index, total=len(track.samples) if track is not None else 0,
-            threshold=threshold, scene=scene, teaching=teaching, fictional=source == DEMO, batch_id=batch_id,
+            threshold=threshold, scene=scene, teaching=teaching, fictional=source == DEMO,
+            batch_id=selection[-1] if track is not None else None,
         )
     model, panel = st.columns([5, 1.25], gap="small")
     with model, st.container(border=True, key="bogie_model_card"):
@@ -299,7 +310,7 @@ def _display(track, duration, threshold, cutoff, teaching, inspection, event_ind
         if inspection.exploded:
             st.caption("分解示意 · 构件间距仅用于看清安装位置。")
         compare = inspection.comparison and bool(scene.parts) and not inspection.exploded
-        if not inspection.visible:
+        if not inspection.visible and not reviewing:
             st.info("请至少选择一个部件。回放和读值仍会更新。")
         else:
             try:
@@ -313,12 +324,13 @@ def _display(track, duration, threshold, cutoff, teaching, inspection, event_ind
                 with active:
                     _model_view(scene.mode, phase, state, inspection, scene.parts, height, "bogie_model",
                                 renderer, scene is not GAP, labels=inspection.labels, focus=inspection.focus,
-                                exploded=inspection.exploded, export_context=export_context, periodic=track is None)
+                                exploded=inspection.exploded, export_context=export_context, periodic=track is None,
+                                related_review=related_review)
                 if compare:
                     with reference:
                         _model_view("正常运行", phase, state, inspection, (), height, "bogie_reference",
                                     renderer, scene is not GAP, export_context=export_context, reference=True,
-                                    periodic=track is None)
+                                    periodic=track is None, related_review=related_review)
             except (TypeError, ValueError, RuntimeError):
                 st.error("三维视图暂时无法加载，仍可查看运行信号。")
     with panel, st.container(border=True, key="bogie_status_card"):
@@ -334,6 +346,17 @@ def _display(track, duration, threshold, cutoff, teaching, inspection, event_ind
         else:
             st.write(scene.label if track is not None else teaching)
         st.write("示意关联构件：" + ("、".join(scene.parts) or "无"))
+        if scene.parts and renderer == WEBGL:
+            if st.button("返回原检查视图" if reviewing else "查看关联构件", key="bogie_related_review_action",
+                         disabled=not can_review, width="stretch",
+                         help="暂停且退出拆解后可用。保持当前观测和阈值不变。"):
+                if reviewing:
+                    st.session_state.pop(REVIEW_KEY, None)
+                else:
+                    st.session_state[REVIEW_KEY] = review_scope
+                st.rerun()
+            if reviewing:
+                st.caption("当前只显示示意关联构件，用于观察结构位置。")
         if track is not None:
             st.caption(scene.impact)
             st.write("建议：" + scene.check)
@@ -341,10 +364,10 @@ def _display(track, duration, threshold, cutoff, teaching, inspection, event_ind
             st.caption("教学高亮用于观察构件位置，不代表检测到故障。")
         if scene.parts:
             st.caption("琥珀色表示与当前场景关联的部件。")
-            hidden = [part for part in scene.parts if part not in inspection.visible]
+            hidden = [part for part in scene.parts if part not in (related_review or inspection.visible)]
             if hidden:
                 st.caption("当前未显示：" + "、".join(hidden))
-        if inspection.focus:
+        if inspection.focus and not reviewing:
             st.caption(f"部件说明 · {inspection.focus}：{PART_DESCRIPTIONS[inspection.focus]}")
             if inspection.focus not in inspection.visible:
                 st.caption("该部件已隐藏，可在左侧重新显示。")
@@ -403,6 +426,7 @@ def render():
             st.caption("虚构数据，非实际测量。")
         elif source == HISTORY:
             st.caption("历史导入样本；模型运动为示意，不用于反推位移、轮轨力或故障。")
+        selection = (source,)
         try:
             selection, load = _load(source, requested)
             if selection != st.session_state.get("bogie_selection"):
@@ -537,4 +561,4 @@ def render():
             st.fragment(run_every=(0.15 if track is None else 0.4) if state.playing else None)(_display)(
                 track, duration, threshold, st.session_state.get("bogie_gap_cutoff"),
                 teaching, inspection, event_index, show_signals, window, renderer, source,
-                selection[-1] if track is not None else None)
+                selection)

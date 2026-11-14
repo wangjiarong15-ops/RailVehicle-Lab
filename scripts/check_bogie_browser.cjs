@@ -327,6 +327,74 @@ async function checkTeachingControls(page, data, play, pause, reset) {
   console.log("Teaching phase continued through wrap, rate change, pause, resume and reset");
 }
 
+async function openReplayEvent(page, data) {
+  await page.getByText("内置虚构演示", {exact: true}).click();
+  await page.getByText(/定位超阈值区段（/).click();
+  await button(page, "定位区段起点").click();
+  await until(data, (d) => d.highlighted.length > 0, "Replay did not highlight event");
+  await page.getByText(/第 31\/120 条/).waitFor();
+}
+
+async function checkRelatedReview(page, frame, canvas, data, width, full) {
+  const inspect = button(page, "查看关联构件");
+  const returnToView = button(page, "返回原检查视图");
+  if (full) {
+    // Hide a damper that should reappear in the temporary related view.
+    await frame.getByRole("button", {name: "零件清单"}).click();
+    const search = frame.getByRole("searchbox", {name: "查找零件"});
+    await search.fill("damper_a_l");
+    await frame.locator('[data-part="damper_a_l"]').click();
+    await frame.getByRole("button", {name: "隐藏零件"}).click();
+    await search.press("Escape");
+    await frame.getByRole("combobox", {name: "视窗视角"}).selectOption("俯视图");
+    await until(data, (d) => d.view === "俯视图" && d.hidden === "1" && d.selected === "damper_a_l",
+      "A manual view with a hidden related part was not established");
+    const initial = await data();
+    await canvas.hover({position: {x: 190, y: 140}});
+    await page.mouse.wheel(0, -280);
+    await until(data, (d) => Number(d.zoom) > Number(initial.zoom), "Manual zoom did not change");
+  }
+  const before = await data();
+  const row = page.getByText(/第 31\/120 条/);
+  const observation = await row.textContent();
+  const threshold = page.getByLabel("加速度绝对值阈值（m/s²）", {exact: true});
+  const limit = await threshold.inputValue();
+  await inspect.click();
+  const active = await until(data, (d) => d.relatedReview === "true" && d.view === "侧视图" &&
+    Number(d.parts) === d.highlighted.split("、").length, "Related part review did not show the scene categories");
+  assert.equal(active.highlighted, before.highlighted, "Review changed the rule highlight");
+  assert.equal(active.phase, before.phase, "Review changed the observed playback position");
+  assert.equal(await row.textContent(), observation);
+  assert.equal(await threshold.inputValue(), limit);
+  if (full) assert.equal(active.hidden, "0", "Review did not reveal the hidden related part");
+  await page.getByRole("heading", {name: "三维诊断工作台"}).scrollIntoViewIfNeeded();
+  // A focused Streamlit button can retain its help tooltip after the pointer moves.
+  await returnToView.evaluate((element) => element.blur());
+  await page.mouse.move(30, 430);
+  await page.waitForTimeout(200);
+  await screenshot(page, `bogie-webgl-related-review-${width}`);
+
+  await returnToView.click();
+  const restored = await until(data, (d) => d.relatedReview === "false" && d.view === before.view &&
+    Math.abs(Number(d.zoom) - Number(before.zoom)) < .025 && d.hidden === before.hidden &&
+    d.selected === before.selected && d.visibleComponents === before.visibleComponents,
+    "Leaving review did not restore the camera, selection and hidden parts");
+  assert.equal(restored.camera, before.camera, "Leaving review did not restore the previous camera position");
+  assert.equal(restored.phase, before.phase);
+  assert.equal(await row.textContent(), observation);
+  if (!full) return;
+
+  await inspect.click();
+  await until(data, (d) => d.relatedReview === "true", "Could not re-enter related review");
+  await button(page, "下一帧").click();
+  await page.getByText(/第 32\/120 条/).waitFor();
+  await until(data, (d) => d.relatedReview === "false" && d.view === before.view && d.hidden === before.hidden,
+    "Moving to a different observation did not exit related review");
+  await frame.getByRole("button", {name: "恢复隐藏"}).click();
+  await until(data, (d) => d.hidden === "0", "Could not restore the hidden damper after review");
+  console.log("Linked-part review kept evidence fixed and restored the original inspection state");
+}
+
 async function audit(browser, width, height, complete = true) {
   const page = await browser.newPage({viewport: {width, height}, screen: {width, height}});
   page.setDefaultTimeout(20000);
@@ -351,7 +419,11 @@ async function audit(browser, width, height, complete = true) {
     assert(box.x >= 0 && box.x + box.width <= width && box.y + box.height < height, "Canvas should fit");
     assert.equal((await data()).parts, "7");
     await screenshot(page, "bogie-webgl-" + width);
-    if (!complete) return;
+    if (!complete) {
+      await openReplayEvent(page, data);
+      await checkRelatedReview(page, frame, canvas, data, width, false);
+      return;
+    }
     await checkMotionClock(root);
     await checkDamperGeometry(root, "glb");
     await page.setViewportSize({width: 1366, height: 768});
@@ -558,17 +630,21 @@ async function audit(browser, width, height, complete = true) {
     await option(page, "bogie_renderer", "Three.js 工作台");
     await frame.locator("#workbench[data-status=ready][data-frames]").waitFor();
     await page.getByText("视角与部件", {exact: true}).click();
-    await page.getByText("内置虚构演示", {exact: true}).click();
-    await page.getByText(/定位超阈值区段（/).click();
-    await button(page, "定位区段起点").click();
-    await until(data, (d) => d.highlighted.length > 0, "Replay did not highlight event");
-    await page.getByText(/第 31\/120 条/).waitFor();
-    await button(page, "下一帧").click();
-    await page.getByText(/第 32\/120 条/).waitFor();
+    await openReplayEvent(page, data);
+    await checkRelatedReview(page, frame, canvas, data, width, true);
     await page.getByTestId("stPlotlyChart").waitFor();
     await page.getByRole("heading", {name: "三维诊断工作台"}).scrollIntoViewIfNeeded();
     await screenshot(page, "bogie-webgl-replay");
     await checkReplayInspectionExport(page, frame, canvas, data);
+    await button(page, "查看关联构件").click();
+    await until(data, (d) => d.relatedReview === "true", "Could not start paused related review");
+    await play.click();
+    await until(data, (d) => d.playing === "true" && d.relatedReview === "false",
+      "Starting replay did not close related review");
+    assert.equal(await button(page, "返回原检查视图").count(), 0);
+    const inspectWhilePlaying = button(page, "查看关联构件");
+    if (await inspectWhilePlaying.count()) assert.equal(await inspectWhilePlaying.isDisabled(), true);
+    await pause.click();
     await page.getByRole("button", {name: /核查虚构证据/}).click();
     await page.getByText(/本演示未生成 AI 解读/).waitFor();
     await page.getByRole("button", {name: "在三维回放中查看虚构区段", exact: true}).click();

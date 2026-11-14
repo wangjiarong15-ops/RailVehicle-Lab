@@ -29,6 +29,8 @@ export async function mount() {
   const clearMeasurementControl = document.querySelector("#clear-measurement");
   const exportControl = document.querySelector("#export-inspection");
   const exportStatus = document.querySelector("#export-status");
+  const bookmarksToggle = document.querySelector("#bookmarks-toggle");
+  const bookmarksPanel = document.querySelector("#bookmarks-controls");
   const modelStatus = document.querySelector("#model-status");
   const renderer = new THREE.WebGLRenderer({antialias: true, alpha: true, powerPreference: "high-performance"});
   const gl = renderer.getContext();
@@ -56,6 +58,7 @@ export async function mount() {
   modelStatus.textContent = detailed ? "Blender 精细模型" : "兼容几何 · GLB 不可用";
   const clock = motionClock();
   let args, serverArgs, localView, bookmarkDisplay, selection = null, appearance = "", angle = 0, width = 0, height = 0;
+  let reviewSnapshot;
   let raf, frames = 0, dirty = true, alive = true, shadowPose = "", shadowDirty = true;
   let visibleComponents = 0;
   const invalidate = () => { dirty = true; };
@@ -92,7 +95,8 @@ export async function mount() {
     const isolatedName = partName(isolated);
     const metadata = {
       model: modelStatus.textContent,
-      view: args.view + (args.spread ? " · 拆解 " + Math.round(args.spread * 100) + "%" : ""),
+      view: args.view + (args.relatedReview?.length ? " · 关联构件" : "") +
+        (args.spread ? " · 拆解 " + Math.round(args.spread * 100) + "%" : ""),
       part: [part, isolatedName ? "仅显示 " + isolatedName : ""].filter(Boolean).join(" · "),
       section: section.enabled ? document.querySelector("#section-value").textContent : "",
       measurement: gauge.getState().count === 2 ? measurementStatus.textContent : "",
@@ -212,7 +216,7 @@ export async function mount() {
   }
   const bookmarks = viewBookmarks({
     capture() {
-      if (!args || args.playing || args.spread || settling) return null;
+      if (!args || args.playing || args.spread || settling || reviewSnapshot) return null;
       return {
         model: bookmarkModel,
         view: args.view,
@@ -235,7 +239,7 @@ export async function mount() {
       };
     },
     restore(state) {
-      if (!args || args.playing || args.spread || settling || state?.model !== bookmarkModel ||
+      if (!args || args.playing || args.spread || settling || reviewSnapshot || state?.model !== bookmarkModel ||
           !validBookmark(state, true)) return false;
       localView = state.view;
       bookmarkDisplay = {visible: [...new Set(state.visible)], rails: state.rails};
@@ -375,12 +379,14 @@ export async function mount() {
     localView = viewControl.value;
     apply(serverArgs);
   }
-  function apply(next) {
+  function apply(next, transition = false) {
     if (!alive) return;
     const previous = args;
-    const view = localView || next.view;
-    args = {...next, ...bookmarkDisplay, view, rails: (bookmarkDisplay?.rails ?? next.rails) && view !== "底视图"};
-    if (args.replayRunning) {
+    const review = Boolean(next.relatedReview?.length);
+    const view = localView || (review ? "侧视图" : next.view);
+    args = review ? {...next, view, visible: next.relatedReview, rails: false, focus: null, labels: true}
+      : {...next, ...bookmarkDisplay, view, rails: (bookmarkDisplay?.rails ?? next.rails) && view !== "底视图"};
+    if (args.replayRunning || transition) {
       exportPending = false;
       setExportStatus("");
     }
@@ -403,29 +409,69 @@ export async function mount() {
     const isolationEnded = Boolean(isolated) &&
       !(isolatedGroup === "轨道参照" ? args.rails : args.visible.includes(isolatedGroup));
     if (isolationEnded) isolated = null;
-    const reframe = isolationEnded || !previous || previous.view !== args.view || previous.revision !== args.revision
+    const reframe = transition || isolationEnded || !previous || previous.view !== args.view || previous.revision !== args.revision
       || Boolean(previous.spread) !== Boolean(args.spread) || previous.rails !== args.rails;
     const newAppearance = JSON.stringify([
-      args.visible, args.highlight, args.focus, args.rails, args.spread, software && detailed && args.playing,
+      args.visible, args.highlight, args.focus, args.rails, args.spread, software && detailed && args.playing, review,
     ]);
-    if (newAppearance !== appearance) {
+    if (transition || newAppearance !== appearance) {
       appearance = newAppearance;
-      const part = !previous || previous.focus !== args.focus ? args.focus : selection;
+      const part = transition || !previous || previous.focus !== args.focus ? args.focus : selection;
       const group = detailed?.parts.get(part)?.spec.group ?? part;
       select(detailed?.parts.has(part) || args.visible.includes(group) ? part : null);
       shadowDirty = true;
     }
     workbench.dataset.view = args.view;
+    workbench.dataset.relatedReview = String(review);
     viewControl.value = args.view;
     if (reframe) reset();
     invalidate();
   }
+  function sameBaseView(before, next) {
+    return before.view === next.view && before.visible.join() === next.visible.join() && before.rails === next.rails &&
+      before.revision === next.revision && before.focus === next.focus;
+  }
   return function update(next) {
-    if (!serverArgs || serverArgs.view !== next.view || serverArgs.revision !== next.revision) localView = null;
-    if (serverArgs && (serverArgs.visible.join() !== next.visible.join() ||
-        serverArgs.revision !== next.revision || serverArgs.rails !== next.rails)) bookmarkDisplay = null;
+    if (!alive) return;
+    const review = Boolean(next.relatedReview?.length);
+    const entering = review && !reviewSnapshot;
+    const leaving = review ? null : reviewSnapshot;
+    const restoreView = leaving && sameBaseView(leaving.base, next);
+    if (entering) {
+      reviewSnapshot = {base: serverArgs ?? next, localView, bookmarkDisplay, hidden: [...hidden], isolated,
+        selection: serverArgs ? selection : next.focus, camera: args && rig.capture(), section: section.capture(),
+        bookmarksOpen: !bookmarksPanel.hidden};
+      localView = bookmarkDisplay = null;
+      hidden.clear();
+      isolated = selection = null;
+      measuring = false;
+      section.restore({...reviewSnapshot.section, enabled: false});
+      bookmarksPanel.hidden = true;
+      bookmarksToggle.disabled = true;
+      bookmarksToggle.setAttribute("aria-expanded", "false");
+    } else if (leaving) {
+      localView = restoreView ? leaving.localView : null;
+      bookmarkDisplay = restoreView ? leaving.bookmarkDisplay : null;
+      hidden.clear();
+      for (const id of leaving.hidden) hidden.add(id);
+      isolated = leaving.isolated;
+      measuring = false;
+      section.restore(leaving.section);
+      bookmarksToggle.disabled = false;
+      bookmarksPanel.hidden = !leaving.bookmarksOpen;
+      bookmarksToggle.setAttribute("aria-expanded", String(leaving.bookmarksOpen));
+      reviewSnapshot = null;
+    } else if (!review) {
+      if (!serverArgs || serverArgs.view !== next.view || serverArgs.revision !== next.revision) localView = null;
+      if (serverArgs && (serverArgs.visible.join() !== next.visible.join() ||
+          serverArgs.revision !== next.revision || serverArgs.rails !== next.rails)) bookmarkDisplay = null;
+    }
     serverArgs = next;
     clock.receive(next, performance.now());
-    apply(next);
+    apply(next, entering || Boolean(leaving));
+    if (restoreView) {
+      select(leaving.selection);
+      if (leaving.camera) rig.restore(leaving.camera);
+    }
   };
 }

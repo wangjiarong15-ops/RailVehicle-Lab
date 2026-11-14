@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -62,6 +63,50 @@ class BogiePageTests(unittest.TestCase):
             app.selectbox(key="bogie_renderer").set_value("Three.js 工作台").run()
             self.assertGreaterEqual(len(app.get("component_instance")), 1)
             self.assertEqual(len(app.get("plotly_chart")), 1)  # synchronized signals
+
+    def test_related_review_preserves_observation_and_exits_on_next_sample(self):
+        with patch.dict(os.environ, {"RAIL_PUBLIC_DEMO": "true"}):
+            app = AppTest.from_string("from rail_vehicle.pages.bogie import render; render()").run()
+            action = "bogie_related_review_action"
+            self.assertFalse(any(button.key == action for button in app.button))
+
+            app.radio(key="bogie_source").set_value("内置虚构演示").run()
+            self.assertFalse(any(button.key == action for button in app.button))
+            app.selectbox(key="bogie_view").set_value("俯视图").run()
+            app.multiselect(key="bogie_visible_parts").set_value(["轮对"]).run()
+            next(button for button in app.button if button.label == "定位区段起点").click().run()
+
+            def model():
+                self.assertFalse(app.exception)
+                return json.loads(app.get("component_instance")[0].proto.json_args)
+
+            baseline = model()
+            self.assertEqual(baseline["exportContext"]["sample_number"], 31)
+            self.assertEqual(app.button(key=action).label, "查看关联构件")
+            app.button(key=action).click().run()
+            reviewed = model()
+            self.assertEqual(app.button(key=action).label, "返回原检查视图")
+            self.assertEqual(reviewed["relatedReview"], ["构架", "一系悬挂"])
+            self.assertEqual(reviewed["highlight"], baseline["highlight"])
+            self.assertEqual(reviewed["exportContext"], baseline["exportContext"])
+            self.assertEqual(reviewed["phase"], baseline["phase"])
+            self.assertEqual(app.selectbox(key="bogie_view").value, "俯视图")
+            self.assertEqual(app.multiselect(key="bogie_visible_parts").value, ["轮对"])
+
+            app.button(key=action).click().run()
+            self.assertEqual(model(), baseline)
+            app.button(key=action).click().run()
+            next(button for button in app.button if button.label == "下一帧").click().run()
+            next_frame = model()
+            self.assertEqual(next_frame["exportContext"]["sample_number"], 32)
+            self.assertEqual(next_frame["relatedReview"], [])
+            self.assertEqual(next_frame["visible"], ["轮对"])
+            self.assertEqual(next_frame["view"], "俯视图")
+            self.assertEqual(app.button(key=action).label, "查看关联构件")
+
+            app.selectbox(key="bogie_renderer").set_value("Plotly 兼容模式").run()
+            self.assertFalse(app.exception)
+            self.assertFalse(any(button.key == action for button in app.button))
 
 
 if __name__ == "__main__":

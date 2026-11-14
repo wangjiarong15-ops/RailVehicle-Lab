@@ -42,6 +42,7 @@ def main() -> None:
     if page != "三维转向架仿真":
         st.session_state.pop(bogie.STATE_KEY, None)
         st.session_state.pop(bogie.FRAME_KEY, None)
+        st.session_state.pop(bogie.REVIEW_KEY, None)
     if page == "平台首页":
         home.render()
     elif page == "车辆参数":
