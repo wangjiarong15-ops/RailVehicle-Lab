@@ -18,14 +18,15 @@ from rail_vehicle.bogie_model_spec import DIMENSIONS, model_contract
 
 DEFAULT_OUTPUT = ROOT / "rail_vehicle/assets/bogie_viewer/bogie.glb"
 
-# Linear RGB for Blender's Principled BSDF. The existing workbench supplies the lights.
+# Linear RGB for Blender's Principled BSDF. Keep painted surfaces nearly
+# dielectric and reserve sharper reflections for bare machined steel.
 SURFACES = {
-    "paint": ((.044, .077, .112), .34, .36),
-    "paint_edge": ((.075, .125, .164), .38, .37),
-    "steel": ((.18, .21, .23), .87, .29),
-    "polished": ((.35, .40, .43), .91, .24),
-    "cast": ((.102, .128, .141), .64, .43),
-    "rubber": ((.023, .028, .032), .04, .62),
+    "paint": ((.025, .040, .057), .06, .49),
+    "paint_edge": ((.043, .063, .086), .08, .44),
+    "steel": ((.121, .132, .143), .87, .38),
+    "polished": ((.32, .35, .38), .96, .22),
+    "cast": ((.071, .079, .085), .58, .56),
+    "rubber": ((.018, .021, .023), 0, .76),
     "bronze": ((.23, .123, .066), .65, .39),
     "motor": ((.073, .137, .139), .48, .42),
     "sleeper": ((.071, .080, .087), .03, .84),
@@ -147,11 +148,12 @@ def cross_members(p):
 
 def wheel(p, side):
     tread, flange = DIMENSIONS["tread_radius"], DIMENSIONS["flange_radius"]
+    # A bright running band reads against the duller flange and wheel web.
     p.profile((0,0,0),(0,side,0),[
         (-.122,0,"steel"),(-.122,.137,"cast"),(-.104,.220,"cast"),
-        (-.103,.391,"steel"),(-.105,.423,"polished"),(-.097,.449,"polished"),
-        (-.085,flange,"polished"),(-.071,.447,"polished"),(TREAD_BAND[0],tread,"polished"),
-        (TREAD_BAND[1],tread,"polished"),(.074,.413,"polished"),(.094,.402,"steel"),(.098,.381,"steel"),
+        (-.103,.391,"steel"),(-.105,.423,"steel"),(-.097,.449,"steel"),
+        (-.085,flange,"steel"),(-.071,.447,"steel"),(TREAD_BAND[0],tread,"polished"),
+        (TREAD_BAND[1],tread,"polished"),(.074,.413,"steel"),(.094,.402,"steel"),(.098,.381,"steel"),
         (.077,.361,"cast"),(.062,.231,"cast"),(.077,.180,"steel"),
         (.120,.133,"polished"),(.126,.113,"cast"),(.126,0,"cast"),
     ], sides=72)

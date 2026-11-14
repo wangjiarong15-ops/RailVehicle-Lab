@@ -29,27 +29,38 @@ export function studio(scene, renderer) {
   room.dispose();
   generator.dispose();
   scene.environment = environment.texture;
-  scene.environmentIntensity = .75;
+  scene.environmentIntensity = .62;
   scene.environmentRotation.x = Math.PI / 2;
 
-  const key = new THREE.DirectionalLight(0xfff0df, 2.35);
-  key.position.set(2.8, -3.6, 5.6);
+  const key = new THREE.DirectionalLight(0xfff3e6, 2.25);
+  key.position.set(2.8, -3.6, 5.93);
+  key.target.position.z = .33;
   key.castShadow = true;
   key.shadow.mapSize.set(1024, 1024);
-  Object.assign(key.shadow.camera, {left: -3.5, right: 3.5, top: 2.9, bottom: -2.9, near: .5, far: 13});
   key.shadow.normalBias = .018;
-  key.shadow.bias = -.0002;
-  key.shadow.intensity = .75;
-  key.shadow.radius = 2;
-  const fill = new THREE.DirectionalLight(0xa7cbff, .84);
+  key.shadow.bias = -.00045;
+  key.shadow.intensity = .82;
+  key.shadow.radius = 2.8;
+  const fill = new THREE.DirectionalLight(0xb8d1f1, .63);
   fill.position.set(-3, 4, 3);
-  const rim = new THREE.DirectionalLight(0xd9e5ff, 1.35);
+  const rim = new THREE.DirectionalLight(0xd9e5ff, 1.20);
   rim.position.set(-5, -2, 2);
-  scene.add(key, fill, rim, new THREE.HemisphereLight(0xd7e8ff, 0x596a79, .77));
+  const ambient = new THREE.HemisphereLight(0xe0edff, 0x737c87, .65);
+  ambient.position.set(0, 0, 1); // The workbench uses Z-up, unlike the Three.js default.
+  scene.add(key, key.target, fill, rim, ambient);
+
+  function fitShadows(exploded) {
+    // Light-space bounds cover the track and moving assembly. Only the exploded view needs the larger area.
+    const camera = key.shadow.camera;
+    Object.assign(camera, exploded
+      ? {left: -3.20, right: 2.70, top: 3.30, bottom: -2.65, near: 3.20, far: 10}
+      : {left: -2.80, right: 2.55, top: 2.48, bottom: -2.22, near: 4, far: 9.6});
+    camera.updateProjectionMatrix();
+  }
 
   const platform = new THREE.Group();
   const base = new THREE.Mesh(new THREE.BoxGeometry(4.5, 2.63, .12),
-    new THREE.MeshStandardMaterial({color: 0x273342, roughness: .77, metalness: .18}));
+    new THREE.MeshStandardMaterial({color: 0x202b36, roughness: .88, metalness: .08}));
   base.position.z = -.276;
   base.receiveShadow = true;
   const plinth = new THREE.Mesh(new THREE.BoxGeometry(4.39, 2.53, .037),
@@ -57,7 +68,7 @@ export function studio(scene, renderer) {
   plinth.position.z = -.351;
   platform.add(base, plinth);
   scene.add(platform);
-  return {platform, dispose() {
+  return {platform, fitShadows, dispose() {
     environment.dispose();
     key.shadow.dispose();
   }};

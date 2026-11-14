@@ -386,6 +386,10 @@ export async function mount() {
     }
     updateExportButton();
     if (args.playing || args.spread) measuring = false;
+    if (!previous || Boolean(previous.spread) !== Boolean(args.spread)) {
+      illumination.fitShadows(Boolean(args.spread));
+      shadowDirty = true;
+    }
     if (previous && (previous.phase !== args.phase || previous.mode !== args.mode ||
         previous.rails !== args.rails || previous.spread !== args.spread ||
         previous.visible.join() !== args.visible.join() || args.playing)) clearMeasurement();
