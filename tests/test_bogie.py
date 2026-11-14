@@ -2,6 +2,7 @@ import math
 import unittest
 
 from rail_vehicle.bogie import build_bogie, motion
+from rail_vehicle.bogie_geometry import AXLE_X, AXLE_Z, WHEEL_POSE_GAIN
 from rail_vehicle.bogie_replay import (
     COMBINED, GAP, LATERAL, NORMAL, VERTICAL, event_positions, gap_cutoff, replay_scene, scene_for_sample,
 )
@@ -22,6 +23,34 @@ class BogieTests(unittest.TestCase):
         self.assertEqual(sum(trace.type == "mesh3d" for trace in fig.data), 6)
         self.assertTrue(all((trace.color if trace.type == "mesh3d" else trace.line.color) == "#ffca45"
                             for trace in fig.data))
+
+    def test_wheel_markers_show_forward_rolling_in_plotly(self):
+        def marks(mode, phase):
+            trace = build_bogie(mode, phase, visible=["轮对"]).data[-1]
+            return tuple(zip(trace.x, trace.y, trace.z))[1::3]  # Outer endpoint on each wheel.
+
+        start = marks("正常运行", 0.)
+        quarter_turn = math.pi / 2
+        rolling = marks("正常运行", quarter_turn)
+        # The forward witness point descends during a positive quarter turn about Y.
+        for axle_x, (start_x, start_y, start_z), (x, y, z) in zip(
+                (AXLE_X[0], AXLE_X[0], AXLE_X[1], AXLE_X[1]), start, rolling, strict=True):
+            self.assertGreater(start_x, axle_x)
+            self.assertAlmostEqual(start_z, AXLE_Z)
+            self.assertAlmostEqual(x, axle_x)
+            self.assertAlmostEqual(y, start_y)
+            self.assertAlmostEqual(AXLE_Z - z, start_x - axle_x)
+
+        # Yaw follows the wheelset after spin and doesn't change marker height.
+        yaw_phase = quarter_turn / 2
+        lateral, _, yaw = motion("蛇行运动示意", yaw_phase)
+        snake = marks("蛇行运动示意", yaw_phase)
+        normal = marks("正常运行", yaw_phase)
+        cosine, sine = math.cos(WHEEL_POSE_GAIN * yaw), math.sin(WHEEL_POSE_GAIN * yaw)
+        for (x, y, z), (snake_x, snake_y, snake_z) in zip(normal, snake, strict=True):
+            self.assertAlmostEqual(snake_x, x * cosine - y * sine)
+            self.assertAlmostEqual(snake_y, x * sine + y * cosine + WHEEL_POSE_GAIN * lateral)
+            self.assertAlmostEqual(snake_z, z)
 
     def test_orthographic_view_labels_only_visible_parts(self):
         figure = build_bogie(visible=["构架", "轴箱"], labels=True, view="俯视图")

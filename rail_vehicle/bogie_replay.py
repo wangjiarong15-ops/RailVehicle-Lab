@@ -10,6 +10,7 @@ from rail_vehicle.anomaly import detect_anomalies
 from rail_vehicle.replay import ReplayState, ReplayTrack, control_replay, replay_long_gap_at
 
 
+ILLUSTRATION_PERIOD = 2.4
 EVENT_FILTERS = {
     "axes": "横向与垂向（分轴统计）",
     "lateral": "横向超阈值",
@@ -207,6 +208,32 @@ def control_event_loop(state, action, now, window, *, rate=None):
     return replace(updated, position=min(window.end, window.start + updated.position))
 
 
+def advance_teaching(state, now):
+    """Advance the repeating illustration without stopping at a cycle boundary."""
+    if not state.playing:
+        return state
+    if state.last_tick is None:
+        return replace(state, last_tick=now)
+    tick = max(state.last_tick, now)
+    elapsed = (tick - state.last_tick) * state.rate
+    return replace(state, position=(state.position + elapsed) % ILLUSTRATION_PERIOD, last_tick=tick)
+
+
+def control_teaching(state, action, now, *, rate=None):
+    state = advance_teaching(state, now)
+    if action == "play":
+        return state if state.playing else replace(state, playing=True, last_tick=now)
+    if action == "pause":
+        return replace(state, playing=False, last_tick=None)
+    if action == "reset":
+        return ReplayState(rate=state.rate)
+    if action == "rate":
+        if rate is None or not isfinite(rate) or rate <= 0:
+            raise ValueError("回放倍速必须是有限的正数。")
+        return replace(state, rate=rate)
+    raise ValueError("未知回放操作。")
+
+
 def gap_cutoff(track: ReplayTrack):
     intervals = [end - start for start, end in zip(track.offsets, track.offsets[1:]) if end > start]
     return 3 * median(intervals) if intervals else None
@@ -220,4 +247,4 @@ def replay_scene(track: ReplayTrack, position, index, threshold, cutoff):
 
 def illustration_phase(position):
     """Fixed display cycle; measured speed and acceleration do not set displacement."""
-    return position * tau / 2.4
+    return position * tau / ILLUSTRATION_PERIOD

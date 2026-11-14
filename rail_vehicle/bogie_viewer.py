@@ -5,6 +5,7 @@ from pathlib import Path
 from streamlit.components.v1 import declare_component
 
 from rail_vehicle.bogie import motion_envelope
+from rail_vehicle.bogie_replay import ILLUSTRATION_PERIOD
 
 
 ASSETS = Path(__file__).with_name("assets") / "bogie_viewer"
@@ -22,11 +23,13 @@ def webgl_available():
 
 
 def render_webgl(*, mode, phase, state, visible, highlight, view, focus, labels, rails,
-                 exploded, spread, camera_revision, continuous, height, key, export_context=None, reference=False):
+                 exploded, spread, camera_revision, continuous, height, key, export_context=None, reference=False,
+                 periodic=False):
     # Keep the same widget identity on replay ticks so the orbit camera and scene stay mounted.
     component = declare_component("bogie_viewer", path=str(ASSETS))
     component(
         mode=mode, envelope=motion_envelope(mode), phase=phase, playing=state.playing and continuous,
+        periodic=periodic, period=ILLUSTRATION_PERIOD, hold=not continuous and not exploded,
         rate=state.rate, visible=visible, highlight=highlight, view=view, focus=focus,
         labels=labels, rails=rails, spread=spread if exploded else 0, revision=camera_revision,
         height=height, key=key, default=None,

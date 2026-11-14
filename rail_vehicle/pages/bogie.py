@@ -11,8 +11,9 @@ import streamlit as st
 from rail_vehicle.bogie import PART_DESCRIPTIONS, PARTS, VIEWS, build_bogie
 from rail_vehicle.bogie_inspection_context import inspection_context
 from rail_vehicle.bogie_replay import (
-    EVENT_FILTERS, EventSpanIndex, GAP, TEACHING, advance_event_loop, control_event_loop, event_loop,
-    event_positions, gap_cutoff, illustration_phase, replay_event_catalog, replay_scene,
+    EVENT_FILTERS, EventSpanIndex, GAP, ILLUSTRATION_PERIOD, TEACHING, advance_event_loop, advance_teaching,
+    control_event_loop, control_teaching, event_loop, event_positions, gap_cutoff, illustration_phase,
+    replay_event_catalog, replay_scene,
 )
 from rail_vehicle.bogie_viewer import render_webgl, webgl_available
 from rail_vehicle.demo_data import DEMO_BATCH_IDS, analysis_demo_data
@@ -58,13 +59,13 @@ class Inspection:
 
 
 def _model_view(mode, phase, state, inspection, highlight, height, key, renderer, continuous,
-                *, labels=False, focus=None, exploded=False, export_context=None, reference=False):
+                *, labels=False, focus=None, exploded=False, export_context=None, reference=False, periodic=False):
     camera = dict(height=height, rails=inspection.rails, camera_revision=inspection.camera_revision)
     if renderer == WEBGL:
         render_webgl(mode=mode, phase=phase, state=state, visible=inspection.visible, highlight=highlight,
                      view=inspection.view, focus=focus, labels=labels, exploded=exploded,
                      spread=inspection.spread, continuous=continuous and not exploded, key=key,
-                     export_context=export_context, reference=reference, **camera)
+                     export_context=export_context, reference=reference, periodic=periodic, **camera)
     else:
         plot_chart(build_bogie(mode, phase, inspection.visible, highlight, inspection.view,
                               labels=labels, exploded=exploded, spread=inspection.spread,
@@ -268,9 +269,8 @@ def _display(track, duration, threshold, cutoff, teaching, inspection, event_ind
     now = monotonic()
     if window:
         state = advance_event_loop(state, now, window)
-    elif track is None and state.playing and state.last_tick is not None:
-        state = ReplayState((state.position + max(0, now - state.last_tick) * state.rate) % duration,
-                            True, state.rate, now)
+    elif track is None:
+        state = advance_teaching(state, now)
     else:
         previous = state
         state = advance_replay(state, now, duration)
@@ -313,11 +313,12 @@ def _display(track, duration, threshold, cutoff, teaching, inspection, event_ind
                 with active:
                     _model_view(scene.mode, phase, state, inspection, scene.parts, height, "bogie_model",
                                 renderer, scene is not GAP, labels=inspection.labels, focus=inspection.focus,
-                                exploded=inspection.exploded, export_context=export_context)
+                                exploded=inspection.exploded, export_context=export_context, periodic=track is None)
                 if compare:
                     with reference:
                         _model_view("正常运行", phase, state, inspection, (), height, "bogie_reference",
-                                    renderer, scene is not GAP, export_context=export_context, reference=True)
+                                    renderer, scene is not GAP, export_context=export_context, reference=True,
+                                    periodic=track is None)
             except (TypeError, ValueError, RuntimeError):
                 st.error("三维视图暂时无法加载，仍可查看运行信号。")
     with panel, st.container(border=True, key="bogie_status_card"):
@@ -363,6 +364,14 @@ def _display(track, duration, threshold, cutoff, teaching, inspection, event_ind
             chart = build_replay_chart(track, index, state.position, threshold, event_index=event_index,
                                        playhead=True, window=window)
             plot_chart(chart, width="stretch", key="bogie_curves")
+
+
+def _control_playback(state, action, now, track, window, *, rate=None):
+    if window:
+        return control_event_loop(state, action, now, window, rate=rate)
+    if track is None:
+        return control_teaching(state, action, now, rate=rate)
+    return control_replay(state, action, now, track.duration, rate=rate)
 
 
 def render():
@@ -459,10 +468,10 @@ def render():
     window = active_loop["window"] if active_loop else None
     with main:
         state = st.session_state.get(STATE_KEY, ReplayState())
-        duration = track.duration if track is not None else 2.4
+        duration = track.duration if track is not None else ILLUSTRATION_PERIOD
         view_slot = st.container()
         if inspection.exploded and state.playing:
-            state = control_replay(state, "pause", monotonic(), duration)
+            state = _control_playback(state, "pause", monotonic(), track, window)
         if source != TEACH and track is None:
             st.caption("暂无可回放的样本；仍可观察教学模型。")
         if window:
@@ -482,11 +491,9 @@ def render():
             rate = st.selectbox("播放速度", [0.5, 1., 2., 4.], index=1, width=110, key="bogie_rate",
                                 format_func=lambda x: f"{x:g}×")
         if rate != state.rate:
-            state = (control_event_loop(state, "rate", monotonic(), window, rate=rate) if window else
-                     control_replay(state, "rate", monotonic(), duration, rate=rate))
+            state = _control_playback(state, "rate", monotonic(), track, window, rate=rate)
         if action:
-            state = (control_event_loop(state, action, monotonic(), window) if window else
-                     control_replay(state, action, monotonic(), duration))
+            state = _control_playback(state, action, monotonic(), track, window)
             if action in ("play", "reset"):
                 st.session_state[FRAME_KEY] = None
         st.session_state[STATE_KEY] = state

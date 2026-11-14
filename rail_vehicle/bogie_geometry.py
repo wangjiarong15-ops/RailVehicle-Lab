@@ -385,7 +385,8 @@ def _wheel_markers(a, phase):
         for side in (-1, 1):
             y = side*WHEEL_Y
             outer = y + side*.113
-            mark = [(x+r*c, outer, AXLE_Z+r*s) for r in (.15,.36)]
+            # Right-handed +Y spin moves the forward (+X) marker toward the rail.
+            mark = [(x+r*c, outer, AXLE_Z-r*s) for r in (.15,.36)]
             a.markers.extend([*map(a.placement("轮对", (x,y,AXLE_Z), a.wheel), mark), None])
 
 

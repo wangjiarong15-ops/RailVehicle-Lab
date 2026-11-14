@@ -262,6 +262,71 @@ async function checkDamperGeometry(root, format) {
   assert.equal(checked, 4, `All four dampers must remain connected in ${format}`);
 }
 
+async function checkMotionClock(root) {
+  const poses = await root.evaluate(async () => {
+    // Exercise the exact module loaded by the viewer with controlled arrival times.
+    const {motionClock} = await import("./motion.js");
+    const clock = motionClock();
+    const teaching = {period: 2.4, periodic: true, hold: false, phase: 5.7,
+      playing: true, rate: 4, envelope: [0, 0, 0], spread: 0};
+    clock.receive(teaching, 0);
+    const forward = [];
+    for (let now = 0; now <= 320; now += 16) forward.push(clock.tick(now).angle);
+    // A late packet from the next teaching cycle carries a smaller wrapped phase.
+    clock.receive({...teaching, phase: .5}, 320);
+    for (let now = 336; now <= 416; now += 16) forward.push(clock.tick(now).angle);
+
+    const history = {...teaching, periodic: false, rate: 1, phase: 12, envelope: [.075, .065, .049]};
+    clock.receive(history, 500);
+    const beforeRewind = clock.tick(570);
+    clock.receive({...history, phase: 3}, 600);
+    const rewound = clock.tick(600);
+    clock.tick(665);
+    clock.receive({...history, hold: true, playing: false, phase: 0, envelope: [0, 0, 0]}, 680);
+    const gap = clock.tick(680), held = clock.tick(1000);
+    clock.receive({...history, phase: 8}, 1020);
+    const resumed = clock.tick(1060);
+    const stale = clock.tick(1821), frozen = clock.tick(1850);
+    clock.receive({...history, phase: 10}, 1900);
+    return {forward, beforeRewind, rewound, gap, held, resumed, stale, frozen, reanchored: clock.tick(1900)};
+  });
+  assert(poses.forward.at(-1) > 2 * Math.PI, "Teaching motion did not cross the cycle boundary");
+  assert(poses.forward.every((angle, index, list) => index === 0 || angle > list[index - 1]),
+    "An out-of-date teaching snapshot made the wheel backtrack");
+  assert(poses.beforeRewind.angle > 12);
+  assert.equal(poses.rewound.angle, 3, "An event loop rewind must use the destination batch time immediately");
+  const neutral = {running: false, settling: false, angle: 0, lateral: 0, vertical: 0, yaw: 0};
+  assert.deepEqual(poses.gap, neutral, "A gap retained the previous sample's pose");
+  assert.deepEqual(poses.held, neutral, "A gap did not hold the neutral model");
+  assert(poses.resumed.running && poses.resumed.angle > 8 && Math.abs(poses.resumed.vertical) > .001,
+    "The model did not resume from the next observation");
+  assert(!poses.stale.running && poses.frozen.angle === poses.stale.angle,
+    "A disconnected viewer kept advancing the illustration");
+  assert.equal(poses.reanchored.angle, 10, "The first fresh snapshot did not resync the viewer");
+}
+
+async function checkTeachingControls(page, data, play, pause, reset) {
+  await option(page, "bogie_teaching", "正常运行");
+  await option(page, "bogie_rate", "4×");
+  await play.click();
+  const wrapped = await until(data, (d) => d.playing === "true" && Number(d.phase) >= 2 * Math.PI,
+    "4× teaching playback did not continue through a full cycle");
+  await option(page, "bogie_rate", "0.5×");
+  await until(data, (d) => d.playing === "true" && Number(d.phase) > Number(wrapped.phase) + .3,
+    "A teaching rate change stopped or rewound the running wheel");
+  await pause.click();
+  const paused = await until(data, (d) => d.playing === "false", "Teaching pause did not reach the viewer");
+  await page.waitForTimeout(230);
+  assert.equal((await data()).phase, paused.phase, "Paused teaching wheel kept turning");
+  await play.click();
+  await until(data, (d) => d.playing === "true" && Number(d.frames) > Number(paused.frames) + 4,
+    "Teaching playback did not resume");
+  await reset.click();
+  await until(data, (d) => d.playing === "false" && Number(d.phase) === 0, "Teaching reset did not return to zero");
+  await option(page, "bogie_rate", "1×");
+  console.log("Teaching phase continued through wrap, rate change, pause, resume and reset");
+}
+
 async function audit(browser, width, height, complete = true) {
   const page = await browser.newPage({viewport: {width, height}, screen: {width, height}});
   page.setDefaultTimeout(20000);
@@ -287,6 +352,7 @@ async function audit(browser, width, height, complete = true) {
     assert.equal((await data()).parts, "7");
     await screenshot(page, "bogie-webgl-" + width);
     if (!complete) return;
+    await checkMotionClock(root);
     await checkDamperGeometry(root, "glb");
     await page.setViewportSize({width: 1366, height: 768});
     await until(() => canvas.boundingBox(), (resized) => resized.height < box.height - 100, "Viewport did not resize");
@@ -484,6 +550,7 @@ async function audit(browser, width, height, complete = true) {
       await reset.click();
       await until(data, (d) => Number(d.phase) === 0, "Reset did not return to initial pose");
     }
+    await checkTeachingControls(page, data, play, pause, reset);
 
     await page.getByText("视角与部件", {exact: true}).click();
     await option(page, "bogie_renderer", "Plotly 兼容模式");
