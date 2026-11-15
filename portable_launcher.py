@@ -194,5 +194,10 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    # Frozen builds can ignore PYTHONUTF8. Keep Chinese startup text usable
+    # when Windows redirects the console to a file or automation pipe.
+    for stream in (sys.stdout, sys.stderr):
+        if stream is not None:
+            stream.reconfigure(encoding="utf-8", errors="replace")
     multiprocessing.freeze_support()
     sys.exit(main())
