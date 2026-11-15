@@ -43,10 +43,10 @@ def restore_source_widgets(kind):
         st.session_state["ai_center_source_widgets"] = remaining
 
 
-def render_center_link(kind, payload, selection, *, guard_key=None, guard_fingerprint=None):
+def render_center_link(kind, payload, selection, *, guard_key=None, guard_fingerprint=None, replay_anchors=None):
     try:
         register_context(st.session_state, kind, payload, selection,
-                         guard_key=guard_key, guard_fingerprint=guard_fingerprint)
+                         guard_key=guard_key, guard_fingerprint=guard_fingerprint, replay_anchors=replay_anchors)
     except (ValueError, TypeError, KeyError, OverflowError):
         clear_context(st.session_state, kind)
         clear_result(st.session_state, CONTEXTS[kind][2])

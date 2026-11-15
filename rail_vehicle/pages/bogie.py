@@ -1,8 +1,6 @@
 """Offline teaching and historical replay of the simplified bogie."""
 
-from bisect import bisect_left, bisect_right
 from dataclasses import dataclass
-from datetime import timezone
 import sqlite3
 from time import monotonic
 
@@ -18,12 +16,12 @@ from rail_vehicle.bogie_replay import (
 from rail_vehicle.bogie_viewer import render_webgl, webgl_available
 from rail_vehicle.demo_data import DEMO_BATCH_IDS, analysis_demo_data
 from rail_vehicle.deployment import demo_source_options
+from rail_vehicle.event_anchor import resolve_event_row
 from rail_vehicle.pages.cockpit import build_replay_chart
 from rail_vehicle.pages.data_workflow import analysis_button, render_replay_return
 from rail_vehicle.replay import ReplayState, advance_replay, control_replay, prepare_replay
 from rail_vehicle.replay_evidence import MAX_WINDOW_EXPORT_ROWS, ReplayEvidenceScope, replay_evidence_csv
 from rail_vehicle.run_data import list_batch_samples, list_vehicle_batches
-from rail_vehicle.timestamp_utils import parse_iso_timestamp
 from rail_vehicle.ui import navigate, page_title, plot_chart
 from rail_vehicle.vehicle_data import list_vehicles
 
@@ -431,7 +429,7 @@ def render():
         selection = (source,)
         try:
             selection, load = _load(source, requested)
-            if selection != st.session_state.get("bogie_selection"):
+            if selection != st.session_state.get("bogie_selection") or (target and requested):
                 track = load() if load else None
                 st.session_state["bogie_track"] = track
                 st.session_state["bogie_gap_cutoff"] = gap_cutoff(track) if track else None
@@ -470,23 +468,18 @@ def render():
         expected = ((DEMO, target["batch_id"]) if fictional else
                     (HISTORY, target["vehicle_id"], target["batch_id"]))
         if track is not None and selection == expected:
-            timestamp = parse_iso_timestamp(target["timestamp"])
-            if timestamp.tzinfo is None:
-                timestamp = timestamp.replace(tzinfo=timezone.utc)
-            start = (timestamp - parse_iso_timestamp(track.samples[0]["timestamp"])).total_seconds()
-            field = {"lateral": "lateral_accel", "vertical": "vertical_accel"}.get(target["axis"])
-            first, last = bisect_left(track.offsets, start), bisect_right(track.offsets, start)
-            if "row_span" in target:
-                scope_start, scope_end = target["row_span"]
-                first, last = max(first, scope_start - 1), min(last, scope_end)
-            row = next((i for i in range(first, last)
-                        if field and abs(track.samples[i][field]) > threshold), None)
+            try:
+                row = resolve_event_row(track, target["timestamp"], target["axis"], threshold,
+                                        row_span=target.get("row_span"), anchor=target.get("anchor"))
+            except (AttributeError, KeyError, OverflowError, TypeError, ValueError):
+                row = None
         if row is not None:
             _seek(track.offsets[row], row)
             st.success("已定位到虚构演示的异常样本。" if fictional else
                        "已定位到所选统计证据的异常样本。")
         else:
-            st.warning("当前批次未找到对应的异常样本，请回到运行分析重新核查证据。")
+            st.warning("无法唯一定位对应的异常样本。数据可能已变化，或旧证据包含同一时刻的多个候选；"
+                       "请回到运行分析重新核查证据。")
     active_loop = st.session_state.get(LOOP_KEY)
     if active_loop and (active_loop["track"] is not track or active_loop["threshold"] != threshold):
         _clear_loop(pause=True)

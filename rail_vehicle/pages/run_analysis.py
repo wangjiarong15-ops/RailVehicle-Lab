@@ -25,7 +25,8 @@ from rail_vehicle.ai.provider import input_fingerprint
 from rail_vehicle.batch_comparison import compare_run_batches
 from rail_vehicle.timestamp_utils import parse_iso_timestamp
 from rail_vehicle.dynamics import analyze_run_data
-from rail_vehicle.anomaly import EVENT_DURATION_NOTE, detect_anomalies
+from rail_vehicle.anomaly import EVENT_DURATION_NOTE, detect_anomalies_with_anchors
+from rail_vehicle.event_anchor import anchors_by_evidence
 from rail_vehicle.pages.anomaly_review import render_event_review
 from rail_vehicle.pages.sampling_quality import render_sampling_quality
 from rail_vehicle.pages.ai_link import render_center_link, restore_source_widgets
@@ -63,7 +64,7 @@ def _safe_pdf_error_message(report_kind: str, _error: Exception) -> str:
 
 
 def _render_ai_interpretation(
-    *, payload: dict, selection: dict, state_key: str, has_data: bool = True
+    *, payload: dict, selection: dict, state_key: str, has_data: bool = True, replay_anchors=None,
 ) -> None:
     """Register current facts for the shared AI center; no provider calls here."""
     kind = "single" if state_key == "ai_single_batch_result" else "batch"
@@ -71,7 +72,7 @@ def _render_ai_interpretation(
         clear_context(st.session_state, kind)
         clear_result(st.session_state, state_key)
         return
-    render_center_link(kind, payload, selection)
+    render_center_link(kind, payload, selection, replay_anchors=replay_anchors)
 
 
 def _batch_actions(batch_id, vehicles, *, scope):
@@ -359,9 +360,9 @@ def _analysis_timestamps(samples):
     return timestamps
 
 
-def _open_demo_evidence(payload, selection):
+def _open_demo_evidence(payload, selection, replay_anchors):
     remember_workbench_selection()
-    navigate(AI, ai_center_demo=True, **{DEMO_EVIDENCE_SCOPE: (payload, selection)})
+    navigate(AI, ai_center_demo=True, **{DEMO_EVIDENCE_SCOPE: (payload, selection, replay_anchors)})
 
 
 def _open_teaching_model():
@@ -570,7 +571,7 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         clear_result(st.session_state, ai_state_key)
         st.error(str(exc))
         return
-    anomaly_result = detect_anomalies(result["samples"], threshold)
+    anomaly_result, event_anchors = detect_anomalies_with_anchors(result["samples"], threshold)
 
     st.markdown(f"**分析样本数：** {result['sample_count']:,} 条　 ·　 **异常区段（按方向）：** {len(anomaly_result['events'])} 个")
     workbench_actions = st.container(border=True)
@@ -780,7 +781,7 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
             "vehicle_id": vehicle_id, "batch_id": batch_id,
             "start": selected_start.isoformat(), "end": selected_end.isoformat(),
             **({"row_span": replay_rows} if replay_rows else {}),
-        }, allow_bogie=True, fictional=demo)
+        }, allow_bogie=True, fictional=demo, anchors=event_anchors)
 
     selected_vehicle = next(
         vehicle for vehicle in vehicles if vehicle["id"] == vehicle_id
@@ -802,6 +803,7 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
     }
     if replay_rows:
         ai_selection["row_span"] = replay_rows
+    replay_anchors = anchors_by_evidence(ai_payload, event_anchors)
     record_analysis("单批次统计分析", {"selection": ai_selection, "facts": ai_payload},
                     result["sample_count"], fictional=demo)
     with workbench_actions:
@@ -814,10 +816,11 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         with evidence:
             if demo:
                 st.button("核查当前证据（离线） →", key="workbench_demo_evidence", on_click=_open_demo_evidence,
-                          args=(ai_payload, ai_selection), width="stretch")
+                          args=(ai_payload, ai_selection, replay_anchors), width="stretch")
                 st.caption("查看当前筛选范围的计算证据，不调用 AI。")
             else:
-                _render_ai_interpretation(payload=ai_payload, selection=ai_selection, state_key=ai_state_key)
+                _render_ai_interpretation(payload=ai_payload, selection=ai_selection, state_key=ai_state_key,
+                                          replay_anchors=replay_anchors)
     with report_tab:
         st.subheader("导出分析报告")
         st.caption("PDF 报告包含当前车辆、批次、时间范围、统计、异常事件、采样质量检查与规则及曲线。"

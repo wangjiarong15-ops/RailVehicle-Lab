@@ -31,7 +31,7 @@ def clear_all_contexts(state):
         state.pop(result_key, None)
 
 
-def register_context(state, kind, payload, selection, *, guard_key=None, guard_fingerprint=None):
+def register_context(state, kind, payload, selection, *, guard_key=None, guard_fingerprint=None, replay_anchors=None):
     """Only validated aggregate payloads enter the session registry, never raw samples."""
     if kind not in CONTEXTS or payload.get("analysis_type") != CONTEXTS[kind][1]:
         raise ValueError("分析类型不匹配。")
@@ -42,6 +42,8 @@ def register_context(state, kind, payload, selection, *, guard_key=None, guard_f
                    input_fingerprint=input_fingerprint(payload),
                    selection_fingerprint=selection_fingerprint(selection),
                    guard_key=guard_key, guard_fingerprint=guard_fingerprint)
+    if replay_anchors is not None:
+        context["replay_anchors"] = dict(replay_anchors)
     contexts = dict(state.get(STATE_KEY, {}))
     contexts[kind] = context
     state[STATE_KEY] = contexts

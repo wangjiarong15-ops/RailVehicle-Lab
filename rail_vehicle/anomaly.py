@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 import math
 from typing import Any
 
+from rail_vehicle.event_anchor import EventAnchor, group_fingerprint
 from rail_vehicle.timestamp_utils import parse_iso_timestamp
 
 
@@ -40,6 +41,15 @@ def detect_anomalies(
     the elapsed time from its first to last abnormal sample; a one-point event
     therefore has a duration of zero seconds.
     """
+    return _detect(samples, acceleration_threshold, with_anchors=False)[0]
+
+
+def detect_anomalies_with_anchors(samples, acceleration_threshold):
+    """Return the same event results plus separate local replay anchors in event order."""
+    return _detect(samples, acceleration_threshold, with_anchors=True)
+
+
+def _detect(samples, acceleration_threshold, *, with_anchors):
     try:
         threshold = float(acceleration_threshold)
     except (TypeError, ValueError) as exc:
@@ -47,7 +57,7 @@ def detect_anomalies(
     if not math.isfinite(threshold) or threshold < 0:
         raise ValueError("异常阈值必须是有限的非负数。")
     if not samples:
-        return {"threshold": threshold, "points": [], "events": []}
+        return {"threshold": threshold, "points": [], "events": []}, []
 
     try:
         ordered = sorted(samples, key=lambda row: _parse_timestamp(row["timestamp"]))
@@ -55,7 +65,7 @@ def detect_anomalies(
         raise ValueError("运行数据中存在无效的时间戳。") from exc
 
     point_records: list[dict[str, Any]] = []
-    events: list[dict[str, Any]] = []
+    indexed_events = []
     for field, anomaly_type in ACCELERATION_FIELDS:
         values: list[float] = []
         for index, sample in enumerate(ordered, start=1):
@@ -94,30 +104,39 @@ def detect_anomalies(
             peak_index = max(run, key=lambda index: abs(values[index]))
             start_time = ordered[run[0]]["timestamp"]
             end_time = ordered[run[-1]]["timestamp"]
-            duration = (
-                _parse_timestamp(end_time) - _parse_timestamp(start_time)
-            ).total_seconds()
-            events.append(
-                {
-                    "type": anomaly_type,
-                    "field": field,
-                    "start_timestamp": start_time,
-                    "end_timestamp": end_time,
-                    "duration_seconds": duration,
-                    "sample_count": len(run),
-                    "maximum_absolute_value": abs(values[peak_index]),
-                    "maximum_signed_value": values[peak_index],
-                    "maximum_timestamp": ordered[peak_index]["timestamp"],
-                }
-            )
+            instant = _parse_timestamp(start_time)
+            duration = (_parse_timestamp(end_time) - instant).total_seconds()
+            event = {
+                "type": anomaly_type,
+                "field": field,
+                "start_timestamp": start_time,
+                "end_timestamp": end_time,
+                "duration_seconds": duration,
+                "sample_count": len(run),
+                "maximum_absolute_value": abs(values[peak_index]),
+                "maximum_signed_value": values[peak_index],
+                "maximum_timestamp": ordered[peak_index]["timestamp"],
+            }
+            indexed_events.append((instant, run[0], event))
 
-    events.sort(
-        key=lambda event: (
-            _parse_timestamp(event["start_timestamp"]),
-            event["field"],
-        )
-    )
+    indexed_events.sort(key=lambda item: (item[0], item[2]["field"]))
     point_records.sort(
         key=lambda point: (_parse_timestamp(point["timestamp"]), point["field"])
     )
-    return {"threshold": threshold, "points": point_records, "events": events}
+    result = {"threshold": threshold, "points": point_records, "events": [event for _, _, event in indexed_events]}
+    if not with_anchors:
+        return result, []
+
+    groups = {}
+    anchors = []
+    for instant, index, _ in indexed_events:
+        if instant not in groups:
+            first, last = index, index + 1
+            while first and _parse_timestamp(ordered[first - 1]["timestamp"]) == instant:
+                first -= 1
+            while last < len(ordered) and _parse_timestamp(ordered[last]["timestamp"]) == instant:
+                last += 1
+            groups[instant] = (first, last - first, group_fingerprint(ordered[i] for i in range(first, last)))
+        first, size, fingerprint = groups[instant]
+        anchors.append(EventAnchor(index - first, size, fingerprint))
+    return result, anchors

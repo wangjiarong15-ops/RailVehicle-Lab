@@ -106,7 +106,7 @@ class StatisticsDemoTests(unittest.TestCase):
 
             app.button(key="workbench_demo_evidence").click().run()
             self.assertFalse(app.exception)
-            payload, selection = app.session_state[DEMO_EVIDENCE_SCOPE]
+            payload, selection, _ = app.session_state[DEMO_EVIDENCE_SCOPE]
             self.assertEqual(payload["sample_count"], expected["sample_count"])
             self.assertEqual(len(payload["anomaly_events"]), len(events))
             self.assertEqual(selection["threshold"], 1.1)
