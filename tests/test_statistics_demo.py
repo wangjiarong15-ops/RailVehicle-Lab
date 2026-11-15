@@ -13,7 +13,7 @@ from rail_vehicle.demo_data import analysis_demo_data
 from rail_vehicle.anomaly import detect_anomalies
 from rail_vehicle.dynamics import analyze_run_data
 from rail_vehicle.pages import ai_center, demo_center, run_analysis
-from rail_vehicle.pages.data_workflow import DEMO_EVIDENCE_SCOPE
+from rail_vehicle.pages.data_workflow import DEMO_EVIDENCE_SCOPE, EVIDENCE_RETURN
 
 
 class StatisticsDemoTests(unittest.TestCase):
@@ -111,8 +111,20 @@ class StatisticsDemoTests(unittest.TestCase):
             self.assertEqual(len(payload["anomaly_events"]), len(events))
             self.assertEqual(selection["threshold"], 1.1)
             self.assertFalse(any("生成 AI" in button.label for button in app.button))
+            evidence_id = payload["anomaly_events"][1]["evidence_id"]
+            app.selectbox(key="ai_demo_evidence").set_value(evidence_id).run()
+            app.button(key="ai_demo_bogie_jump").click().run()
+            self.assertFalse(app.exception)
+            self.assertEqual(app.slider(key="bogie_seek").value, 70.)
+            self.assertEqual(app.session_state[DEMO_EVIDENCE_SCOPE][1], selection)
+            app.button(key="bogie_return_evidence").click().run()
+            self.assertFalse(app.exception)
+            self.assertEqual(app.selectbox(key="ai_demo_evidence").value, evidence_id)
+            self.assertEqual(app.session_state[DEMO_EVIDENCE_SCOPE][0]["sample_count"], 76)
+            self.assertNotIn(EVIDENCE_RETURN, app.session_state)
             app.button(key="ai_demo_return_analysis").click().run()
             self.assertEqual(app.selectbox(key="demo_dynamics_batch_id").value, -2)
+            self.assertEqual(app.time_input(key="analysis_end_time_-1_-2").value, time(9, 31, 15))
             app.button(key="demo_generate_analysis_report").click().run()
             self.assertFalse(app.exception)
             self.assertTrue(app.session_state["demo_analysis_report_pdf"].startswith(b"%PDF"))

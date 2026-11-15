@@ -56,7 +56,19 @@ async function main() {
     await page.getByRole("heading", { name: "AI 分析中心", exact: true }).waitFor();
     await page.getByText("核查证据", { exact: true }).waitFor();
     assert(await button(page, "生成 AI 辅助解读").isDisabled(), "Use a fixture server with AI disabled");
+    const evidence = widget(page, "ai_center_evidence_single");
+    const evidenceId = "event.vertical.001";
+    const verticalEvidence = page.getByText(/类别：\s*event；轴向：\s*vertical/);
+    await evidence.getByRole("combobox").click();
+    await page.getByRole("option", { name: evidenceId, exact: true }).click();
+    await verticalEvidence.waitFor();
     await capture(page, "03-ai-evidence");
+
+    await widget(page, "ai_center_evidence_jump").getByRole("button").click();
+    await page.getByText("已定位到所选统计证据的异常样本。", { exact: true }).waitFor();
+    await page.getByText(/第 71\/120 条/).waitFor();
+    await widget(page, "bogie_return_evidence").getByRole("button").click();
+    await verticalEvidence.waitFor();
 
     await button(page, "返回分析页面").click();
     await tab(page, "PDF 报告").click();

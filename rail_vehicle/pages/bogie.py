@@ -19,7 +19,7 @@ from rail_vehicle.bogie_viewer import render_webgl, webgl_available
 from rail_vehicle.demo_data import DEMO_BATCH_IDS, analysis_demo_data
 from rail_vehicle.deployment import demo_source_options
 from rail_vehicle.pages.cockpit import build_replay_chart
-from rail_vehicle.pages.data_workflow import analysis_button, render_workbench_return
+from rail_vehicle.pages.data_workflow import analysis_button, render_replay_return
 from rail_vehicle.replay import ReplayState, advance_replay, control_replay, prepare_replay
 from rail_vehicle.replay_evidence import MAX_WINDOW_EXPORT_ROWS, ReplayEvidenceScope, replay_evidence_csv
 from rail_vehicle.run_data import list_batch_samples, list_vehicle_batches
@@ -399,7 +399,7 @@ def _control_playback(state, action, now, track, window, *, rate=None):
 
 def render():
     page_title("三维诊断工作台", "通用双轴转向架 · 观测读值、规则超阈值与模型示意分别显示。")
-    render_workbench_return("bogie_return_analysis")
+    render_replay_return()
     st.html("""<style>
       .st-key-bogie_model_card {background:var(--rv-surface,#101f31);padding:.55rem;}
       .st-key-bogie_model_card [data-testid=stVerticalBlock] {gap:.35rem;}

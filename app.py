@@ -14,9 +14,9 @@ from rail_vehicle.pages import demo_center, fleet_comparison
 from rail_vehicle.pages import home
 from rail_vehicle.pages import ai_center
 from rail_vehicle.pages import bogie
-from rail_vehicle.pages.data_workflow import DEMO_EVIDENCE_SCOPE, WORKBENCH_RETURN
+from rail_vehicle.pages.data_workflow import clear_workbench_navigation
 from rail_vehicle.ui import (
-    ADVANCED_PAGES, AI, ANALYSIS, ANALYSIS_MODE, BOGIE, DATA_PAGES, apply_design, initialize_theme, page_title,
+    ADVANCED_PAGES, ANALYSIS, ANALYSIS_MODE, DATA_PAGES, apply_design, initialize_theme, page_title,
     render_advanced_navigation, render_data_navigation, render_navigation,
 )
 
@@ -37,10 +37,7 @@ def main() -> None:
         render_data_navigation(page)
     elif page in ADVANCED_PAGES or (page == ANALYSIS and st.session_state.get(ANALYSIS_MODE) == "comparison"):
         render_advanced_navigation(page, public=public_demo)
-    if page not in (BOGIE, AI):
-        st.session_state.pop(WORKBENCH_RETURN, None)
-    if page != AI:
-        st.session_state.pop(DEMO_EVIDENCE_SCOPE, None)
+    clear_workbench_navigation(page)
     if page != "动态运行驾驶舱":
         # Returning to the cockpit starts paused, never advances while hidden.
         st.session_state.pop(cockpit.STATE_KEY, None)

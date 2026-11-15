@@ -2,7 +2,7 @@
 
 import streamlit as st
 
-from rail_vehicle.ui import ANALYSIS, ANALYSIS_MODE, DEMO_DATA, navigate
+from rail_vehicle.ui import AI, ANALYSIS, ANALYSIS_MODE, BOGIE, DEMO_DATA, navigate
 
 
 ANALYSIS_TARGET = "analysis_batch_target"
@@ -10,7 +10,8 @@ ANALYSIS_REPLAY_SCOPE = "analysis_replay_scope"
 IMPORT_VEHICLE = "import_vehicle_target"
 WORKBENCH_SOURCE = "workbench_analysis_source"
 WORKBENCH_RETURN = "workbench_analysis_return"
-DEMO_EVIDENCE_SCOPE = "workbench_demo_evidence"
+DEMO_EVIDENCE_SCOPE = "workbench_demo_evidence_scope"
+EVIDENCE_RETURN = "workbench_evidence_return"
 _WORKBENCH_WIDGET_PREFIXES = (
     "dynamics_", "demo_dynamics_", "analysis_start_", "analysis_end_", "anomaly_review_event",
     "anomaly_review_seconds", "history_sampling_", "demo_sampling_",
@@ -36,9 +37,46 @@ def return_to_workbench():
     navigate(route, **{ANALYSIS_MODE: "single"})
 
 
+def remember_evidence_selection(*, fictional):
+    """Keep one evidence-to-replay return step within the originating analysis."""
+    if (WORKBENCH_RETURN not in st.session_state
+            or fictional != (DEMO_EVIDENCE_SCOPE in st.session_state)):
+        return
+    keys = ("ai_demo_evidence",) if fictional else (
+        "ai_center_evidence_single", "ai_center_cited_event", "ai_center_timeout",
+    )
+    settings = {key: st.session_state[key] for key in keys if key in st.session_state}
+    settings.update(ai_center_demo=fictional, ai_center_show_history=False)
+    if not fictional:
+        settings.update((key, value) for key, value in st.session_state.items()
+                        if key.startswith("ai_center_model_"))
+        settings["ai_center_requested_kind"] = "single"
+    st.session_state[EVIDENCE_RETURN] = settings
+
+
+def return_to_evidence():
+    navigate(AI, **st.session_state.pop(EVIDENCE_RETURN))
+
+
+def clear_workbench_navigation(page):
+    if page not in (AI, BOGIE):
+        st.session_state.pop(WORKBENCH_RETURN, None)
+    if page != BOGIE:
+        st.session_state.pop(EVIDENCE_RETURN, None)
+    if page != AI and EVIDENCE_RETURN not in st.session_state:
+        st.session_state.pop(DEMO_EVIDENCE_SCOPE, None)
+
+
 def render_workbench_return(key):
     if WORKBENCH_RETURN in st.session_state:
         st.button("返回原分析范围", key=key, icon=":material/arrow_back:", on_click=return_to_workbench)
+
+
+def render_replay_return():
+    if EVIDENCE_RETURN in st.session_state:
+        st.button("返回证据核查", key="bogie_return_evidence", icon=":material/arrow_back:",
+                  on_click=return_to_evidence)
+    render_workbench_return("bogie_return_analysis")
 
 
 def open_analysis(vehicle_id, batch_id=None, *, threshold=None, scope=None):

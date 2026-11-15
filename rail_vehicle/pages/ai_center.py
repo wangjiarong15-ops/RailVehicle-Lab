@@ -37,13 +37,14 @@ def _render_history():
             st.caption("仅保留最近 10 次通过校验的生成记录。")
 
 
-def _event_button(event, selection, key, label):
+def _event_button(event, selection, key, label, *, from_evidence=False):
     event_replay_button(label=label, key=key, vehicle_id=selection["vehicle_id"],
                         batch_id=selection["batch_id"], threshold=selection["threshold"],
-                        timestamp=event["start_timestamp"], axis=event["type"], row_span=selection.get("row_span"))
+                        timestamp=event["start_timestamp"], axis=event["type"], row_span=selection.get("row_span"),
+                        from_evidence=from_evidence)
 
 
-def _cited_event_links(analysis, events, selection, *, key_prefix="ai_center"):
+def _cited_event_links(analysis, events, selection, *, key_prefix="ai_center", from_evidence=False):
     claims = [analysis["summary"]]
     for section in ("observations", "possible_causes", "further_checks", "limitations"):
         claims.extend(analysis[section])
@@ -51,7 +52,8 @@ def _cited_event_links(analysis, events, selection, *, key_prefix="ai_center"):
     matches = {event["evidence_id"]: event for event in events if event["evidence_id"] in cited}
     if matches:
         evidence_id = st.selectbox("AI 解读引用的异常区段", list(matches), key=f"{key_prefix}_cited_event")
-        _event_button(matches[evidence_id], selection, f"{key_prefix}_cited_event_jump", "回放 AI 引用的统计区段")
+        _event_button(matches[evidence_id], selection, f"{key_prefix}_cited_event_jump", "回放 AI 引用的统计区段",
+                      from_evidence=from_evidence)
         st.caption("定位依据为原统计区段。高亮表示关联结构，不能确认部件故障。")
     else:
         st.caption("本次 AI 解读未引用可定位的异常区段。")
@@ -229,7 +231,8 @@ def _render_demo_evidence():
             event = events[evidence_id]
             event_replay_button(label="在三维回放中查看虚构区段", key="ai_demo_bogie_jump",
                                 vehicle_id=vehicle_id, batch_id=batch, threshold=threshold,
-                                timestamp=event["start_timestamp"], axis=event["type"], fictional=True)
+                                timestamp=event["start_timestamp"], axis=event["type"], fictional=True,
+                                from_evidence=bool(scoped))
     with guide, st.container(border=True):
         st.subheader("如何解释证据")
         st.write("证据 ID 对应聚合指标或异常区段，可以回查计算口径和样本。")
@@ -353,7 +356,7 @@ def render():
                 clear_result(st.session_state, key)
             else:
                 if can_jump:
-                    _cited_event_links(saved["analysis"], events, selection)
+                    _cited_event_links(saved["analysis"], events, selection, from_evidence=True)
                 _render_save_history(payload, selection, saved)
         else:
             st.caption("尚未生成 AI 解读；右侧可离线核查当前计算指标。")
@@ -376,7 +379,8 @@ def render():
                 st.caption(f"计算口径：{rows[0]['口径']}")
                 event = next((event for event in events if event["evidence_id"] == evidence_id), None)
                 if event:
-                    _event_button(event, selection, "ai_center_evidence_jump", "在三维回放中查看此区段")
+                    _event_button(event, selection, "ai_center_evidence_jump", "在三维回放中查看此区段",
+                                  from_evidence=True)
                     st.caption("跳转使用原始统计证据的时间和阈值。")
             else:
                 st.info("当前分析没有可展示的证据。")

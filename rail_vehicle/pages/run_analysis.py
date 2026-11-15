@@ -36,6 +36,7 @@ from rail_vehicle.pages.data_workflow import (
     analysis_button, import_button, remember_workbench_selection,
 )
 from rail_vehicle.ai.center_state import clear_context
+from rail_vehicle.curve_preview import CURVE_POINT_LIMIT, curve_preview
 from rail_vehicle.replay_evidence import ReplayEvidenceScope
 from rail_vehicle.ui import AI, ANALYSIS_MODE, BOGIE, plot_chart, record_analysis, source_caption, workflow_caption, navigate
 from rail_vehicle.time_filter import filter_samples_by_time_range
@@ -583,13 +584,17 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
             ("vertical_accel", "垂向加速度—时间", "垂向加速度（m/s²）"),
         )
         ordered_samples = result["samples"]
+        if len(ordered_samples) > CURVE_POINT_LIMIT:
+            st.caption(f"长批次曲线预览：每条曲线或异常标记序列最多显示 {CURVE_POINT_LIMIT:,} 个原始点，"
+                       "分段保留极值。缩小时间范围可查看细节；统计、事件、证据和 PDF 输入仍使用全部筛选样本。")
         curve_tabs = st.tabs([spec[1] for spec in chart_specs])
         for curve_tab, (field, title, y_title) in zip(curve_tabs, chart_specs):
+            preview = curve_preview(ordered_samples, field)
             figure = go.Figure(
                 data=[
                     go.Scatter(
-                        x=[sample["timestamp"] for sample in ordered_samples],
-                        y=[sample[field] for sample in ordered_samples],
+                        x=[sample["timestamp"] for sample in preview],
+                        y=[sample[field] for sample in preview],
                         mode="lines",
                         name=y_title,
                         hovertemplate="%{x}<br>%{y:.4f}<extra></extra>",
@@ -609,6 +614,7 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
                     if point["field"] == field
                 ]
                 if axis_points:
+                    axis_points = curve_preview(axis_points, "value")
                     figure.add_trace(
                         go.Scatter(
                             x=[point["timestamp"] for point in axis_points],
@@ -774,16 +780,18 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
             and current_ai_result.get("status") == "available"
             else "no-ai-result"
         )
+        generate = st.button("生成 PDF 分析报告", type="primary",
+                             key="demo_generate_analysis_report" if demo else "generate_analysis_report")
         report_key = selection_fingerprint({
             "analysis": ai_payload, "selection": ai_selection,
             "sampling_quality": sampling_review, "ai_result": current_ai_pdf_fingerprint,
             "vehicle": selected_vehicle, "samples": result["samples"],
-        })
+        }) if generate or st.session_state.get(report_pdf_key) else None
         if st.session_state.get(report_state_key) != report_key:
             st.session_state.pop(report_state_key, None)
             st.session_state.pop(report_pdf_key, None)
 
-        if st.button("生成 PDF 分析报告", type="primary", key="demo_generate_analysis_report" if demo else "generate_analysis_report"):
+        if generate:
             try:
                 selected_vehicle = demo_vehicle if demo else get_vehicle(vehicle_id)
                 if selected_vehicle is None:
