@@ -16,7 +16,10 @@ from rail_vehicle.ai.ui import (ai_configuration_message, clear_result, invalida
                                status_message)
 from rail_vehicle.deployment import public_demo_enabled
 from rail_vehicle.pages.bogie_link import event_replay_button
-from rail_vehicle.ui import navigate, page_title
+from rail_vehicle.pages.data_workflow import (
+    DEMO_EVIDENCE_SCOPE, WORKBENCH_RETURN, WORKBENCH_SOURCE, render_workbench_return, return_to_workbench,
+)
+from rail_vehicle.ui import ANALYSIS_MODE, navigate, page_title
 
 
 _HISTORY_LABELS = {analysis_type: label for label, analysis_type, _ in CONTEXTS.values()}
@@ -190,19 +193,27 @@ def _render_demo_evidence():
     from rail_vehicle.dynamics import analyze_run_data
 
     st.info("虚构数据证据演示 · 数值由 Python 计算；本演示未生成 AI 解读，也不读取 AI 配置。")
-    vehicle, batches, samples = analysis_demo_data()
-    batch = st.selectbox("虚构证据批次", [item["id"] for item in batches],
-                         format_func=lambda value: f"虚构批次 {-value}", key="ai_demo_batch")
-    if "ai_demo_threshold" not in st.session_state:
-        st.session_state["ai_demo_threshold"] = 1.0
-    threshold = st.number_input("加速度绝对值阈值（m/s²）", min_value=0.0, value=None,
-                                step=0.1, key="ai_demo_threshold")
-    threshold = 1.0 if threshold is None else threshold
-    analysis = analyze_run_data(samples[batch], threshold)
-    anomalies = detect_anomalies(analysis["samples"], threshold)
-    payload = build_single_batch_payload(analysis=analysis, anomalies=anomalies, vehicle=vehicle,
-                                         batch_ref="B1", selected_start=analysis["samples"][0]["timestamp"],
-                                         selected_end=analysis["samples"][-1]["timestamp"])
+    scoped = st.session_state.get(DEMO_EVIDENCE_SCOPE)
+    if scoped:
+        payload, selection = scoped
+        vehicle_id, batch, threshold = (selection[name] for name in ("vehicle_id", "batch_id", "threshold"))
+        st.caption(f"虚构批次 {-batch} · 阈值 {threshold:g} m/s² · 当前分析范围："
+                   f"{selection['selected_start']} — {selection['selected_end']}")
+    else:
+        vehicle, batches, samples = analysis_demo_data()
+        vehicle_id = vehicle["id"]
+        batch = st.selectbox("虚构证据批次", [item["id"] for item in batches],
+                             format_func=lambda value: f"虚构批次 {-value}", key="ai_demo_batch")
+        if "ai_demo_threshold" not in st.session_state:
+            st.session_state["ai_demo_threshold"] = 1.0
+        threshold = st.number_input("加速度绝对值阈值（m/s²）", min_value=0.0, value=None,
+                                    step=0.1, key="ai_demo_threshold")
+        threshold = 1.0 if threshold is None else threshold
+        analysis = analyze_run_data(samples[batch], threshold)
+        anomalies = detect_anomalies(analysis["samples"], threshold)
+        payload = build_single_batch_payload(analysis=analysis, anomalies=anomalies, vehicle=vehicle,
+                                             batch_ref="B1", selected_start=analysis["samples"][0]["timestamp"],
+                                             selected_end=analysis["samples"][-1]["timestamp"])
     events = {event["evidence_id"]: event for event in payload["anomaly_events"]}
     catalog = evidence_detail_catalog(payload)
     facts, guide = st.columns([2, 1])
@@ -217,15 +228,18 @@ def _render_demo_evidence():
         if evidence_id in events:
             event = events[evidence_id]
             event_replay_button(label="在三维回放中查看虚构区段", key="ai_demo_bogie_jump",
-                                vehicle_id=vehicle["id"], batch_id=batch, threshold=threshold,
+                                vehicle_id=vehicle_id, batch_id=batch, threshold=threshold,
                                 timestamp=event["start_timestamp"], axis=event["type"], fictional=True)
     with guide, st.container(border=True):
         st.subheader("如何解释证据")
         st.write("证据 ID 对应聚合指标或异常区段，可以回查计算口径和样本。")
         st.caption("超过阈值描述的是数据状态。即使 AI 引用了正确证据，可能原因也需要进一步验证。")
-        public = public_demo_enabled()
-        st.button("返回综合工作台" if public else "返回演示中心", key="ai_demo_back", on_click=navigate,
-                  args=("平台首页" if public else "演示中心",))
+        if WORKBENCH_RETURN in st.session_state:
+            render_workbench_return("ai_demo_return_analysis")
+        else:
+            public = public_demo_enabled()
+            st.button("返回分析工作台" if public else "返回演示中心", key="ai_demo_back", on_click=navigate,
+                      args=("统计与异常演示" if public else "演示中心",))
 
 
 def render():
@@ -245,7 +259,8 @@ def render():
     available = {kind: item for kind in CONTEXTS if (item := current_context(st.session_state, kind)) is not None}
     if not available:
         st.info("当前会话还没有可核查的分析结果。先选择车辆和运行批次，完成分析后再回来解读证据。")
-        st.button("前往运行分析", key="ai_center_open_analysis", type="primary", on_click=navigate, args=("运行分析",))
+        st.button("前往分析工作台", key="ai_center_open_analysis", type="primary", on_click=navigate,
+                  args=("运行分析",), kwargs={ANALYSIS_MODE: "single"})
         _render_history()
         return
     left, middle, right = st.columns([1.0, 1.8, 1.8])
@@ -259,7 +274,12 @@ def render():
         kind = st.selectbox("分析类型", list(available), format_func=lambda value: CONTEXTS[value][0], key="ai_center_kind")
         destination = {"single": "运行分析", "batch": "运行分析", "ml": "机器学习异常检测",
                        "vibration": "振动与平稳性分析", "fleet": "多车辆运行对比"}[kind]
-        st.button("返回分析页面", on_click=navigate, args=(destination,))
+        return_options = {ANALYSIS_MODE: "comparison" if kind == "batch" else "single",
+                          WORKBENCH_SOURCE: "history"} if kind in {"single", "batch"} else None
+        if kind == "single" and WORKBENCH_RETURN in st.session_state:
+            st.button("返回分析页面", on_click=return_to_workbench)
+        else:
+            st.button("返回分析页面", on_click=navigate, args=(destination,), kwargs=return_options)
         item = available[kind]
         payload, selection = item["payload"], item["selection"]
         can_jump = kind == "single" and all(key in selection for key in ("vehicle_id", "batch_id", "threshold"))

@@ -5,7 +5,10 @@ const {mkdir, readFile} = require("node:fs/promises");
 const {join} = require("node:path");
 const {chromium} = require(process.env.RAIL_PLAYWRIGHT_MODULE || "playwright");
 
-const modules = ["综合工作台", "车辆与数据", "三维诊断工作台", "AI 分析中心"];
+const WORKBENCH = "分析工作台";
+const ADVANCED = "高级工具";
+const BOGIE = "三维诊断工作台";
+const AI = "AI 分析中心";
 const output = process.argv[3];
 const exact = (name) => ({name, exact: true});
 const heading = (page, name) => page.getByRole("heading", exact(name));
@@ -25,7 +28,7 @@ async function open(page, address, legacyRoute) {
   if (legacyRoute) target.searchParams.set("rail_page", legacyRoute);
   else target.searchParams.delete("rail_page");
   await page.goto(target.href);
-  await nav(page, modules[0]).waitFor();
+  await nav(page, WORKBENCH).waitFor();
 }
 
 async function screenshot(page, name) {
@@ -36,10 +39,11 @@ async function fromTop(page) {
   await page.getByTestId("stMain").evaluate((node) => node.scrollTo(0, 0));
 }
 
-async function assertNav(page) {
+async function assertNav(page, publicDemo = false) {
+  const modules = publicDemo ? [WORKBENCH, ADVANCED] : [WORKBENCH, "车辆与数据", ADVANCED];
   for (const name of modules) await nav(page, name).waitFor();
   const sidebarActions = await sidebar(page).locator('[data-testid="stButton"] button').all();
-  assert.equal(sidebarActions.length, 4, "Only four primary actions should be in the sidebar");
+  assert.equal(sidebarActions.length, modules.length, "Unexpected primary sidebar action");
   for (const [index, name] of modules.entries()) assert.match(await sidebarActions[index].innerText(), new RegExp(name));
 }
 
@@ -51,7 +55,7 @@ async function assertPublic(page) {
 }
 
 async function assertBogie(page) {
-  await heading(page, modules[2]).waitFor();
+  await heading(page, BOGIE).waitFor();
   const frame = page.frameLocator("iframe[title*=bogie_viewer]").first();
   const ready = frame.locator("#workbench[data-status=ready][data-frames][data-model=glb][data-components='54']");
   await ready.waitFor();
@@ -61,28 +65,25 @@ async function assertBogie(page) {
 
 async function demoAudit(page, address, width) {
   await open(page, address);
-  await heading(page, "综合工作台").waitFor();
-  await assertNav(page);
-  for (const name of ["statistics", "bogie", "evidence"]) {
-    await page.locator(`.st-key-launch_demo_${name} button`).waitFor();
-  }
+  await heading(page, WORKBENCH).waitFor();
+  await assertNav(page, true);
   await assertPublic(page);
   await screenshot(page, `workbench-${width}`);
 
-  await nav(page, modules[1]).click();
-  await heading(page, "统计与异常演示").waitFor();
   await page.getByRole("button", exact("计算虚构运行分析")).click();
   await page.getByTestId("stMetric").first().waitFor();
   await assertPublic(page);
   await screenshot(page, `data-${width}`);
 
-  await nav(page, modules[2]).click();
+  await page.locator(".st-key-analysis_replay_batch button").click();
   await assertBogie(page);
   await assertPublic(page);
+  await fromTop(page);
   await screenshot(page, `diagnosis-${width}`);
 
-  await nav(page, modules[3]).click();
-  await heading(page, modules[3]).waitFor();
+  await page.locator(".st-key-bogie_return_analysis button").click();
+  await page.locator(".st-key-workbench_demo_evidence button").click();
+  await heading(page, AI).waitFor();
   await heading(page, "核查 Python 计算的证据").waitFor();
   await assertPublic(page);
   await screenshot(page, `ai-${width}`);
@@ -90,17 +91,19 @@ async function demoAudit(page, address, width) {
   await assertBogie(page);
   await page.getByText("已定位到虚构演示的异常样本。", {exact: true}).waitFor();
 
-  await nav(page, modules[0]).click();
-  await heading(page, "综合工作台").waitFor();
-  await page.locator("summary").filter({hasText: "高级选项"}).click();
-  await page.getByRole("button", {name: /演示中心/}).click();
+  await nav(page, ADVANCED).click();
+  await heading(page, "演示路线").waitFor();
+  for (const name of ["statistics", "bogie", "evidence"]) {
+    await page.locator(`.st-key-launch_demo_${name} button`).waitFor();
+  }
+  await page.getByRole("button", exact("演示中心")).click();
   await heading(page, "演示中心").waitFor();
   await page.locator(".st-key-launch_demo_cockpit button").waitFor();
   await assertPublic(page);
   await screenshot(page, `advanced-${width}`);
 
   await open(page, address, "CSV 数据导入");
-  await heading(page, "综合工作台").waitFor();
+  await heading(page, WORKBENCH).waitFor();
   await assertPublic(page);
   await open(page, address, "三维转向架仿真");
   await assertBogie(page);
@@ -111,17 +114,17 @@ async function demoAudit(page, address, width) {
 
 async function localAudit(page, address) {
   await open(page, address);
-  await heading(page, "综合工作台").waitFor();
+  await heading(page, WORKBENCH).waitFor();
   await assertNav(page);
+  await nav(page, ADVANCED).click();
+  await heading(page, "数据总览").waitFor();
   const counts = await Promise.all(["登记车辆", "导入批次", "采样点总数"].map(async (label) => {
     const metric = page.getByTestId("stMetric").filter({hasText: label});
     return (await metric.getByTestId("stMetricValue").innerText()).trim();
   }));
   assert.deepEqual(counts, ["0", "0", "0 点"],
     "The local audit writes a synthetic vehicle and CSV. Start app.py with a new RAIL_PORTABLE_HOME first.");
-  await nav(page, modules[1]).click();
-  await heading(page, "运行分析").waitFor();
-  await page.getByRole("button", exact("车辆参数")).click();
+  await nav(page, "车辆与数据").click();
   await heading(page, "车辆参数").waitFor();
   await page.locator(".st-key-vehicle_add button").click();
   const dialog = page.getByRole("dialog", exact("车辆档案"));
@@ -150,7 +153,7 @@ async function localAudit(page, address) {
   await fromTop(page);
   await screenshot(page, "local-import");
   await page.locator(".st-key-import_analyze_latest button").click();
-  await heading(page, "运行分析").waitFor();
+  await heading(page, WORKBENCH).waitFor();
   await page.getByText(/分析样本数.*3 条.*异常区段.*1 个/).waitFor();
   await page.locator(".st-key-analysis_replay_batch button").waitFor();
   await fromTop(page);
@@ -172,10 +175,10 @@ async function localAudit(page, address) {
   await open(page, address, "CSV 数据导入");
   await page.getByTestId("stFileUploader").waitFor();
   await open(page, address, "AI 智能分析中心");
-  await heading(page, modules[3]).waitFor();
+  await heading(page, AI).waitFor();
   await page.getByText(/当前会话还没有可核查的分析结果/).waitFor();
-  await page.getByRole("button", {name: /前往运行分析$/}).click();
-  await heading(page, "运行分析").waitFor();
+  await page.locator(".st-key-ai_center_open_analysis button").click();
+  await heading(page, WORKBENCH).waitFor();
   assert.equal(await page.getByTestId("stException").count(), 0);
 }
 
@@ -207,7 +210,7 @@ async function withPage(browser, address, width, height, audit) {
   try {
     for (const [width, height] of [[1920, 1080], [1366, 768]]) {
       await withPage(browser, demo, width, height, demoAudit);
-      console.log(`Public demo passed at ${width}x${height}: four modules, legacy links, private route blocked, offline evidence and 54-part GLB.`);
+      console.log(`Public demo passed at ${width}x${height}: unified workflow, advanced tools, legacy links, private route blocked, offline evidence and 54-part GLB.`);
     }
     if (local) {
       await withPage(browser, local, 1920, 1080, localAudit);

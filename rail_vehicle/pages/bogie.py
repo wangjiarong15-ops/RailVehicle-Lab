@@ -19,7 +19,7 @@ from rail_vehicle.bogie_viewer import render_webgl, webgl_available
 from rail_vehicle.demo_data import DEMO_BATCH_IDS, analysis_demo_data
 from rail_vehicle.deployment import demo_source_options
 from rail_vehicle.pages.cockpit import build_replay_chart
-from rail_vehicle.pages.data_workflow import analysis_button
+from rail_vehicle.pages.data_workflow import analysis_button, render_workbench_return
 from rail_vehicle.replay import ReplayState, advance_replay, control_replay, prepare_replay
 from rail_vehicle.replay_evidence import MAX_WINDOW_EXPORT_ROWS, ReplayEvidenceScope, replay_evidence_csv
 from rail_vehicle.run_data import list_batch_samples, list_vehicle_batches
@@ -399,6 +399,7 @@ def _control_playback(state, action, now, track, window, *, rate=None):
 
 def render():
     page_title("三维诊断工作台", "通用双轴转向架 · 观测读值、规则超阈值与模型示意分别显示。")
+    render_workbench_return("bogie_return_analysis")
     st.html("""<style>
       .st-key-bogie_model_card {background:var(--rv-surface,#101f31);padding:.55rem;}
       .st-key-bogie_model_card [data-testid=stVerticalBlock] {gap:.35rem;}
@@ -410,8 +411,9 @@ def render():
     if STATE_KEY not in st.session_state:
         _clear_loop()
     choices = [TEACH, *demo_source_options(HISTORY, DEMO)]
-    fictional = bool(target and target.get("fictional") is True)
-    requested = target if fictional else (target or batch_target) if HISTORY in choices else None
+    candidate = target or batch_target
+    fictional = bool(candidate and candidate.get("fictional") is True)
+    requested = candidate if fictional or HISTORY in choices else None
     if requested:
         _clear_loop(pause=True)
         st.session_state["bogie_source"] = DEMO if fictional else HISTORY
@@ -442,7 +444,8 @@ def render():
             st.error("无法读取有效的运行数据，请检查批次后重试。")
             track = None
         if requested and batch_target and not target and batch_target["batch_id"] is not None:
-            expected_batch = (HISTORY, batch_target["vehicle_id"], batch_target["batch_id"])
+            expected_batch = ((DEMO, batch_target["batch_id"]) if fictional else
+                              (HISTORY, batch_target["vehicle_id"], batch_target["batch_id"]))
             if track is None or selection != expected_batch:
                 st.warning("未能打开入口指定的批次，请核对车辆和批次。")
         if "bogie_threshold" not in st.session_state:

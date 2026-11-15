@@ -31,10 +31,13 @@ from rail_vehicle.pages.anomaly_review import render_event_review
 from rail_vehicle.pages.sampling_quality import render_sampling_quality
 from rail_vehicle.pages.ai_link import render_center_link, restore_source_widgets
 from rail_vehicle.pages.bogie_link import batch_replay_button
-from rail_vehicle.pages.data_workflow import ANALYSIS_REPLAY_SCOPE, ANALYSIS_TARGET, IMPORT_VEHICLE, analysis_button, import_button
+from rail_vehicle.pages.data_workflow import (
+    ANALYSIS_REPLAY_SCOPE, ANALYSIS_TARGET, DEMO_EVIDENCE_SCOPE, IMPORT_VEHICLE, WORKBENCH_SOURCE,
+    analysis_button, import_button, remember_workbench_selection,
+)
 from rail_vehicle.ai.center_state import clear_context
 from rail_vehicle.replay_evidence import ReplayEvidenceScope
-from rail_vehicle.ui import plot_chart, record_analysis, source_caption, workflow_caption, navigate
+from rail_vehicle.ui import AI, ANALYSIS_MODE, BOGIE, plot_chart, record_analysis, source_caption, workflow_caption, navigate
 from rail_vehicle.time_filter import filter_samples_by_time_range
 from rail_vehicle.run_data import (
     MAX_CSV_SIZE_MB,
@@ -319,6 +322,23 @@ def _analysis_time_range(timestamps, vehicle_id, batch_id):
             datetime.combine(end_date, end_time).replace(tzinfo=timezone.utc) + timedelta(microseconds=999_999))
 
 
+def _open_demo_evidence(payload, selection):
+    remember_workbench_selection()
+    navigate(AI, ai_center_demo=True, **{DEMO_EVIDENCE_SCOPE: (payload, selection)})
+
+
+def _open_teaching_model():
+    from rail_vehicle.pages.bogie import TEACH
+
+    remember_workbench_selection()
+    navigate(BOGIE, bogie_source=TEACH)
+
+
+def _render_teaching_link():
+    st.button("观察转向架教学模型", key="workbench_teaching_bogie", on_click=_open_teaching_model,
+              icon=":material/view_in_ar:")
+
+
 def _render_dynamics_analysis(*, demo: bool = False) -> None:
     target = None
     if not demo:
@@ -330,7 +350,7 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
     if not demo:
         clear_context(st.session_state, "single")
     source_caption(fictional=demo)
-    workflow_caption("① 选择车辆与批次　→　② 调整时间和阈值　→　③ 查看分析、异常与报告")
+    workflow_caption("选择批次 → 查看曲线与异常 → 三维观察、证据核查或导出 PDF")
     st.caption(
         "基础动力学统计分析 · 描述性统计结果不代表法规合规或安全结论。"
     )
@@ -347,6 +367,7 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         clear_result(st.session_state, ai_state_key)
         st.info("请先录入车辆并导入运行数据。")
         st.button("前往车辆登记 →", key="analysis_register_vehicle", on_click=navigate, args=("车辆参数",))
+        _render_teaching_link()
         return
 
     vehicle_ids = [vehicle["id"] for vehicle in vehicles]
@@ -379,6 +400,7 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         clear_result(st.session_state, ai_state_key)
         st.info("该车辆还没有导入运行数据。")
         import_button(st, label="前往 CSV 导入 →", key="analysis_import_data", vehicle_id=vehicle_id)
+        _render_teaching_link()
         return
 
     batch_ids = [batch["id"] for batch in batches]
@@ -412,6 +434,7 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
     if not samples:
         clear_result(st.session_state, ai_state_key)
         st.info("所选批次没有可分析的运行数据。")
+        _render_teaching_link()
         return
 
     # Stored timestamps without an explicit offset have always been treated as UTC.
@@ -495,10 +518,6 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         st.error(str(exc))
         return
     anomaly_result = detect_anomalies(result["samples"], threshold)
-    if not demo:
-        batch_replay_button(st, label="在三维中回放整个批次 →", key="analysis_replay_batch",
-                            vehicle_id=vehicle_id, batch_id=batch_id, threshold=threshold)
-        st.caption("三维入口保留当前阈值；回放使用整批样本，不继承此处的时间筛选。")
 
     try:
         sampling_summary = analyze_sampling_times(filtered_samples)
@@ -508,6 +527,7 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         return
 
     st.markdown(f"**分析样本数：** {result['sample_count']:,} 条　 ·　 **异常区段（按方向）：** {len(anomaly_result['events'])} 个")
+    workbench_actions = st.container(border=True)
     with st.expander("基础结果说明（无需 AI）", expanded=False):
         st.write(f"当前范围内平均速度 {result['speed']['mean']:.3f} km/h；"
                  f"横向和垂向加速度 RMS 分别为 {result['lateral_accel']['rms']:.4f}、"
@@ -522,8 +542,8 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
             "RMS = √(Σx² / n)。加速度峰值取绝对值最大点，同时显示该点的有符号原始值和时间。"
         )
 
-    overview_tab, quality_tab, events_tab, report_tab = st.tabs(
-        ["运行概览", "采样质量", "异常事件", "AI 与报告"]
+    overview_tab, events_tab, report_tab, quality_tab = st.tabs(
+        ["运行曲线", "异常事件", "PDF 报告", "采样质量"]
     )
 
     with quality_tab:
@@ -727,16 +747,21 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         ai_selection["row_span"] = replay_rows
     record_analysis("单批次统计分析", {"selection": ai_selection, "facts": ai_payload},
                     result["sample_count"], fictional=demo)
+    with workbench_actions:
+        replay, evidence = st.columns(2)
+        with replay:
+            batch_replay_button(st, label="在三维中回放整个批次 →", key="analysis_replay_batch",
+                                vehicle_id=vehicle_id, batch_id=batch_id, threshold=threshold,
+                                fictional=demo, from_workbench=True)
+            st.caption("使用整批样本及当前阈值。若要精确定位，请从「异常事件」打开区段。")
+        with evidence:
+            if demo:
+                st.button("核查当前证据（离线） →", key="workbench_demo_evidence", on_click=_open_demo_evidence,
+                          args=(ai_payload, ai_selection), width="stretch")
+                st.caption("查看当前筛选范围的计算证据，不调用 AI。")
+            else:
+                _render_ai_interpretation(payload=ai_payload, selection=ai_selection, state_key=ai_state_key)
     with report_tab:
-        if demo:
-            st.info("虚构数据演示不调用 AI；统计、异常回查与 PDF 可离线使用。")
-        else:
-            _render_ai_interpretation(
-                payload=ai_payload,
-                selection=ai_selection,
-                state_key="ai_single_batch_result",
-            )
-
         st.subheader("导出分析报告")
         st.caption("PDF 报告包含当前车辆、批次、时间范围、统计、异常事件、采样质量检查与规则及曲线。"
                    "调整采样检查规则后需重新生成 PDF。")
@@ -815,7 +840,7 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
 
 def render_statistics_demo() -> None:
     """Offline, explicitly fictional entry into the existing analysis workflow."""
-    page_title("统计与异常演示")
+    page_title("分析工作台", "数据来源：内置虚构演示", primary=True)
     st.info("内置虚构数据 · 两个 120 条记录的批次，未导入数据库，不代表真实车辆。"
             "仅演示基础动力学统计与规则异常，不判断车辆故障或运行安全。")
     st.caption("默认阈值 1 m/s²：第 30–32 秒有横向变化，第 70–71 秒有垂向变化；虚构批次 2 在第 93–94 秒有双轴同点变化。"
@@ -1022,12 +1047,19 @@ def _render_batch_comparison() -> None:
 
 
 def render() -> None:
-    page_title("运行分析")
-    st.caption("分析工作台 / 时间范围 → 指标与曲线 → 异常事件 → 报告")
-    analysis_tab, comparison_tab = st.tabs(
-        ["基础动力学统计分析", "批次对比"]
-    )
-    with analysis_tab:
-        _render_dynamics_analysis()
-    with comparison_tab:
+    if st.session_state.get(ANALYSIS_MODE) == "comparison":
+        page_title("同车多批次对比", "高级工具 · 比较同一车辆的历史运行批次", primary=True)
         _render_batch_comparison()
+        return
+    page_title("分析工作台", "围绕一个批次，从运行曲线追溯异常，再核查证据和导出报告。", primary=True)
+    control = "workbench_source_control"
+    st.session_state[control] = st.session_state.get(WORKBENCH_SOURCE, "history")
+
+    def select_source():
+        st.session_state[WORKBENCH_SOURCE] = st.session_state[control]
+        clear_context(st.session_state, "single")
+        clear_result(st.session_state, "ai_single_batch_result")
+
+    source = st.radio("数据来源", ("history", "demo"), key=control, horizontal=True, on_change=select_source,
+                      format_func={"history": "历史导入批次", "demo": "内置虚构演示"}.get)
+    _render_dynamics_analysis(demo=source == "demo")

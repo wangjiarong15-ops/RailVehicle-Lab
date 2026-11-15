@@ -180,44 +180,48 @@ def record_analysis(kind, selection, count, *, fictional=False):
 
 
 HOME = "平台首页"
-DATA_PAGES = ("车辆参数", "CSV 数据导入", "运行分析")
+ANALYSIS = "运行分析"
+DATA_PAGES = ("车辆参数", "CSV 数据导入")
 DEMO_DATA = "统计与异常演示"
 BOGIE = "三维转向架仿真"
 AI = "AI 智能分析中心"
 ADVANCED_PAGES = ("演示中心", "动态运行驾驶舱", "振动与平稳性分析", "多车辆运行对比", "机器学习异常检测")
+ANALYSIS_MODE = "workbench_analysis_mode"
 
 
 def _workspaces(public):
-    # Public mode uses the same navigation but never offers private data routes.
-    return (
-        ("综合工作台", ":material/dashboard:", HOME, (HOME, *ADVANCED_PAGES)),
-        ("车辆与数据", ":material/database:", DEMO_DATA if public else "运行分析",
-         (DEMO_DATA,) if public else (*DATA_PAGES, DEMO_DATA)),
-        ("三维诊断工作台", ":material/view_in_ar:", BOGIE, (BOGIE,)),
-        ("AI 分析中心", ":material/smart_toy:", AI, (AI,)),
-    )
+    routes = (DEMO_DATA, BOGIE, AI) if public else (ANALYSIS, DEMO_DATA, BOGIE, AI)
+    analysis = ("分析工作台", ":material/monitoring:", DEMO_DATA if public else ANALYSIS, routes)
+    data = ("车辆与数据", ":material/database:", DATA_PAGES[0], DATA_PAGES)
+    advanced = ("高级工具", ":material/tune:", HOME, (HOME, *ADVANCED_PAGES))
+    return (analysis, advanced) if public else (analysis, data, advanced)
 
 
 def render_navigation(public):
     workspaces = _workspaces(public)
     allowed = {route for _, _, _, routes in workspaces for route in routes}
     aliases = {label: default for label, _, default, _ in workspaces}
+    aliases.update({"综合工作台": HOME, "三维诊断工作台": BOGIE, "AI 分析中心": AI})
+    if public:
+        aliases["车辆与数据"] = DEMO_DATA
     requested = st.session_state.get("navigation_page")
     if requested is None:
         requested = st.query_params.get("rail_page")
     selected = aliases.get(requested, requested)
     if selected not in allowed:
-        selected = HOME
+        selected = workspaces[0][2]
     st.session_state["navigation_page"] = selected
     with st.sidebar:
         st.html('<div class="rv-brand"><div class="rv-brand-icon" aria-hidden="true">RV</div>'
                 '<div><div class="rv-brand-name">RailVehicle-Lab</div>'
-                '<div class="rv-brand-subtitle">轨道车辆运行与动力学分析</div></div></div>')
+                '<div class="rv-brand-subtitle">轨道车辆异常分析与三维可视化</div></div></div>')
         with st.container(gap="xxsmall"):
             for label, icon, default, routes in workspaces:
+                comparison = selected == ANALYSIS and st.session_state.get(ANALYSIS_MODE) == "comparison"
+                active = label == "高级工具" if comparison else selected in routes
                 st.button(label, icon=icon, key=f"nav_{label}", width="stretch",
-                          type="primary" if selected in routes else "tertiary",
-                          on_click=navigate, args=(default,))
+                          type="primary" if active else "tertiary", on_click=navigate, args=(default,),
+                          kwargs={ANALYSIS_MODE: "single"} if default == ANALYSIS else None)
         st.caption("● 公开虚构数据演示" if public else "● 本地 SQLite 工作空间")
         with st.expander("工作空间外观", icon=":material/palette:"):
             st.html('<div class="rv-themes">' + ''.join(
@@ -235,10 +239,18 @@ def render_data_navigation(selected):
                       on_click=navigate, args=(route,))
 
 
-def render_advanced_navigation(selected):
-    with st.expander("高级选项", icon=":material/tune:"):
+def render_advanced_navigation(selected, *, public=False):
+    with st.expander("高级工具", icon=":material/tune:", expanded=True):
         st.caption("专项分析与虚构数据演示。选择工具后才进入对应页面。")
         with st.container(horizontal=True):
+            st.button("数据总览" if not public else "演示路线", key="nav_overview", on_click=navigate,
+                      args=(HOME,), type="primary" if selected == HOME else "secondary")
+            if not public:
+                st.button("同车多批次对比", key="nav_batch_comparison", on_click=navigate, args=(ANALYSIS,),
+                          kwargs={ANALYSIS_MODE: "comparison"},
+                          type="primary" if selected == ANALYSIS else "secondary")
+                st.button("本机 AI 历史", key="nav_ai_history", on_click=navigate, args=(AI,),
+                          kwargs={"ai_center_demo": False, "ai_center_show_history": True})
             for route in ADVANCED_PAGES:
                 st.button(route, key=f"nav_{route}", type="primary" if route == selected else "secondary",
                           on_click=navigate, args=(route,))

@@ -84,7 +84,6 @@ class AppSmokeTests(unittest.TestCase):
                 patch.object(run_analysis, "list_batch_samples", return_value=samples),
             ):
                 app = AppTest.from_file(str(PROJECT_ROOT / "app.py")).run()
-                app.sidebar.button(key="nav_车辆与数据").click().run()
 
             self.assertEqual(len(app.exception), 0)
             self.assertTrue(
@@ -138,7 +137,6 @@ class AppSmokeTests(unittest.TestCase):
                 patch.object(run_analysis, "list_batch_samples", return_value=samples),
             ):
                 app = AppTest.from_file(str(PROJECT_ROOT / "app.py")).run()
-                app.sidebar.button(key="nav_车辆与数据").click().run()
 
             self.assertEqual(len(app.exception), 0)
             self.assertTrue(any(item.value == "采样时间概览" for item in app.subheader))
@@ -214,7 +212,8 @@ class AppSmokeTests(unittest.TestCase):
                 ),
             ):
                 app = AppTest.from_file(str(PROJECT_ROOT / "app.py")).run()
-                app.sidebar.button(key="nav_车辆与数据").click().run()
+                app.sidebar.button(key="nav_高级工具").click().run()
+                app.button(key="nav_batch_comparison").click().run()
 
             self.assertEqual(len(app.exception), 0)
             self.assertTrue(

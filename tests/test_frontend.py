@@ -20,8 +20,8 @@ from rail_vehicle.pages import home, vehicles, run_analysis
 from rail_vehicle.pages.data_workflow import ANALYSIS_TARGET
 
 
-MAIN_NAV = ("综合工作台", "车辆与数据", "三维诊断工作台", "AI 分析中心")
-DATA_ROUTES = ("车辆参数", "CSV 数据导入", "运行分析")
+MAIN_NAV = ("分析工作台", "车辆与数据", "高级工具")
+DATA_ROUTES = ("车辆参数", "CSV 数据导入")
 ADVANCED_ROUTES = ("动态运行驾驶舱", "机器学习异常检测", "振动与平稳性分析", "多车辆运行对比", "演示中心")
 
 
@@ -360,20 +360,37 @@ class FrontendTests(unittest.TestCase):
     def test_root_navigation_separates_main_modules_data_and_advanced_options(self):
         with patch("rail_vehicle.db.init_db"), patch.object(home, "load_dashboard", lambda: load_dashboard(self.path)), \
              patch.object(run_analysis, "list_vehicles", lambda: list_vehicles(self.path)), \
+             patch.object(vehicles, "list_vehicles", lambda: list_vehicles(self.path)), \
              patch.object(run_analysis, "list_vehicle_batches", return_value=[]), \
              patch.object(run_analysis, "list_import_batches", lambda: list_import_batches(self.path)):
             app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"), default_timeout=15).run()
             self.assertFalse(app.exception)
-            self.assertEqual(app.session_state["navigation_page"], "平台首页")
+            self.assertEqual(app.session_state["navigation_page"], "运行分析")
             self.assertEqual(len(app.sidebar.radio), 0)
             self.assertEqual(tuple(button.label for button in app.sidebar.button), MAIN_NAV)
-            self.assertEqual(app.sidebar.button(key="nav_综合工作台").proto.type, "primary")
-            advanced = next(section for section in app.expander if "高级选项" in section.label)
-            self.assertTrue({f"nav_{label}" for label in ADVANCED_ROUTES} <= {button.key for button in advanced.button})
+            self.assertEqual(app.sidebar.button(key="nav_分析工作台").proto.type, "primary")
+            self.assertNotIn("nav_batch_comparison", {button.key for button in app.button})
             self.assertFalse({f"nav_{label}" for label in DATA_ROUTES} & {button.key for button in app.button})
+            app.sidebar.button(key="nav_高级工具").click().run()
+            advanced = next(section for section in app.expander if "高级工具" in section.label)
+            self.assertTrue({f"nav_{label}" for label in ADVANCED_ROUTES} <= {button.key for button in advanced.button})
+            app.button(key="nav_batch_comparison").click().run()
+            self.assertFalse(app.exception)
+            self.assertTrue(any(title.value == "同车多批次对比" for title in app.title))
+            self.assertEqual(app.sidebar.button(key="nav_高级工具").proto.type, "primary")
+            app.sidebar.button(key="nav_分析工作台").click().run()
+            self.assertTrue(app.radio(key="workbench_source_control"))
+            app.radio(key="workbench_source_control").set_value("demo").run()
+            self.assertFalse(app.exception)
+            self.assertTrue(app.selectbox(key="demo_dynamics_batch_id"))
+            app.button(key="analysis_replay_batch").click().run()
+            self.assertEqual(app.session_state["navigation_page"], "三维转向架仿真")
+            self.assertEqual(app.selectbox(key="bogie_demo_batch").value, -1)
+            app.button(key="bogie_return_analysis").click().run()
+            self.assertEqual(app.radio(key="workbench_source_control").value, "demo")
 
             app.sidebar.button(key="nav_车辆与数据").click().run()
-            self.assertEqual(app.session_state["navigation_page"], "运行分析")
+            self.assertEqual(app.session_state["navigation_page"], "车辆参数")
             self.assertEqual(app.sidebar.button(key="nav_车辆与数据").proto.type, "primary")
             self.assertTrue({f"nav_{label}" for label in DATA_ROUTES} <= {button.key for button in app.main.button})
             app.button(key="nav_CSV 数据导入").click().run()
@@ -384,14 +401,15 @@ class FrontendTests(unittest.TestCase):
 
     def test_existing_deep_links_and_new_module_labels_resolve_to_internal_pages(self):
         for linked, route, module in (
-            ("平台首页", "平台首页", "综合工作台"),
-            ("综合工作台", "平台首页", "综合工作台"),
+            ("平台首页", "平台首页", "高级工具"),
+            ("综合工作台", "平台首页", "高级工具"),
             ("CSV 数据导入", "CSV 数据导入", "车辆与数据"),
-            ("车辆与数据", "运行分析", "车辆与数据"),
-            ("三维转向架仿真", "三维转向架仿真", "三维诊断工作台"),
-            ("三维诊断工作台", "三维转向架仿真", "三维诊断工作台"),
-            ("AI 智能分析中心", "AI 智能分析中心", "AI 分析中心"),
-            ("AI 分析中心", "AI 智能分析中心", "AI 分析中心"),
+            ("车辆与数据", "车辆参数", "车辆与数据"),
+            ("运行分析", "运行分析", "分析工作台"),
+            ("三维转向架仿真", "三维转向架仿真", "分析工作台"),
+            ("三维诊断工作台", "三维转向架仿真", "分析工作台"),
+            ("AI 智能分析中心", "AI 智能分析中心", "分析工作台"),
+            ("AI 分析中心", "AI 智能分析中心", "分析工作台"),
         ):
             with self.subTest(linked=linked), patch("rail_vehicle.db.init_db"), \
                  patch.object(home, "load_dashboard", lambda: load_dashboard(self.path)), \

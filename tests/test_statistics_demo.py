@@ -11,7 +11,9 @@ from streamlit.testing.v1 import AppTest
 
 from rail_vehicle.demo_data import analysis_demo_data
 from rail_vehicle.anomaly import detect_anomalies
+from rail_vehicle.dynamics import analyze_run_data
 from rail_vehicle.pages import ai_center, demo_center, run_analysis
+from rail_vehicle.pages.data_workflow import DEMO_EVIDENCE_SCOPE
 
 
 class StatisticsDemoTests(unittest.TestCase):
@@ -27,7 +29,6 @@ class StatisticsDemoTests(unittest.TestCase):
 
     def app(self):
         app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"), default_timeout=20).run()
-        app.button(key="launch_demo_statistics").click().run()
         self.assertFalse(app.exception)
         return app
 
@@ -59,7 +60,7 @@ class StatisticsDemoTests(unittest.TestCase):
             self.assertTrue(any("120" in item.value for item in app.markdown))
             self.assertEqual(len(app.get("plotly_chart")), 4)
             labels = [tab.label for tab in app.tabs]
-            self.assertTrue(all(label in labels for label in ("运行概览", "采样质量", "异常事件", "AI 与报告")))
+            self.assertTrue(all(label in labels for label in ("运行曲线", "采样质量", "异常事件", "PDF 报告")))
             self.assertTrue(any("内置虚构演示" in item.value for item in app.caption))
             text = " ".join(item.value for item in [*app.markdown, *app.caption])
             self.assertIn("基础结果说明（无需 AI）", [item.label for item in app.expander])
@@ -79,6 +80,45 @@ class StatisticsDemoTests(unittest.TestCase):
         self.assertEqual({metric.label: metric.value for metric in app.metric}["数据异常点"], "0")
         self.assertTrue(any("0 条（0.00%）" in item.value for item in app.markdown))
         self.assertEqual(len(app.get("plotly_chart")), 3)
+
+    def test_workspace_event_evidence_and_pdf_share_current_fictional_scope(self):
+        with patch.object(run_analysis, "build_analysis_report_data", wraps=run_analysis.build_analysis_report_data) as build:
+            app = self.app()
+            app.button(key="statistics_demo_calculate").click().run()
+            app.selectbox(key="demo_dynamics_batch_id").set_value(-2).run()
+            app.time_input(key="analysis_end_time_-1_-2").set_value(time(9, 31, 15)).run()
+            app.number_input(key="demo_analysis_threshold").set_value(1.1).run()
+            app.selectbox(key="anomaly_review_event").set_value(1).run()
+            samples = analysis_demo_data()[2][-2][:76]
+            expected = analyze_run_data(samples, 1.1)
+            events = detect_anomalies(samples, 1.1)["events"]
+            self.assertEqual(len(events), 2)
+            self.assertEqual({m.label: m.value for m in app.metric}["平均速度（km/h）"], f"{expected['speed']['mean']:.3f}")
+
+            app.button(key="run_analysis_bogie_jump").click().run()
+            self.assertFalse(app.exception)
+            self.assertEqual(app.selectbox(key="bogie_demo_batch").value, -2)
+            self.assertEqual(app.number_input(key="bogie_threshold").value, 1.1)
+            self.assertEqual(app.slider(key="bogie_seek").value, 70.)
+            app.button(key="bogie_return_analysis").click().run()
+            self.assertEqual(app.selectbox(key="anomaly_review_event").value, 1)
+            self.assertEqual(app.time_input(key="analysis_end_time_-1_-2").value, time(9, 31, 15))
+
+            app.button(key="workbench_demo_evidence").click().run()
+            self.assertFalse(app.exception)
+            payload, selection = app.session_state[DEMO_EVIDENCE_SCOPE]
+            self.assertEqual(payload["sample_count"], expected["sample_count"])
+            self.assertEqual(len(payload["anomaly_events"]), len(events))
+            self.assertEqual(selection["threshold"], 1.1)
+            self.assertFalse(any("生成 AI" in button.label for button in app.button))
+            app.button(key="ai_demo_return_analysis").click().run()
+            self.assertEqual(app.selectbox(key="demo_dynamics_batch_id").value, -2)
+            app.button(key="demo_generate_analysis_report").click().run()
+            self.assertFalse(app.exception)
+            self.assertTrue(app.session_state["demo_analysis_report_pdf"].startswith(b"%PDF"))
+            self.assertEqual(build.call_args.kwargs["analysis"]["sample_count"], expected["sample_count"])
+            self.assertEqual(len(build.call_args.kwargs["anomalies"]["events"]), len(events))
+            self.ai.assert_not_called()
 
     def test_timerange_recalculates_and_empty_range_preserves_private_cache(self):
         app = self.app()

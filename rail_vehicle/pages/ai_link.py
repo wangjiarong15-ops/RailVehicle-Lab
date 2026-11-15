@@ -6,6 +6,7 @@ from datetime import date, datetime, time
 
 from rail_vehicle.ai.center_state import CONTEXTS, clear_context, register_context
 from rail_vehicle.ai.ui import clear_result
+from rail_vehicle.pages.data_workflow import remember_workbench_selection
 from rail_vehicle.ui import navigate
 
 
@@ -19,6 +20,8 @@ _WIDGET_PREFIXES = {
 
 
 def _open_center(kind):
+    if kind == "single":
+        remember_workbench_selection()
     prefixes = _WIDGET_PREFIXES[kind]
     allowed = (str, int, float, tuple, list, date, datetime, time)
     snapshot = {key: deepcopy(value) for key, value in st.session_state.items()

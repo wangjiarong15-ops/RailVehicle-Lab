@@ -11,7 +11,7 @@ from rail_vehicle.anomaly import detect_anomalies
 from rail_vehicle.pages.bogie_link import batch_replay_button
 from rail_vehicle.pages.data_workflow import analysis_button, import_button
 from rail_vehicle.pages.demo_center import render_walkthrough
-from rail_vehicle.ui import navigate, plot_chart, page_title, kpi, chart_container, empty_state, data_table, source_caption, render_advanced_navigation
+from rail_vehicle.ui import ANALYSIS_MODE, navigate, plot_chart, page_title, kpi, chart_container, empty_state, data_table, source_caption, render_advanced_navigation
 from rail_vehicle.dashboard_chart import (dashboard_chart, dashboard_events, display_timestamp,
                                          DISPLAY_TIMEZONES, EVENTS_PER_PAGE, HOME_PLOT_CONFIG)
 
@@ -19,10 +19,10 @@ from rail_vehicle.dashboard_chart import (dashboard_chart, dashboard_events, dis
 def render():
     public = public_demo_enabled()
     if public:
-        page_title("综合工作台", "统计 → 三维回放 → 证据核查", primary=True)
+        page_title("演示路线", "统计 → 三维回放 → 证据核查", primary=True)
+        render_advanced_navigation("平台首页", public=True)
         source_caption(fictional=True)
         render_walkthrough()
-        render_advanced_navigation("平台首页")
         return
     data = None
     try:
@@ -31,7 +31,7 @@ def render():
         st.warning("暂时无法读取工作空间数据，请检查数据库后刷新。")
     heading, controls = st.columns([4, 1], vertical_alignment="center")
     with heading:
-        page_title("综合工作台", "从最近批次进入运行分析或三维回放", primary=True)
+        page_title("数据总览", "数据就绪情况与最近批次预览", primary=True)
         source_caption()
     with controls:
         with st.popover("预览设置", width="stretch"):
@@ -44,6 +44,7 @@ def render():
                 timezone_name = "UTC"
                 st.warning("当前环境缺少北京时间时区数据，暂按 UTC 显示。")
             st.caption("仅影响最近车辆/批次预览；不改变原始数据。")
+    render_advanced_navigation("平台首页")
     preview = data.get("preview") if data else None
     analysis, anomalies = None, None
     invalid = False
@@ -133,7 +134,6 @@ def render():
                         st.caption(f"{row['分析类型']} · {row['数据点数']:,} 样本 · {row['来源']} · {row['完成时间']}")
             if records:
                 st.caption("仅记录本会话实际计算，刷新新会话后不保留。")
-    render_advanced_navigation("平台首页")
 
 
 def _render_next_step(data, preview, threshold):
@@ -155,4 +155,5 @@ def _render_next_step(data, preview, threshold):
                 batch_replay_button(st, label="三维回放", key="home_latest_bogie",
                                     vehicle_id=preview["vehicle_id"], batch_id=preview["batch_id"], threshold=threshold)
             else:
-                st.button("选择运行批次", type="primary", on_click=navigate, args=("运行分析",))
+                st.button("选择运行批次", type="primary", on_click=navigate, args=("运行分析",),
+                          kwargs={ANALYSIS_MODE: "single"})
