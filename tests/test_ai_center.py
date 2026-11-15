@@ -15,9 +15,9 @@ from rail_vehicle.dynamics import analyze_run_data
 from rail_vehicle.pages import ai_center
 
 
-def payload_fixture():
+def payload_fixture(*, lateral_peak=.2):
     rows = [dict(timestamp="2026-10-08T12:00:00+00:00", speed_kmh=20, lateral_accel=.1, vertical_accel=.2),
-            dict(timestamp="2026-10-08T12:00:01+00:00", speed_kmh=30, lateral_accel=.2, vertical_accel=.3)]
+            dict(timestamp="2026-10-08T12:00:01+00:00", speed_kmh=30, lateral_accel=lateral_peak, vertical_accel=.3)]
     return build_single_batch_payload(
         analysis=analyze_run_data(rows, 1), anomalies=detect_anomalies(rows, 1),
         vehicle=dict(vehicle_type="测试", mass_kg=90000, axle_count=8, bogie_count=4, max_speed_kmh=160),
@@ -345,6 +345,74 @@ def test_invalid_evidence_is_not_displayed_or_cached():
         assert "ai_single_batch_result" not in app.session_state
         assert any("未知证据" in item.value for item in app.warning)
         assert all("PRIVATE_OUTPUT" not in item.value for item in app.text)
+
+
+def test_invalid_response_shape_reports_only_known_section_and_rule(monkeypatch):
+    from tests.test_ai_ui import valid_response
+
+    output = valid_response(payload_fixture())
+    output["observations"][0]["PRIVATE_UNKNOWN_FIELD"] = "PRIVATE_MODEL_TEXT"
+    provider = FakeProvider(output)
+    config = AIConfig(enabled=True, provider="deepseek", model="mock", api_key="placeholder")
+    monkeypatch.setenv("RAIL_PUBLIC_DEMO", "false")
+    with patch.object(ai_center.AIConfig, "from_sources", return_value=config), \
+         patch.object(ai_center, "create_configured_provider", return_value=provider):
+        app = AppTest.from_function(center_app).run()
+        app.button(key="ai_center_generate").click().run()
+        assert not app.exception
+        assert "ai_single_batch_result" not in app.session_state
+        warnings = " ".join(item.value for item in app.warning)
+        assert "观察：包含未约定的字段" in warnings
+        assert "核查证据" in warnings
+        assert "PRIVATE_" not in warnings
+        app.selectbox(key="ai_center_evidence_single").set_value("metric.speed.mean").run()
+        assert not app.exception
+        assert provider.calls == 1
+
+
+def test_axis_mismatch_explains_failure_and_keeps_evidence_available_offline(monkeypatch):
+    payload = payload_fixture(lateral_peak=2)
+    event_id = "event.lateral.001"
+    output = dict(summary=dict(text="PRIVATE_UNVERIFIED_AXIS_OUTPUT", evidence_ids=[event_id, "metric.speed.mean"],
+                               claim_scope=dict(category="mixed", axis="mixed", batch_refs=["B1"])),
+                  observations=[], possible_causes=[], further_checks=[], limitations=[])
+    provider = FakeProvider(output)
+    config = AIConfig(enabled=True, provider="deepseek", model="mock", api_key="placeholder")
+    monkeypatch.setenv("RAIL_PUBLIC_DEMO", "false")
+    with patch.object(ai_center.AIConfig, "from_sources", return_value=config), \
+         patch.object(ai_center, "create_configured_provider", return_value=provider):
+        app = AppTest.from_function(center_app)
+        app.session_state["fixture_initialized"] = True
+        state = {}
+        register_context(state, "single", payload, {"batch": 1})
+        app.session_state["ai_center_contexts"] = state["ai_center_contexts"]
+        app.run()
+        assert not app.exception
+        assert provider.calls == 0
+
+        app.button(key="ai_center_generate").click().run()
+        assert not app.exception
+        assert "ai_single_batch_result" not in app.session_state
+        warning_text = " ".join(item.value for item in app.warning)
+        assert "AI 填写：多轴向；引用证据：横向。" in warning_text
+        visible_text = " ".join(item.value for item in [*app.warning, *app.caption, *app.info,
+                                                         *app.text, *app.markdown])
+        assert "无需再次请求 AI" in visible_text
+        assert "PRIVATE_UNVERIFIED_AXIS_OUTPUT" not in visible_text
+
+        app.selectbox(key="ai_center_evidence_single").set_value(event_id).run()
+        assert not app.exception
+        assert "开始时间 UTC" in app.dataframe[0].value["指标"].tolist()
+        assert "ai_single_batch_result" not in app.session_state
+        assert provider.calls == 1
+
+        output["summary"]["text"] = "横向异常证据和速度统计均已计算。"
+        output["summary"]["claim_scope"]["axis"] = "lateral"
+        app.button(key="ai_center_generate").click().run()
+        assert not app.exception
+        assert app.session_state["ai_single_batch_result"]["scope_validation"] == "verified"
+        assert any(output["summary"]["text"] == item.value for item in app.text)
+        assert provider.calls == 2
 
 
 def test_incomplete_response_diagnostics_reach_center_without_partial_output():

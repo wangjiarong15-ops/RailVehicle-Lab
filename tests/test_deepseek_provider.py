@@ -6,6 +6,8 @@ import types
 import unittest
 from unittest.mock import patch
 
+from jsonschema import Draft202012Validator
+
 from rail_vehicle.ai.config import AIConfig, DEEPSEEK_DEFAULT_BASE_URL
 from rail_vehicle.ai.deepseek_provider import (
     DEFAULT_DEEPSEEK_MODEL,
@@ -230,6 +232,30 @@ class DeepSeekResponsesProviderTests(unittest.TestCase):
         self.assertIn("claim_scope.category", prompt)
         self.assertIn("summary 必须由至少一个现有证据 ID 支持", prompt)
         self.assertIn("不得重复罗列已计算指标", prompt)
+
+    def test_wire_schema_rejects_empty_claims_and_mock_flow_keeps_local_guard(self):
+        original = valid_output(self.context)
+        AIAnalysisService(self.provider).analyze(self.context)
+        schema = self.responses.calls[0]["text"]["format"]["schema"]
+        Draft202012Validator.check_schema(schema)
+        validator = Draft202012Validator(schema)
+        self.assertTrue(validator.is_valid(original))
+
+        for field, invalid_value, rule in (
+            ("evidence_ids", [], "minItems"),
+            ("evidence_ids", [""], "minLength"),
+            ("text", "", "minLength"),
+        ):
+            with self.subTest(field=field, value=invalid_value):
+                malformed = {**original, "summary": {**original["summary"], field: invalid_value}}
+                self.assertFalse(validator.is_valid(malformed))
+                responses = MockResponses(output_text=json.dumps(malformed))
+                provider = DeepSeekResponsesProvider(self.config, client=types.SimpleNamespace(responses=responses))
+                result = AIAnalysisService(provider).analyze(self.context)
+                self.assertEqual(result["code"], "output_schema_invalid")
+                self.assertEqual(result["diagnostics"], {"section": "summary", "rule": rule})
+                self.assertNotIn("analysis", result)
+                self.assertEqual(len(responses.calls), 1)
 
     def test_build_client_sets_deepseek_endpoint_timeout_and_finite_retry(self):
         received = {}

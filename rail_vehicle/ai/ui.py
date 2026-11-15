@@ -99,16 +99,54 @@ def request_ai_analysis(
         return {"status": "unavailable", "code": "service_error", "message": "AI 服务暂时不可用，请稍后重试。"}
 
 
+_AXIS_NAMES = {
+    "lateral": "横向", "vertical": "垂向", "longitudinal": "纵向",
+    "not_applicable": "不适用", "mixed": "多轴向",
+}
+_STRUCTURE_SECTIONS = {
+    "root": "整体", "summary": "摘要", "observations": "观察",
+    "possible_causes": "可能原因", "further_checks": "检查建议", "limitations": "局限说明",
+}
+_STRUCTURE_REASONS = {
+    "type": "字段类型不正确", "required": "缺少必填字段",
+    "additionalProperties": "包含未约定的字段", "minItems": "没有引用证据",
+    "minLength": "必填文字或引用为空", "enum": "字段取值无效", "const": "字段取值无效",
+}
+
+
 def status_message(result: dict[str, Any]) -> str:
+    code = result.get("code")
+    if code in ("output_schema_invalid", "claim_scope_schema_invalid"):
+        message = (
+            "AI 返回内容不符合输出结构要求，未展示结果。" if code == "output_schema_invalid"
+            else "AI 输出的证据范围格式无效，未展示结果。"
+        )
+        diagnostics = result.get("diagnostics")
+        if isinstance(diagnostics, dict):
+            section, rule = diagnostics.get("section"), diagnostics.get("rule")
+            if isinstance(section, str) and section in _STRUCTURE_SECTIONS:
+                reason = _STRUCTURE_REASONS.get(rule, "格式无效") if isinstance(rule, str) else "格式无效"
+                message += f" {_STRUCTURE_SECTIONS[section]}：{reason}。"
+            message += " 可在「核查证据」中查看本地计算结果。"
+        return message
+    if code == "evidence_scope_axis_mismatch":
+        message = "AI 输出的证据轴向与引用不匹配，未展示结果。"
+        diagnostics = result.get("diagnostics")
+        if isinstance(diagnostics, dict):
+            declared = diagnostics.get("declared_axis")
+            expected = diagnostics.get("expected_axis")
+            if (
+                isinstance(declared, str) and declared in _AXIS_NAMES
+                and isinstance(expected, str) and expected in _AXIS_NAMES
+            ):
+                message += f" AI 填写：{_AXIS_NAMES[declared]}；引用证据：{_AXIS_NAMES[expected]}。"
+        return message + " 可在「核查证据」中查看本地计算结果，无需再次请求 AI。"
     if result.get("status") == "validation_failed":
         code_messages = {
             "output_json_invalid": "AI 返回文本不是有效 JSON，未展示结果。",
-            "claim_scope_schema_invalid": "AI 输出的证据范围格式无效，未展示结果。",
             "evidence_id_unknown": "AI 输出引用了未知证据，未展示结果。",
             "evidence_scope_category_mismatch": "AI 输出的证据类别与引用不匹配，未展示结果。",
-            "evidence_scope_axis_mismatch": "AI 输出的证据轴向与引用不匹配，未展示结果。",
             "evidence_scope_batch_mismatch": "AI 输出的批次范围与引用不匹配，未展示结果。",
-            "output_schema_invalid": "AI 返回内容不符合输出结构要求，未展示结果。",
             "output_non_finite_number": "AI 返回内容包含无效数值，未展示结果。",
             "unsafe_claim_text": "AI 返回内容包含不允许的结论措辞，未展示结果。",
             "output_contract_invalid": "AI 返回内容未通过校验，已阻止展示。",
@@ -130,12 +168,9 @@ def status_message(result: dict[str, Any]) -> str:
         "invalid_response": "AI 服务响应中没有可用的解读文本，未展示结果。",
         "response_parse_error": "AI 返回文本不是有效 JSON，未展示结果。",
         "output_json_invalid": "AI 返回文本不是有效 JSON，未展示结果。",
-        "claim_scope_schema_invalid": "AI 输出的证据范围格式无效，未展示结果。",
         "evidence_id_unknown": "AI 输出引用了未知证据，未展示结果。",
         "evidence_scope_category_mismatch": "AI 输出的证据类别与引用不匹配，未展示结果。",
-        "evidence_scope_axis_mismatch": "AI 输出的证据轴向与引用不匹配，未展示结果。",
         "evidence_scope_batch_mismatch": "AI 输出的批次范围与引用不匹配，未展示结果。",
-        "output_schema_invalid": "AI 返回内容不符合输出结构要求，未展示结果。",
         "output_non_finite_number": "AI 返回内容包含无效数值，未展示结果。",
         "unsafe_claim_text": "AI 返回内容包含不允许的结论措辞，未展示结果。",
         "output_contract_invalid": "AI 返回内容未通过校验，已阻止展示。",

@@ -10,7 +10,9 @@ from typing import Any, Protocol
 from rail_vehicle.ai.schemas import (
     AI_OUTPUT_ERROR_CODES,
     AIContractError,
+    AIEvidenceAxisMismatch,
     AIOutputParseError,
+    AIOutputStructureError,
     validate_input_payload,
     validate_output,
 )
@@ -85,11 +87,16 @@ class AIAnalysisService:
                 "message": "AI 返回文本不是有效 JSON，未展示结果。",
             }
         except AIContractError as exc:
-            return {
+            result = {
                 "status": "unavailable",
                 "code": exc.code if exc.code in AI_OUTPUT_ERROR_CODES else "output_contract_invalid",
                 "message": "AI 返回内容未通过结构与证据校验，已阻止展示。",
             }
+            if isinstance(exc, AIEvidenceAxisMismatch):
+                result["diagnostics"] = {"declared_axis": exc.declared_axis, "expected_axis": exc.expected_axis}
+            elif isinstance(exc, AIOutputStructureError):
+                result["diagnostics"] = exc.diagnostics.copy()
+            return result
         return {
             "status": "available",
             "analysis": validated,

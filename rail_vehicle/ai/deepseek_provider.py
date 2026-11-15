@@ -7,10 +7,9 @@ from collections.abc import Mapping
 from typing import Any, Callable
 
 from rail_vehicle.ai.config import AIConfig, DEEPSEEK_DEFAULT_BASE_URL
-from rail_vehicle.ai.openai_provider import _analysis_output_schema
 from rail_vehicle.ai.prompts import build_evidence_reference_instructions
 from rail_vehicle.ai.provider import AIProviderUnavailable, safe_provider_error
-from rail_vehicle.ai.schemas import validate_input_payload
+from rail_vehicle.ai.schemas import structured_analysis_schema, validate_input_payload
 
 
 DEFAULT_DEEPSEEK_MODEL = "deepseek-flash"
@@ -179,7 +178,7 @@ class DeepSeekResponsesProvider:
                     "format": {
                         "type": "json_schema",
                         "name": "rail_vehicle_analysis",
-                        "schema": _analysis_output_schema(),
+                        "schema": structured_analysis_schema(),
                     }
                 },
                 max_output_tokens=MAX_OUTPUT_TOKENS,

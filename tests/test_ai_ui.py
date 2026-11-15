@@ -161,7 +161,7 @@ class AIUIIntegrationTests(unittest.TestCase):
             "claim_scope_schema_invalid": "AI 输出的证据范围格式无效，未展示结果。",
             "evidence_id_unknown": "AI 输出引用了未知证据，未展示结果。",
             "evidence_scope_category_mismatch": "AI 输出的证据类别与引用不匹配，未展示结果。",
-            "evidence_scope_axis_mismatch": "AI 输出的证据轴向与引用不匹配，未展示结果。",
+            "evidence_scope_axis_mismatch": "AI 输出的证据轴向与引用不匹配，未展示结果。 可在「核查证据」中查看本地计算结果，无需再次请求 AI。",
             "evidence_scope_batch_mismatch": "AI 输出的批次范围与引用不匹配，未展示结果。",
             "unsafe_claim_text": "AI 返回内容包含不允许的结论措辞，未展示结果。",
             "output_contract_invalid": "AI 返回内容未通过校验，已阻止展示。",
@@ -175,6 +175,15 @@ class AIUIIntegrationTests(unittest.TestCase):
                 })
                 self.assertEqual(message, expected)
                 self.assertNotIn("PRIVATE_RAW_VALIDATOR_DETAILS", message)
+
+    def test_axis_mismatch_warning_only_renders_known_axis_labels(self):
+        message = status_message({
+            "code": "evidence_scope_axis_mismatch",
+            "diagnostics": {"declared_axis": "PRIVATE_MODEL_BODY", "expected_axis": "lateral"},
+        })
+        self.assertIn("无需再次请求 AI", message)
+        self.assertNotIn("AI 填写", message)
+        self.assertNotIn("PRIVATE_MODEL_BODY", message)
 
     def test_incomplete_response_has_safe_message_and_diagnostics_without_partial_text(self):
         private_text = "PRIVATE_PARTIAL_JSON"

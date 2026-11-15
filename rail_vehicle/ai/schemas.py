@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import json
 import math
+from copy import deepcopy
 from typing import Any
 
 from jsonschema import Draft202012Validator
 
+
+_EVIDENCE_AXES = ("lateral", "vertical", "longitudinal", "not_applicable", "mixed")
 
 AI_OUTPUT_ERROR_CODES = frozenset({
     "output_json_invalid",
@@ -52,6 +55,15 @@ class AIOutputParseError(AIContractError):
 
     def __init__(self, message: str = ""):
         super().__init__(message, code="output_json_invalid")
+
+
+class AIEvidenceAxisMismatch(AIContractError):
+    """Evidence scope mismatch with only the two schema-checked axis labels."""
+
+    def __init__(self, declared_axis: str, expected_axis: str):
+        super().__init__(code="evidence_scope_axis_mismatch")
+        self.declared_axis = declared_axis if declared_axis in _EVIDENCE_AXES else None
+        self.expected_axis = expected_axis if expected_axis in _EVIDENCE_AXES else None
 
 
 INPUT_SCHEMA: dict[str, Any] = {
@@ -220,7 +232,7 @@ CLAIM_SCOPE_SCHEMA: dict[str, Any] = {
     "required": ["category", "axis", "batch_refs"],
     "properties": {
         "category": {"enum": ["metric", "threshold_statistic", "event", "batch_metric", "mixed"]},
-        "axis": {"enum": ["lateral", "vertical", "longitudinal", "not_applicable", "mixed"]},
+        "axis": {"enum": list(_EVIDENCE_AXES)},
         "batch_refs": {"type": "array", "items": {"type": "string", "minLength": 1}},
     },
     "additionalProperties": False,
@@ -283,6 +295,36 @@ OUTPUT_SCHEMA: dict[str, Any] = {
 }
 
 
+def structured_analysis_schema() -> dict[str, Any]:
+    """Build the wire format for new results from the local output contract."""
+    schema = deepcopy(OUTPUT_SCHEMA)
+    del schema["$schema"], schema["title"]
+    claims = schema["properties"]
+    for name, node in claims.items():
+        claim = node if name == "summary" else node["items"]
+        if "claim_scope" not in claim["required"]:
+            claim["required"].append("claim_scope")
+        claim["properties"]["claim_scope"]["type"] = "object"
+    qualification = claims["possible_causes"]["items"]["properties"]["qualification"]
+    qualification["type"] = "string"
+    qualification["enum"] = [qualification.pop("const")]
+    return schema
+
+
+_STRUCTURE_RULES = {"additionalProperties", "required", "type", "minItems", "minLength", "const", "enum"}
+
+
+class AIOutputStructureError(AIContractError):
+    """Carry only known schema labels, never a value or an unexpected key."""
+
+    def __init__(self, section: str, rule: str, *, code: str = "output_schema_invalid"):
+        super().__init__(code=code)
+        self.diagnostics = {
+            "section": section if section in OUTPUT_SCHEMA["properties"] else "root",
+            "rule": rule if rule in _STRUCTURE_RULES else "other",
+        }
+
+
 def _validate(
     schema: dict[str, Any],
     value: Any,
@@ -297,6 +339,9 @@ def _validate(
         code = error_code
         if claim_scope_error_code and "claim_scope" in error.absolute_path:
             code = claim_scope_error_code
+        if error_code == "output_schema_invalid":
+            section = next(iter(error.absolute_path), "root")
+            raise AIOutputStructureError(section, error.validator, code=code)
         raise AIContractError(f"{label}不符合 Schema。", code=code)
 
 
@@ -406,7 +451,7 @@ def validate_output(
     if not _contains_only_finite_numbers(result):
         raise AIContractError("AI 输出包含 NaN 或无穷大等非有限数值。", code="output_non_finite_number")
     if not isinstance(result, dict):
-        raise AIContractError("AI 输出根节点必须是 JSON 对象。", code="output_schema_invalid")
+        raise AIOutputStructureError("root", "type")
     _validate(
         OUTPUT_SCHEMA,
         result,
@@ -464,7 +509,7 @@ def _validate_claim_scope(
     axes = {item["axis"] for item in referenced if item["axis"] != "not_applicable"}
     expected_axis = next(iter(axes)) if len(axes) == 1 else "mixed" if axes else "not_applicable"
     if declared["axis"] != expected_axis:
-        raise AIContractError("AI 输出 claim_scope 的 axis 与引用证据不匹配。", code="evidence_scope_axis_mismatch")
+        raise AIEvidenceAxisMismatch(declared["axis"], expected_axis)
 
     expected_batches = {item["batch_ref"] for item in referenced if item["batch_ref"] is not None}
     if set(declared["batch_refs"]) != expected_batches:
