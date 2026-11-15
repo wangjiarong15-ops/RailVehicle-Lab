@@ -44,6 +44,7 @@ from rail_vehicle.run_data import (
     REQUIRED_COLUMNS,
     import_run_data,
     list_batch_samples,
+    list_batch_sample_window,
     list_batch_vehicles,
     list_import_batches,
     list_vehicle_batches,
@@ -297,28 +298,65 @@ def _format_stats_table(metrics: dict, acceleration: bool = False) -> list[dict]
     return rows
 
 
+_HISTORY_BOUNDS_HINT = "analysis_history_bounds_hint"
+_MIN_WINDOW_BATCH_ROWS = 10_000
+
+
+def _time_widget_keys(vehicle_id, batch_id):
+    return tuple(f"{prefix}_{vehicle_id}_{batch_id}" for prefix in (
+        "analysis_start_date", "analysis_start_time", "analysis_end_date", "analysis_end_time",
+    ))
+
+
 def _clear_replay_scope(vehicle_id, batch_id):
     st.session_state.pop(ANALYSIS_REPLAY_SCOPE, None)
-    for prefix in ("analysis_start_date", "analysis_start_time", "analysis_end_date", "analysis_end_time"):
-        st.session_state.pop(f"{prefix}_{vehicle_id}_{batch_id}", None)
+    for key in _time_widget_keys(vehicle_id, batch_id):
+        st.session_state.pop(key, None)
 
 
-def _analysis_time_range(timestamps, vehicle_id, batch_id):
+def _utc_window(start_date, start_time, end_date, end_time):
     # The whole-second controls include the entire final second.
-    batch_start = min(timestamps).replace(tzinfo=None, microsecond=0)
-    batch_end = max(timestamps).replace(tzinfo=None, microsecond=0)
+    return (datetime.combine(start_date, start_time).replace(tzinfo=timezone.utc),
+            datetime.combine(end_date, end_time).replace(tzinfo=timezone.utc) + timedelta(microseconds=999_999))
+
+
+def _analysis_time_range(bounds, vehicle_id, batch_id):
+    batch_start, batch_end = (bound.replace(tzinfo=None, microsecond=0) for bound in bounds)
+    start_date_key, start_time_key, end_date_key, end_time_key = _time_widget_keys(vehicle_id, batch_id)
     with st.expander("分析时间范围（UTC） · 调整筛选", expanded=False):
         start_col, end_col = st.columns(2)
         with start_col:
-            start_date = st.date_input("开始日期", value=batch_start.date(), key=f"analysis_start_date_{vehicle_id}_{batch_id}")
+            start_date = st.date_input("开始日期", value=batch_start.date(), key=start_date_key)
             start_time = st.time_input("开始时间", value=batch_start.time(), step=timedelta(seconds=1),
-                                       key=f"analysis_start_time_{vehicle_id}_{batch_id}")
+                                       key=start_time_key)
         with end_col:
-            end_date = st.date_input("结束日期", value=batch_end.date(), key=f"analysis_end_date_{vehicle_id}_{batch_id}")
+            end_date = st.date_input("结束日期", value=batch_end.date(), key=end_date_key)
             end_time = st.time_input("结束时间", value=batch_end.time(), step=timedelta(seconds=1),
-                                     key=f"analysis_end_time_{vehicle_id}_{batch_id}")
-    return (datetime.combine(start_date, start_time).replace(tzinfo=timezone.utc),
-            datetime.combine(end_date, end_time).replace(tzinfo=timezone.utc) + timedelta(microseconds=999_999))
+                                     key=end_time_key)
+    return _utc_window(start_date, start_time, end_date, end_time)
+
+
+def _projected_window_request(batch_identity, batch_count):
+    """Use the previous extent only as a cost hint, never as a data cache."""
+    hint = st.session_state.get(_HISTORY_BOUNDS_HINT)
+    if batch_count < _MIN_WINDOW_BATCH_ROWS or not hint or hint[0] != batch_identity:
+        return None
+    values = [st.session_state.get(key) for key in _time_widget_keys(*batch_identity)]
+    if any(value is None for value in values):
+        return None
+    start, end = _utc_window(*values)
+    previous_start, previous_end = hint[1]
+    if timedelta(0) <= end - start <= (previous_end - previous_start) / 4:
+        return start, end
+    return None
+
+
+def _analysis_timestamps(samples):
+    timestamps = []
+    for sample in samples:
+        parsed = parse_iso_timestamp(sample["timestamp"])
+        timestamps.append(parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed.astimezone(timezone.utc))
+    return timestamps
 
 
 def _open_demo_evidence(payload, selection):
@@ -424,34 +462,46 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         ),
         key="demo_dynamics_batch_id" if demo else "dynamics_batch_id",
     )
+    batch_identity = (vehicle_id, batch_id)
+    batch_row = next(batch for batch in batches if batch["id"] == batch_id)
+    existing_scope = st.session_state.get(ANALYSIS_REPLAY_SCOPE)
+    window_request = None
+    if not demo and not target and not (existing_scope and existing_scope[0] == batch_identity):
+        window_request = _projected_window_request(batch_identity, batch_row["sample_count"])
+
+    def read_full_batch():
+        try:
+            rows = demo_samples[batch_id] if demo else list_batch_samples(*batch_identity)
+            return rows, _analysis_timestamps(rows)
+        except (sqlite3.Error, OSError):
+            st.warning("暂时无法读取所选批次的样本。")
+        except (KeyError, OverflowError, TypeError, ValueError):
+            st.error("所选批次包含无效时间戳，无法进行时间筛选。")
+        clear_result(st.session_state, ai_state_key)
+
     try:
-        samples = demo_samples[batch_id] if demo else list_batch_samples(vehicle_id, batch_id)
+        window = list_batch_sample_window(*batch_identity, *window_request) if window_request else None
     except (sqlite3.Error, OSError):
         clear_result(st.session_state, ai_state_key)
         st.warning("暂时无法读取所选批次的样本。")
         return
-    if not samples:
-        clear_result(st.session_state, ai_state_key)
-        st.info("所选批次没有可分析的运行数据。")
-        _render_teaching_link()
-        return
+    if window is None:
+        batch_data = read_full_batch()
+        if batch_data is None:
+            return
+        samples, timestamps = batch_data
+        if not samples:
+            clear_result(st.session_state, ai_state_key)
+            st.info("所选批次没有可分析的运行数据。")
+            _render_teaching_link()
+            return
+        bounds = min(timestamps), max(timestamps)
+    else:
+        bounds = window.bounds
+    if not demo:
+        st.session_state[_HISTORY_BOUNDS_HINT] = (batch_identity, bounds)
 
-    # Stored timestamps without an explicit offset have always been treated as UTC.
-    # Present range controls in UTC too, so the selected bounds match analysis order.
-    def as_utc(value: str) -> datetime:
-        parsed = parse_iso_timestamp(value)
-        if parsed.tzinfo is None:
-            return parsed.replace(tzinfo=timezone.utc)
-        return parsed.astimezone(timezone.utc)
-
-    try:
-        timestamps = [as_utc(sample["timestamp"]) for sample in samples]
-    except (KeyError, OverflowError, TypeError, ValueError):
-        clear_result(st.session_state, ai_state_key)
-        st.error("所选批次包含无效时间戳，无法进行时间筛选。")
-        return
     threshold_key = "demo_analysis_threshold" if demo else "analysis_threshold"
-    batch_identity = (vehicle_id, batch_id)
     if target and (target["vehicle_id"], target["batch_id"]) == batch_identity:
         candidate = target.get("scope")
         if isinstance(candidate, ReplayEvidenceScope):
@@ -478,13 +528,21 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         st.button("返回整批分析", key="analysis_clear_replay_scope", on_click=_clear_replay_scope,
                   args=(vehicle_id, batch_id))
     else:
-        selected_start, selected_end = _analysis_time_range(timestamps, vehicle_id, batch_id)
+        selected_start, selected_end = _analysis_time_range(bounds, vehicle_id, batch_id)
         if selected_start > selected_end:
             clear_result(st.session_state, ai_state_key)
             st.warning("开始时间不能晚于结束时间，请调整筛选范围。")
             return
-        filtered_samples = [sample for sample, timestamp in zip(samples, timestamps)
-                            if selected_start <= timestamp <= selected_end]
+        if window is not None and (selected_start, selected_end) == window_request:
+            filtered_samples = window.samples
+        else:
+            if window is not None:  # Streamlit may reset a time control if its default changes.
+                batch_data = read_full_batch()
+                if batch_data is None:
+                    return
+                samples, timestamps = batch_data
+            filtered_samples = [sample for sample, timestamp in zip(samples, timestamps)
+                                if selected_start <= timestamp <= selected_end]
     if not filtered_samples:
         clear_result(st.session_state, ai_state_key)
         st.info("所选时间范围内没有运行数据，请调整开始或结束时间。")

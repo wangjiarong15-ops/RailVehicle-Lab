@@ -27,6 +27,16 @@ PREVIEW_LIMIT = 20
 ERROR_LIMIT = 50
 MAX_CSV_SIZE_MB = 50
 MAX_CSV_SIZE_BYTES = MAX_CSV_SIZE_MB * 1024 * 1024
+MAX_PROJECTED_WINDOW_ROWS = 10_000
+_WINDOW_ID_CHUNK = 900  # Allow for SQLite builds with the older 999-variable limit.
+
+
+@dataclass(frozen=True)
+class BatchSampleWindow:
+    """Whole-batch time bounds and observations in an inclusive UTC window."""
+
+    bounds: tuple[datetime, datetime]
+    samples: list[dict[str, Any]]
 
 
 @dataclass
@@ -409,15 +419,66 @@ def list_batch_samples(
 
     def chronological_key(sample: dict[str, Any]) -> tuple[int, datetime]:
         try:
-            timestamp = datetime.fromisoformat(sample["timestamp"])
-            if timestamp.tzinfo is None:
-                timestamp = timestamp.replace(tzinfo=timezone.utc)
-            else:
-                timestamp = timestamp.astimezone(timezone.utc)
-            return 0, timestamp
+            return 0, _stored_utc_time(sample["timestamp"])
         except (OverflowError, TypeError, ValueError):
             # Keep malformed legacy rows visible to callers, which report the
             # invalid timestamp, while sorting valid records deterministically.
             return 1, datetime.max.replace(tzinfo=timezone.utc)
 
     return sorted(samples, key=chronological_key)
+
+
+def _stored_utc_time(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value)
+    return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed.astimezone(timezone.utc)
+
+
+def list_batch_sample_window(
+    vehicle_id: int, batch_id: int, start: datetime, end: datetime,
+    db_path: Path | str = DB_PATH,
+) -> BatchSampleWindow | None:
+    """Read a narrow UTC window without loading the whole batch's observations.
+
+    ``None`` requests the normal full read when the batch is empty, storage has
+    legacy timestamps the fast path cannot sort, or the window is too dense.
+    """
+    if start.tzinfo is None or end.tzinfo is None or start > end:
+        raise ValueError("窗口必须是有效的 UTC 时间范围。")
+    with get_connection(db_path) as connection:
+        # Both reads must see the same rows, even if another connection writes.
+        connection.execute("BEGIN")
+        timeline = connection.cursor()
+        timeline.row_factory = None
+        timeline.execute("SELECT id, timestamp FROM run_samples WHERE batch_id = ? AND vehicle_id = ?",
+                         (batch_id, vehicle_id))
+        first = last = None
+        selected: list[tuple[datetime, str, int]] = []
+        for sample_id, raw_time in timeline:
+            try:
+                instant = _stored_utc_time(raw_time)
+            except (OverflowError, TypeError, ValueError):
+                return None
+            if first is None or instant < first:
+                first = instant
+            if last is None or instant > last:
+                last = instant
+            if start <= instant <= end:
+                if len(selected) == MAX_PROJECTED_WINDOW_ROWS:
+                    return None
+                selected.append((instant, raw_time, sample_id))
+        if first is None or last is None:
+            return None
+
+        # Match the complete reader's stable UTC order and keep duplicate rows.
+        sample_ids = [sample_id for _, _, sample_id in sorted(selected)]
+        payload_by_id = {}
+        for offset in range(0, len(sample_ids), _WINDOW_ID_CHUNK):
+            ids = sample_ids[offset:offset + _WINDOW_ID_CHUNK]
+            placeholders = ", ".join("?" for _ in ids)
+            for row in connection.execute(
+                f"""SELECT id, timestamp, speed_kmh, lateral_accel, vertical_accel
+                    FROM run_samples WHERE id IN ({placeholders})""", ids,
+            ):
+                sample = dict(row)
+                payload_by_id[sample.pop("id")] = sample
+        return BatchSampleWindow((first, last), [payload_by_id[sample_id] for sample_id in sample_ids])
