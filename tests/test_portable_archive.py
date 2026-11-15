@@ -21,14 +21,15 @@ class PortableArchiveTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
-        self.bundle = self.root / "RailVehicleLab"
+        self.bundle = self.root / archive_tool.BUNDLE_NAME
         self.bundle.mkdir()
-        (self.bundle / "RailVehicleLab.exe").write_bytes(b"fictional executable")
+        (self.bundle / archive_tool.EXE_NAME).write_bytes(b"fictional executable")
         (self.bundle / "app.py").write_bytes(b"fictional app")
-        self.metadata = {"source_commit": "a" * 40, "source_clean": True,
+        archive_tool.add_release_documents(self.bundle, "a" * 40)
+        self.metadata = {"version": archive_tool.VERSION, "source_commit": "a" * 40, "source_clean": True,
                          "exe_sha256": hashlib.sha256(b"fictional executable").hexdigest(),
-                         "files_sha256": {"RailVehicleLab.exe": hashlib.sha256(b"fictional executable").hexdigest(),
-                                          "app.py": hashlib.sha256(b"fictional app").hexdigest()}}
+                         "files_sha256": {path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+                                          for path in self.bundle.iterdir()}}
         self.write_metadata()
         self.output = self.root / "output"
 
@@ -37,24 +38,27 @@ class PortableArchiveTests(unittest.TestCase):
 
     def test_archive_contains_recorded_revision_and_valid_checksum(self):
         archive, digest = archive_tool.create_archive(self.bundle, self.output)
+        self.assertEqual(archive.name, "RailVehicle-Lab-V0.5-Windows-x64-Beta.zip")
         self.assertEqual(digest, hashlib.sha256(archive.read_bytes()).hexdigest())
         self.assertIn(digest, archive.with_name(archive.name + ".sha256").read_text())
         with zipfile.ZipFile(archive) as zipped:
             self.assertIsNone(zipped.testzip())
-            self.assertIn("a" * 40, zipped.read("VERSION.txt").decode())
-            self.assertIn("使用说明.txt", zipped.namelist())
+            prefix = archive_tool.BUNDLE_NAME + "/"
+            self.assertIn("a" * 40, zipped.read(prefix + "VERSION.txt").decode("utf-8-sig"))
+            for name in (archive_tool.EXE_NAME, "使用说明.txt", "公测反馈模板.txt"):
+                self.assertIn(prefix + name, zipped.namelist())
 
     def test_rejects_unrecorded_dirty_or_changed_build(self):
         for change in ("missing", "dirty", "tampered", "invalid_commit"):
             with self.subTest(change=change):
                 self.write_metadata()
-                (self.bundle / "RailVehicleLab.exe").write_bytes(b"fictional executable")
+                (self.bundle / archive_tool.EXE_NAME).write_bytes(b"fictional executable")
                 if change == "missing":
                     (self.bundle / "BUILD-METADATA.json").unlink()
                 elif change == "dirty":
                     (self.bundle / "BUILD-METADATA.json").write_text(json.dumps({**self.metadata, "source_clean": False}))
                 elif change == "tampered":
-                    (self.bundle / "RailVehicleLab.exe").write_bytes(b"changed")
+                    (self.bundle / archive_tool.EXE_NAME).write_bytes(b"changed")
                 else:
                     (self.bundle / "BUILD-METADATA.json").write_text(json.dumps({**self.metadata, "source_commit": "unknown"}))
                 with self.assertRaises(ValueError):
@@ -115,7 +119,7 @@ class PortableArchiveTests(unittest.TestCase):
         self.assertEqual(list(self.output.iterdir()), [])
 
     def test_rejects_local_data_and_secrets_without_exposing_content(self):
-        for name in ("secrets.toml", ".env.local", "samples.csv", "state.sqlite3", "launcher.log"):
+        for name in ("secrets.toml", ".env.local", "samples.csv", "state.sqlite3", "launcher.log", ".git-credentials", "private.pfx"):
             with self.subTest(name=name):
                 path = self.bundle / name
                 path.write_text("private fixture")

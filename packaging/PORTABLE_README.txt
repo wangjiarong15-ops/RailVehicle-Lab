@@ -1,13 +1,15 @@
-RailVehicle-Lab Windows directory build (experimental)
+RailVehicle-Lab V0.5 · Windows x64 便携公测版
 
-Run RailVehicleLab.exe for the full application; double-click Start-Demo.bat for the fictional-data-only demonstration.
-Open http://127.0.0.1:8501 in a browser. The console window must remain open; press Ctrl+C to stop.
-If the port is occupied, run RailVehicleLab.exe --port 8502 from a terminal.
-For browser automation or manual connection, pass --no-browser to start only the local service.
-Only one portable instance can run at once.
+1. 将 ZIP 完整解压到普通文件夹。进入 RailVehicle-Lab-Beta，双击 RailVehicle-Lab.exe。不要在 ZIP 内直接运行，也不要把 EXE 单独拿出来。
+2. 保留启动窗口，等默认浏览器打开。若没自动打开，把窗口里的“本机页面”地址复制到浏览器。端口从 8501 开始自动选择，实际以窗口显示为准。
+3. 保存数据后，在启动窗口按 Ctrl+C 退出。仅关闭网页不会关闭服务。显示“已在运行”时，请返回已有窗口，不需要重复启动。
 
-Database, configuration and launcher log: %LOCALAPPDATA%\RailVehicle-Lab\
-AI is disabled by default. Optional AI settings belong in .streamlit\secrets.toml under that user directory.
-Do not include secrets or databases when sharing the application directory.
+体验建议：在分析工作台选择“内置虚构演示”直接体验曲线与异常。若想试完整导入，请先登记车辆编号 DEMO-001，再到 CSV 导入页面下载虚构示例。三维视图支持旋转、缩放和播放。若 GLB 无法加载，可在视角与部件中切换兼容渲染。
 
-This is an experimental build. It must be independently verified on a clean Windows machine before public release.
+数据目录：在资源管理器地址栏输入 %LOCALAPPDATA%\RailVehicle-Lab。data 保存数据库，.streamlit 保存配置，logs 保存启动器日志。更换解压目录或升级程序不影响已保存的数据。备份前先退出程序；不要删除此目录来更新软件。
+
+AI：没有密钥仍可查看本地证据、进行统计与导出。AI 默认未配置，在线解读仅在用户自行配置后且主动点击时发送聚合结果，可能产生费用。不要共享密钥、数据库、真实车辆数据或带个人信息的截图。
+
+关于公测：适用于 Windows 10/11 x64 的测试目标，无需安装 Python 或以管理员身份运行。无 Python 的干净 Windows 尚未独立验收。此包未数字签名，Windows 可能显示 SmartScreen 提示；请先核对可信来源和发布方提供的 SHA-256，如无法确认，请勿运行。
+
+这是教学与分析原型。分析结果、三维示意和 AI 推测不得直接用于真实铁路运营、安全决策或故障确诊。

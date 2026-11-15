@@ -4,10 +4,12 @@ import unittest
 import tempfile
 from unittest.mock import patch
 import os
+import socket
 import sys
+import threading
 from rail_vehicle.db import PROJECT_ROOT, data_directory
 from rail_vehicle.ai.config import _streamlit_secrets
-from portable_launcher import instance_lock, user_home, PortableError, install_default_config, run, main
+from portable_launcher import instance_lock, user_home, PortableError, install_default_config, run, main, select_port, open_when_ready
 
 
 class PortablePathTests(unittest.TestCase):
@@ -58,6 +60,33 @@ class PortablePathTests(unittest.TestCase):
             path.write_text("invalid = [", encoding="utf-8")
             with patch("streamlit.secrets", {"AI_MODEL": "must-not-fall-back"}):
                 self.assertEqual(_streamlit_secrets(), {})
+
+    @unittest.skipUnless(sys.platform == "win32", "Windows socket exclusivity")
+    def test_automatic_port_skips_occupied_port_and_fixed_port_reports_conflict(self):
+        with socket.socket() as busy, socket.socket() as candidate:
+            busy.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+            busy.bind(("127.0.0.1", 0))
+            busy.listen()
+            candidate.bind(("127.0.0.1", 0))
+            first, second = busy.getsockname()[1], candidate.getsockname()[1]
+            candidate.close()
+            with patch("portable_launcher.DEFAULT_PORTS", (first, second)):
+                self.assertEqual(select_port(), second)
+                with self.assertRaisesRegex(PortableError, str(first)):
+                    select_port(first)
+
+    def test_browser_requires_ready_http_service_and_opens_once(self):
+        stopping = threading.Event()
+        with patch("portable_launcher.HTTPConnection") as client, patch("portable_launcher.webbrowser.open", return_value=True) as browser:
+            response = client.return_value.getresponse.return_value
+            response.status = 200
+            response.read.side_effect = [b"not ready", b"ok"]
+            open_when_ready(8507, "http://127.0.0.1:8507", stopping)
+            self.assertEqual(client.return_value.request.call_count, 2)
+            browser.assert_called_once_with("http://127.0.0.1:8507")
+            stopping.set()
+            open_when_ready(8507, "http://127.0.0.1:8507", stopping)
+            self.assertEqual(browser.call_count, 1)
 
     @unittest.skipUnless(__import__("sys").platform == "win32", "Windows file locking")
     def test_single_instance_lock_and_release(self):

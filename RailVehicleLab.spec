@@ -5,8 +5,11 @@ from PyInstaller.utils.hooks import collect_all
 
 root = Path(SPECPATH)
 datas = [(str(root / "app.py"), "."), (str(root / "demo_app.py"), "."),
-         (str(root / "packaging" / "portable_config.toml"), "."),
-         (str(root / "rail_vehicle" / "assets" / "bogie_viewer"), "rail_vehicle/assets/bogie_viewer")]
+         (str(root / "packaging" / "portable_config.toml"), ".")]
+assets = subprocess.check_output(["git", "ls-files", "--", "rail_vehicle/assets/bogie_viewer"], cwd=str(root), text=True, encoding="utf-8").splitlines()
+for name in assets:
+    asset = root / name
+    datas.append((str(asset), str(asset.parent.relative_to(root))))
 tracked = subprocess.check_output(["git", "ls-files", "--", "rail_vehicle/*.py"], cwd=str(root), text=True, encoding="utf-8").splitlines()
 if not tracked:
     raise RuntimeError("Build requires the Git-tracked application sources.")
@@ -39,5 +42,5 @@ a = Analysis([str(root / "portable_launcher.py")], pathex=[str(root)], binaries=
 # Exclude them from the distributable as well; runtime analysis uses user input.
 a.datas = [entry for entry in a.datas if Path(entry[0]).suffix.lower() not in {".csv", ".db", ".sqlite", ".sqlite3"} and Path(entry[0]).name.lower() not in {"secrets.toml", ".env"}]
 pyz = PYZ(a.pure)
-exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="RailVehicleLab", console=True)
-coll = COLLECT(exe, a.binaries, a.datas, name="RailVehicleLab")
+exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="RailVehicle-Lab", console=True, upx=False)
+coll = COLLECT(exe, a.binaries, a.datas, name="RailVehicle-Lab-Beta", upx=False)

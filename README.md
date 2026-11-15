@@ -23,28 +23,28 @@ CSV 导入预览按车辆分别检查重复 UTC 时刻、原 CSV 行序中的时
 
 日常双击 `start_windows.bat` 启动完整版，或双击 `start_demo_windows.bat` 启动仅使用虚构数据的演示版。服务默认仅监听本机，访问 http://127.0.0.1:8501；在启动窗口按 Ctrl+C 停止，如 Windows 询问是否终止批处理任务，输入 Y。端口占用时先关闭占用程序，或在命令行执行 `start_windows.bat --port 8502`。命令行可使用 `setup_windows.bat --check`、`start_windows.bat --check` 或 `start_demo_windows.bat --check` 仅检查环境。无需手动激活虚拟环境；启动不会自动安装依赖。脚本启动的是浏览器界面，并非免安装 EXE。
 
-### 实验性 Windows 目录式便携构建
+### Windows V0.5 x64 目录式便携公测
 
 便携版仍需在没有预装 Python 的干净 Windows 系统上完成独立验收，暂不作为正式发布包。构建需要 Git、已安装完整项目依赖的项目虚拟环境，以及单独安装的 PyInstaller：
 
 ```powershell
-.venv\Scripts\python.exe -m pip install --target tmp/pdfs/portable-build-tools "pyinstaller>=6,<7"
+.venv\Scripts\python.exe -m pip install -e ".[ml,signal]" "pyinstaller>=6.13,<7"
 powershell -NoProfile -ExecutionPolicy Bypass -File packaging/build_portable.ps1
 ```
 
-若使用独立的 Python 环境，可给构建脚本传入 `-Python <解释器路径>`；该环境需要安装项目依赖。便携程序可通过 `RailVehicleLab.exe --demo --no-browser` 启动本地服务并手动打开浏览器。
+若使用独立的 Python 环境，可给构建脚本传入 `-Python <解释器路径>`；该环境需要安装项目依赖。便携程序可通过 `RailVehicle-Lab.exe --demo --no-browser` 启动本地服务并手动打开浏览器。
 
 构建脚本会记录 Git 提交及构建目录中每个文件的哈希。需要生成带版本说明和 SHA-256 文件的实验性 ZIP 时，先确保 Git 已跟踪文件没有未提交修改，然后将脚本打印出的构建目录传给：
 
 ```powershell
-.venv\Scripts\python.exe packaging/package_portable.py "<构建输出的 RailVehicleLab 目录>" "tmp/pdfs/portable-test-package"
+.venv\Scripts\python.exe packaging/package_portable.py dist/RailVehicle-Lab-Beta dist
 ```
 
 工具拒绝缺少有效完整文件清单、构建时源码有未提交修改、构建文件增删或改变、包含数据库/CSV/密钥配置或目标文件已存在的构建。旧版构建元数据不含完整文件清单，需要重新构建。文件名检查不能替代对发布内容的人工审查；哈希用于核对文件一致性，不是数字签名。
 
 压缩文件通过检查后才会以 `.zip` 文件名出现；如果打包被中断，ZIP 与同名 `.sha256` 没有同时生成，应视为打包未完成，选择新的输出目录重试。
 
-脚本会输出新建的构建目录；整个 `dist/RailVehicleLab` 目录需要一起保留。双击其中的 `RailVehicleLab.exe` 启动完整版，双击 `Start-Demo.bat` 启动虚构数据演示版。浏览器访问 `http://127.0.0.1:8501`，保持启动窗口打开并按 Ctrl+C 退出；端口被占用时可在命令行使用 `RailVehicleLab.exe --port 8502`。同一用户只能启动一个便携实例。
+完整解压 `RailVehicle-Lab-V0.5-Windows-x64-Beta.zip` 后，双击 `RailVehicle-Lab.exe` 启动完整版，或双击 `Start-Demo.bat` 启动虚构数据演示。服务就绪时自动打开默认浏览器；只有本机可访问，默认选择 8501–8510 中首个可用端口。使用时保留启动窗口，退出请在其中按 Ctrl+C。同一个 Windows 用户只能启动一个便携实例。包内含中文使用说明、反馈模板和源码提交信息。脚本不会覆盖旧的构建目录；重建时可指定 `-OutputRoot`。
 
 便携版的数据库、配置及日志存放在 `%LOCALAPPDATA%\RailVehicle-Lab\`，不会随程序目录更新覆盖。默认不使用开发机环境变量中的 AI 密钥；如需自行启用 AI，请在该用户目录下的 `.streamlit/secrets.toml` 中配置。分享程序目录前仍应确认其中没有自行放入密钥或数据。
 
