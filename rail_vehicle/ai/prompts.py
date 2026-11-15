@@ -15,7 +15,8 @@ def build_output_contract_instructions() -> str:
         "必须返回完整 JSON 对象，不要添加 Markdown 代码围栏或 JSON 之外的文字。"
         "根对象必须且只能包含 summary、observations、possible_causes、further_checks、limitations 五个字段；"
         "五个字段都必须存在；没有可写内容时 observations、possible_causes、further_checks、limitations 使用空数组。\n"
-        "summary 必须是包含非空 text 和 evidence_ids 的对象；evidence_ids 至少包含一个本次清单中的合法 ID。"
+        "summary 本身必须是 JSON 对象，不能是字符串、数组或 null；只有 summary.text 才是摘要正文字符串。"
+        "summary.evidence_ids 必须是字符串数组，即使只引用一个证据也要使用数组；至少包含一个本次清单中的合法 ID。"
         "observations 和 limitations 中的每一项也必须包含非空 text 和至少一个合法 evidence_id。"
         "不得输出空 evidence_ids，不得伪造引用。\n"
         "possible_causes 中的每一项必须包含非空 text、至少一个合法 evidence_id，"
@@ -34,6 +35,21 @@ def build_evidence_reference_instructions(payload: dict[str, Any]) -> str:
     allowed_ids = [item["evidence_id"] for item in evidence_metadata]
     allowed_ids_json = json.dumps(allowed_ids, ensure_ascii=False, separators=(",", ":"))
     metadata_json = json.dumps(evidence_metadata, ensure_ascii=False, separators=(",", ":"))
+    output_example = ""
+    if evidence_metadata:
+        evidence = evidence_metadata[0]
+        example = {
+            "summary": {
+                "text": "当前证据是已计算的结果，单凭这条证据不能确定原因。",
+                "evidence_ids": [evidence["evidence_id"]],
+                "claim_scope": {key: evidence[key] for key in ("category", "axis", "batch_refs")},
+            },
+            "observations": [], "possible_causes": [], "further_checks": [], "limitations": [],
+        }
+        output_example = (
+            "【完整 JSON 格式示例】只参考字段结构；正文与引用应选择能支持本次实际结论的证据。\n"
+            + json.dumps(example, ensure_ascii=False, separators=(",", ":")) + "\n"
+        )
     event_duration_guidance = ""
     if payload.get("anomaly_events"):
         event_duration_guidance = (
@@ -81,4 +97,5 @@ def build_evidence_reference_instructions(payload: dict[str, Any]) -> str:
         "summary 必须由至少一个现有证据 ID 支持；若无法支持，不得编造 summary 或伪造 ID。\n"
         + event_duration_guidance
         + experiment_guidance
+        + output_example
     )

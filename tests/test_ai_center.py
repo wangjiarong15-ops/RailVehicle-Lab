@@ -370,6 +370,32 @@ def test_invalid_response_shape_reports_only_known_section_and_rule(monkeypatch)
         assert provider.calls == 1
 
 
+def test_deepseek_text_summary_is_replaced_by_cited_observation_in_center(monkeypatch):
+    import json
+    from types import SimpleNamespace
+
+    from rail_vehicle.ai.deepseek_provider import DeepSeekResponsesProvider
+    from tests.test_deepseek_provider import MockResponses, valid_output
+
+    output = valid_output(payload_fixture())
+    approved = output["summary"]
+    output.update(summary="未引用证据的摘要不应展示", observations=[approved])
+    responses = MockResponses(output_text=json.dumps(output))
+    config = AIConfig(enabled=True, provider="deepseek", model="mock", api_key="test-only-placeholder")
+    provider = DeepSeekResponsesProvider(config, client=SimpleNamespace(responses=responses))
+    monkeypatch.setenv("RAIL_PUBLIC_DEMO", "false")
+    with patch.object(ai_center.AIConfig, "from_sources", return_value=config), \
+         patch.object(ai_center, "create_configured_provider", return_value=provider):
+        app = AppTest.from_function(center_app).run()
+        assert not responses.calls
+        app.button(key="ai_center_generate").click().run()
+        assert not app.exception
+        assert len(responses.calls) == 1
+        assert app.session_state["ai_single_batch_result"]["analysis"]["summary"] == approved
+        assert any(item.value == approved["text"] for item in app.text)
+        assert not any("未引用证据" in item.value for item in [*app.warning, *app.text, *app.markdown])
+
+
 def test_axis_mismatch_explains_failure_and_keeps_evidence_available_offline(monkeypatch):
     payload = payload_fixture(lateral_peak=2)
     event_id = "event.lateral.001"

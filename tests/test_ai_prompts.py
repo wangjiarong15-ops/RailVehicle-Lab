@@ -7,7 +7,7 @@ from rail_vehicle.ai.prompts import (
     build_evidence_reference_instructions,
     build_output_contract_instructions,
 )
-from rail_vehicle.ai.schemas import collect_evidence_ids, collect_evidence_metadata
+from rail_vehicle.ai.schemas import collect_evidence_ids, collect_evidence_metadata, validate_output
 
 
 def input_payload(evidence_id: str, batch_ref: str) -> dict:
@@ -65,6 +65,14 @@ class EvidencePromptTests(unittest.TestCase):
         self.assertIn("必须包含非 null 的 claim_scope", contract)
         self.assertIn("不得省略 claim_scope", contract)
         self.assertNotIn("claim_scope 可以省略", contract)
+
+    def test_complete_json_example_uses_the_current_request_evidence_scope(self):
+        payload = input_payload("metric.accel.vertical.rms", "B-CURRENT")
+        instructions = build_evidence_reference_instructions(payload)
+        example = json.loads(instructions.splitlines()[-1])
+        summary = validate_output(example, payload)["summary"]
+        self.assertEqual(summary["evidence_ids"], ["metric.accel.vertical.rms"])
+        self.assertEqual(summary["claim_scope"], {"category": "metric", "axis": "vertical", "batch_refs": ["B-CURRENT"]})
 
     def test_single_batch_metadata_matches_validator_categories_axes_and_batch(self):
         payload = input_payload("metric.speed.mean", "B-SINGLE")

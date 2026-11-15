@@ -111,8 +111,36 @@ def _response_diagnostics(response: Any, output_text: str) -> dict[str, Any]:
     }
 
 
+def _normalize_summary(output_text: str) -> str | dict[str, Any]:
+    """Preserve explicit citations when adapting common summary shapes for local validation."""
+    try:
+        result = json.loads(output_text)
+    except (ValueError, RecursionError):
+        return output_text  # Keep the shared validator's error handling.
+    if not isinstance(result, dict):
+        return output_text
+
+    original = summary = result.get("summary")
+    if isinstance(summary, str):
+        # The bare text has no citations. Never attach another claim's evidence
+        # to it. Reuse the actual evidence-bearing observation instead, if any.
+        observations = result.get("observations")
+        if isinstance(observations, list) and observations and isinstance(observations[0], dict):
+            return {**result, "summary": observations[0], "observations": observations[1:]}
+        return output_text
+    if isinstance(summary, list) and len(summary) == 1 and isinstance(summary[0], dict):
+        summary = summary[0]
+    if isinstance(summary, dict):
+        text, ids = summary.get("text"), summary.get("evidence_ids")
+        if isinstance(text, list) and len(text) == 1 and isinstance(text[0], str):
+            summary = {**summary, "text": text[0]}
+        if isinstance(ids, str):
+            summary = {**summary, "evidence_ids": [ids]}
+    return output_text if summary is original else {**result, "summary": summary}
+
+
 class DeepSeekResponsesProvider:
-    """Calls DeepSeek's Responses endpoint and returns text for shared validation."""
+    """Calls DeepSeek's Responses endpoint and hands output to shared validation."""
 
     def __init__(
         self,
@@ -135,7 +163,7 @@ class DeepSeekResponsesProvider:
             max_retries=MAX_RETRIES,
         )
 
-    def analyze(self, payload: dict[str, Any]) -> str:
+    def analyze(self, payload: dict[str, Any]) -> str | dict[str, Any]:
         validate_input_payload(payload)
         if not self._config.enabled:
             raise AIProviderUnavailable("disabled", "AI 分析未启用。")
@@ -146,7 +174,8 @@ class DeepSeekResponsesProvider:
 
         prompt = (
             "仅依据下方 Python 已计算上下文，生成简洁的轨道车辆运行统计分析。"
-            "summary 写一个简短段落；observations 最多 3 条，possible_causes 最多 1 条，"
+            "在 summary.text 中写一个简短段落；summary 必须是 JSON 对象。"
+            "observations 最多 3 条，possible_causes 最多 1 条，"
             "further_checks 最多 2 条，limitations 最多 1 条；每条尽量只写一个短句。"
             "只写有依据的内容，不为填满列表而生成；无可靠内容时列表留空。"
             "不得重复罗列已计算指标或自行重新计算。"
@@ -186,7 +215,6 @@ class DeepSeekResponsesProvider:
         except Exception as exc:
             raise safe_provider_error(exc) from None
 
-        response_status = _response_value(response, "status")
         output_text = _extract_output_text(response)
         diagnostics = _response_diagnostics(response, output_text)
         response_status = diagnostics["status"]
@@ -224,4 +252,4 @@ class DeepSeekResponsesProvider:
                 "AI 服务响应中没有可用的解读文本，未展示结果。",
                 diagnostics=diagnostics,
             )
-        return output_text
+        return _normalize_summary(output_text)

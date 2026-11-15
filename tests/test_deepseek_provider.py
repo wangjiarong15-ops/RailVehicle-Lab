@@ -212,13 +212,14 @@ class DeepSeekResponsesProviderTests(unittest.TestCase):
         shared_evidence_rules = build_evidence_reference_instructions(self.context)
         self.assertIn(shared_evidence_rules, prompt)
         self.assertIn(build_output_contract_instructions(), prompt)
+        self.assertNotIn("summary 写一个简短段落", prompt)
         self.assertIn(json.dumps(sorted(collect_evidence_ids(self.context)), ensure_ascii=False, separators=(",", ":")), prompt)
         self.assertIn(
             json.dumps(collect_evidence_metadata(self.context), ensure_ascii=False, separators=(",", ":")),
             prompt,
         )
         for limit_text in (
-            "summary 写一个简短段落",
+            "在 summary.text 中写一个简短段落",
             "observations 最多 3 条",
             "possible_causes 最多 1 条",
             "further_checks 最多 2 条",
@@ -232,6 +233,49 @@ class DeepSeekResponsesProviderTests(unittest.TestCase):
         self.assertIn("claim_scope.category", prompt)
         self.assertIn("summary 必须由至少一个现有证据 ID 支持", prompt)
         self.assertIn("不得重复罗列已计算指标", prompt)
+
+    def test_summary_wrappers_keep_exact_text_and_evidence(self):
+        original = valid_output(self.context)
+        claim = original["summary"]
+        for summary in ([claim], {**claim, "text": [claim["text"]], "evidence_ids": claim["evidence_ids"][0]}):
+            with self.subTest(summary=summary):
+                self.responses.output_text = json.dumps({**original, "summary": summary})
+                self.responses.calls.clear()
+                result = AIAnalysisService(self.provider).analyze(self.context)
+                self.assertEqual(result["analysis"], original)
+                self.assertEqual(result["scope_validation"], "verified")
+                self.assertEqual(len(self.responses.calls), 1)
+
+    def test_text_summary_can_only_be_replaced_by_an_original_cited_observation(self):
+        original = valid_output(self.context)
+        summary = original["summary"]
+        other = {**summary, "text": "此外可核查当前速度统计。"}
+        self.responses.output_text = json.dumps({**original, "summary": "不带证据的正文", "observations": [summary, other]})
+        result = AIAnalysisService(self.provider).analyze(self.context)
+        self.assertEqual(result["analysis"], {**original, "observations": [other]})
+        self.assertEqual(result["scope_validation"], "verified")
+        self.assertNotIn("不带证据", str(result))
+        self.assertEqual(len(self.responses.calls), 1)
+
+    def test_summary_compatibility_does_not_accept_missing_or_invalid_evidence(self):
+        original = valid_output(self.context)
+        claim = original["summary"]
+        for output, expected_code in (
+            ({**original, "summary": "裸文本"}, "output_schema_invalid"),
+            ({**original, "summary": [claim, claim]}, "output_schema_invalid"),
+            ({**original, "summary": {**claim, "evidence_ids": "outside.current.request"}}, "evidence_id_unknown"),
+            ({**original, "summary": "裸文本", "observations": [{**claim, "claim_scope": None}]}, "claim_scope_schema_invalid"),
+            ({**original, "summary": [{**claim, "claim_scope": {**claim["claim_scope"], "axis": "lateral"}}]},
+             "evidence_scope_axis_mismatch"),
+            ({**original, "summary": "裸文本", "observations": [{**claim, "text": "可以确认发生故障"}]}, "unsafe_claim_text"),
+        ):
+            with self.subTest(code=expected_code):
+                self.responses.output_text = json.dumps(output)
+                self.responses.calls.clear()
+                result = AIAnalysisService(self.provider).analyze(self.context)
+                self.assertEqual(result["code"], expected_code)
+                self.assertNotIn("analysis", result)
+                self.assertEqual(len(self.responses.calls), 1)
 
     def test_wire_schema_rejects_empty_claims_and_mock_flow_keeps_local_guard(self):
         original = valid_output(self.context)
