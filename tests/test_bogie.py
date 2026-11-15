@@ -4,9 +4,10 @@ import unittest
 from rail_vehicle.bogie import build_bogie, motion
 from rail_vehicle.bogie_geometry import AXLE_X, AXLE_Z, WHEEL_POSE_GAIN
 from rail_vehicle.bogie_replay import (
-    COMBINED, GAP, LATERAL, NORMAL, VERTICAL, event_positions, gap_cutoff, replay_scene, scene_for_sample,
+    COMBINED, GAP, LATERAL, NORMAL, VERTICAL, advance_event_loop, control_event_loop, event_loop,
+    event_positions, gap_cutoff, replay_scene, scene_for_sample,
 )
-from rail_vehicle.replay import prepare_replay
+from rail_vehicle.replay import ReplayState, prepare_replay
 
 
 class BogieTests(unittest.TestCase):
@@ -69,6 +70,34 @@ class BogieTests(unittest.TestCase):
         track = prepare_replay([dict(timestamp="2026-01-01T00:00:00Z", speed_kmh=2,
                                      lateral_accel=value, vertical_accel=0) for value in (2, 0, 3)])
         self.assertEqual([index for _, index in event_positions(track, 1)], [0, 2])
+
+    def test_loop_excludes_observations_outside_requested_margins(self):
+        track = prepare_replay([dict(timestamp=f"2026-01-01T00:00:{second:02d}Z", speed_kmh=2,
+                                     lateral_accel=2 if second in (3, 7) else 0, vertical_accel=0)
+                                for second in (0, 1, 3, 7, 10)])
+        [(event, first)] = event_positions(track, 1)
+        window = event_loop(track, event, first, 1.5, 1.5)
+        self.assertTrue(window.timed)
+        self.assertEqual((window.start, window.end, window.first_row, window.last_row), (3, 7, 2, 3))
+        self.assertEqual((window.index_at(track, 1.5), window.index_at(track, 9)), (2, 3))
+        state = ReplayState(position=3, playing=True, last_tick=10.)
+        end = advance_event_loop(state, 15., window)
+        self.assertEqual(end.position, 7.)
+        self.assertEqual(advance_event_loop(end, 16., window).position, 3.)
+
+    def test_equal_time_loop_keeps_exact_rows_without_advancing_time(self):
+        track = prepare_replay([dict(timestamp=f"2026-01-01T00:00:{second:02d}Z", speed_kmh=2,
+                                     lateral_accel=value, vertical_accel=0)
+                                for second, value in ((0, 0), (2, 0), (2, -3), (2, -4), (2, 0), (4, 0))])
+        [(event, first)] = event_positions(track, 1)
+        window = event_loop(track, event, first, 0, 0)
+        self.assertFalse(window.timed)
+        self.assertEqual((window.start, window.end, window.first_row, window.last_row), (2, 2, 2, 3))
+        self.assertEqual(window.index_at(track, 2), 2)
+        state = ReplayState(position=2., playing=True, last_tick=10.)
+        expected = ReplayState(position=2.)
+        self.assertEqual(advance_event_loop(state, 15., window), expected)
+        self.assertEqual(control_event_loop(expected, "play", 15., window), expected)
 
     def test_long_gap_does_not_extend_anomaly_scene(self):
         track = prepare_replay([dict(timestamp=f"2026-01-01T00:00:{second:02d}Z", speed_kmh=2,

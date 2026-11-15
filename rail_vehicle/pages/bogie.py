@@ -122,7 +122,8 @@ def _clear_loop(*, pause=False):
     old = st.session_state.pop(LOOP_KEY, None)
     st.session_state.pop(EVIDENCE_KEY, None)
     if old and pause and STATE_KEY in st.session_state:
-        _seek(st.session_state[STATE_KEY].position)
+        position = st.session_state[STATE_KEY].position
+        _seek(position, _current_row(old["track"], position, old["window"]))
 
 
 def _current_row(track, position, window):
@@ -226,13 +227,15 @@ def _event_explorer(track, cache, threshold, state, window):
         before = before_col.number_input("异常前保留（秒）", 0., 60., 2., step=.5, key="bogie_loop_before")
         after = after_col.number_input("异常后保留（秒）", 0., 60., 2., step=.5, key="bogie_loop_after")
         candidate = event_loop(track, event, first_sample, before, after)
-        if candidate is None:
-            st.caption("该范围没有可播放的时长。可定位样本，或增加异常前后的时间。")
-        if st.button("循环回放此区段", key="bogie_start_loop", disabled=candidate is None):
+        if not candidate.timed:
+            st.caption("窗口内样本时间相同，可逐条核查和导出；没有可播放的时长。")
+        if st.button("循环回放此区段" if candidate.timed else "逐帧核查此区段", key="bogie_start_loop"):
             _clear_loop()
-            _seek(candidate.start)
+            _seek(candidate.start, None if candidate.timed else candidate.first_row)
             st.session_state[LOOP_KEY] = dict(track=track, threshold=threshold, window=candidate)
-            st.session_state[STATE_KEY] = control_event_loop(st.session_state[STATE_KEY], "play", monotonic(), candidate)
+            if candidate.timed:
+                st.session_state[STATE_KEY] = control_event_loop(
+                    st.session_state[STATE_KEY], "play", monotonic(), candidate)
             st.rerun()
 
 
@@ -371,10 +374,13 @@ def _display(track, duration, threshold, cutoff, teaching, inspection, event_ind
                 st.caption("该部件已隐藏，可在左侧重新显示。")
             elif inspection.focus not in scene.parts:
                 st.caption(("蓝色" if renderer == WEBGL else "青色") + "表示手动选择的部件。")
-        if window:
+        if window and window.timed:
             elapsed = max(0., state.position - window.start)
             span = window.end - window.start
             st.progress(min(1., elapsed/span), text=f"循环进度：{elapsed:.3f} / {span:.3f} 秒")
+        elif window:
+            current, count = index - window.first_row + 1, window.last_row - window.first_row + 1
+            st.progress(current / count, text=f"核查样本：{current} / {count}")
         else:
             st.progress(state.position / duration if duration else 1.0,
                         text=f"{state.position:.2f} / {duration:.2f} 秒")
@@ -482,10 +488,11 @@ def render():
                        "请回到运行分析重新核查证据。")
     active_loop = st.session_state.get(LOOP_KEY)
     if active_loop and (active_loop["track"] is not track or active_loop["threshold"] != threshold):
-        _clear_loop(pause=True)
+        _clear_loop(pause=active_loop["track"] is track)
         active_loop = None
-        st.caption("数据或阈值已变化，已退出原异常区段循环。")
+        st.caption("数据或阈值已变化，已退出原异常区段窗口。")
     window = active_loop["window"] if active_loop else None
+    static_window = window is not None and not window.timed
     with main:
         state = st.session_state.get(STATE_KEY, ReplayState())
         duration = track.duration if track is not None else ILLUSTRATION_PERIOD
@@ -496,20 +503,24 @@ def render():
             st.caption("暂无可回放的样本；仍可观察教学模型。")
         if window:
             status, exit_loop = st.columns([3, 1], vertical_alignment="center")
-            status.info(f"循环窗口：{window.label} · 批次相对时间 {window.start:.6g}–{window.end:.6g} 秒")
-            exit_loop.button("退出循环", key="bogie_exit_loop", on_click=_clear_loop, kwargs={"pause": True})
+            if static_window:
+                status.info(f"逐帧窗口：{window.label} · 同一时刻 · 第 {window.first_row+1:,}–{window.last_row+1:,} 条")
+            else:
+                status.info(f"循环窗口：{window.label} · 批次相对时间 {window.start:.6g}–{window.end:.6g} 秒")
+            exit_loop.button("退出逐帧核查" if static_window else "退出循环", key="bogie_exit_loop",
+                             on_click=_clear_loop, kwargs={"pause": True})
             _window_evidence(track, window, selection, threshold)
         with st.container(horizontal=True, vertical_alignment="bottom"):
             action = None
             if st.button("播放", key="bogie_play", icon=":material/play_arrow:", type="primary",
-                         disabled=inspection.exploded or state.playing or duration == 0):
+                         disabled=static_window or inspection.exploded or state.playing or duration == 0):
                 action = "play"
             if st.button("暂停", key="bogie_pause", icon=":material/pause:", disabled=not state.playing):
                 action = "pause"
             if st.button("重置", key="bogie_reset", icon=":material/restart_alt:"):
                 action = "reset"
             rate = st.selectbox("播放速度", [0.5, 1., 2., 4.], index=1, width=110, key="bogie_rate",
-                                format_func=lambda x: f"{x:g}×")
+                                disabled=static_window, format_func=lambda x: f"{x:g}×")
         if rate != state.rate:
             state = _control_playback(state, "rate", monotonic(), track, window, rate=rate)
         if action:
@@ -520,12 +531,15 @@ def render():
         if action:
             st.rerun()
         if track is not None:
-            start, end = (window.start, window.end) if window else (0., max(duration, 0.001))
-            precision = dict(step=min(.01, (end-start)/100), format="%.6f") if window else {}
-            st.session_state["bogie_seek"] = state.position
-            st.slider("时间轴定位（秒）", start, end, key="bogie_seek", **precision,
-                      disabled=state.playing or duration == 0,
-                      on_change=lambda: _seek(st.session_state["bogie_seek"]))
+            if static_window:
+                st.caption(f"批次相对时间 {window.start:.6g} 秒；用上一帧或下一帧按样本行核查。")
+            else:
+                start, end = (window.start, window.end) if window else (0., max(duration, 0.001))
+                precision = dict(step=min(.01, (end-start)/100), format="%.6f") if window else {}
+                st.session_state["bogie_seek"] = state.position
+                st.slider("时间轴定位（秒）", start, end, key="bogie_seek", **precision,
+                          disabled=state.playing or duration == 0,
+                          on_change=lambda: _seek(st.session_state["bogie_seek"]))
             row = _current_row(track, state.position, window)
             first_row, last_row = (window.first_row, window.last_row) if window else (0, len(track.samples)-1)
             prev, nxt = st.columns(2)

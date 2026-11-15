@@ -1,3 +1,5 @@
+import csv
+import io
 import json
 import os
 from pathlib import Path
@@ -7,11 +9,51 @@ from unittest.mock import patch
 
 from streamlit.testing.v1 import AppTest
 from rail_vehicle.db import init_db
+from rail_vehicle.pages.bogie import EVIDENCE_KEY, FRAME_KEY
 from rail_vehicle.run_data import import_run_data, list_batch_samples, list_vehicle_batches, validate_run_csv
 from rail_vehicle.vehicle_data import add_vehicle, list_vehicles
 
 
 class BogiePageTests(unittest.TestCase):
+    def test_same_time_review_steps_and_exports_only_selected_rows(self):
+        observations = [(0, 20, 0), (1, 30, 2), (1, 40, 0), (1, 50, -3),
+                        (1, 60, -4), (1, 70, 0), (2, 80, 0)]
+        rows = [dict(timestamp=f"2026-01-01T00:00:{second:02d}Z", speed_kmh=speed,
+                     lateral_accel=lateral, vertical_accel=0) for second, speed, lateral in observations]
+        with (patch.dict(os.environ, {"RAIL_PUBLIC_DEMO": "true"}),
+              patch("rail_vehicle.pages.bogie.analysis_demo_data", return_value=(None, None, {-1: rows}))):
+            app = AppTest.from_string("from rail_vehicle.pages.bogie import render; render()").run()
+            app.radio(key="bogie_source").set_value("内置虚构演示").run()
+            app.selectbox(key="bogie_event_choice_axes").set_value(1).run()
+            app.number_input(key="bogie_loop_before").set_value(0.)
+            app.number_input(key="bogie_loop_after").set_value(0.).run()
+            start = app.button(key="bogie_start_loop")
+            self.assertEqual(start.label, "逐帧核查此区段")
+            start.click().run()
+            self.assertFalse(app.exception)
+            self.assertEqual(app.session_state[FRAME_KEY], 3)
+            self.assertEqual(app.metric[0].value, "50.0")
+            self.assertTrue(app.button(key="bogie_play").disabled)
+            self.assertFalse(any(slider.key == "bogie_seek" for slider in app.slider))
+
+            next(button for button in app.button if button.label == "下一帧").click().run()
+            self.assertFalse(app.exception)
+            self.assertEqual(app.session_state[FRAME_KEY], 4)
+            self.assertEqual(app.metric[0].value, "60.0")
+            self.assertTrue(next(button for button in app.button if button.label == "下一帧").disabled)
+            chart = json.loads(app.get("plotly_chart")[0].proto.spec)
+            self.assertEqual(chart["data"][0]["x"], [4, 5])
+            self.assertEqual(chart["layout"]["xaxis3"]["title"]["text"], "批次样本序号（同一 UTC 时刻）")
+
+            app.button(key="bogie_prepare_window_csv").click().run()
+            export = list(csv.DictReader(io.StringIO(app.session_state[EVIDENCE_KEY].decode("utf-8-sig"))))
+            self.assertEqual([(row["batch_row"], row["speed_kmh"]) for row in export], [("4", "50.0"), ("5", "60.0")])
+            self.assertEqual(len({row["timestamp_utc"] for row in export}), 1)
+            app.button(key="bogie_exit_loop").click().run()
+            self.assertFalse(app.exception)
+            self.assertEqual(app.session_state[FRAME_KEY], 4)
+            self.assertEqual(app.metric[0].value, "60.0")
+
     def test_csv_batch_evidence_link_jumps_to_verified_sample(self):
         with TemporaryDirectory() as directory:
             db = Path(directory) / "test.db"

@@ -161,27 +161,31 @@ class EventLoop:
     first_row: int
     last_row: int
 
+    @property
+    def timed(self):
+        return self.end > self.start
+
     def index_at(self, track, position):
-        if position <= self.start and track.offsets[self.first_row] == self.start:
+        if position <= self.start:
             return self.first_row
-        return min(self.last_row, track.index_at(position))
+        return max(self.first_row, min(self.last_row, track.index_at(position)))
 
 
 def event_loop(track, event, first_row, before, after):
-    """Retain absolute batch time and clip contextual margins to actual batch bounds."""
+    """Use observed endpoints; a zero-duration window remains available by row."""
     if not all(isfinite(margin) and margin >= 0 for margin in (before, after)):
         raise ValueError("区段前后的时间必须为非负数。")
     last_row = first_row + event["sample_count"] - 1
     start = max(0., track.offsets[first_row] - before)
     end = min(track.duration, track.offsets[last_row] + after)
-    if end <= start:
-        return None
     first = bisect_left(track.offsets, start) if before else first_row
     last = bisect_right(track.offsets, end) - 1 if after else last_row
-    return EventLoop(event["type"], start, end, first, last)
+    return EventLoop(event["type"], track.offsets[first], track.offsets[last], first, last)
 
 
 def advance_event_loop(state, now, window, *, wrap=True):
+    if not window.timed:
+        return replace(state, position=window.start, playing=False, last_tick=None)
     if not state.playing:
         return state
     if state.last_tick is None:

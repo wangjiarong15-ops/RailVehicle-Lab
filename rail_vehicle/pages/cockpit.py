@@ -77,11 +77,12 @@ def _demo_track() -> ReplayTrack:
 def build_replay_chart(track: ReplayTrack, index: int, position: float, threshold: float,
                        *, event_index=None, playhead=False, window=None):
     """Show observed samples only, bounded to the latest 60 seconds / 1,000 rows."""
+    by_row = window is not None and window.start == window.end
     # At a repeated timestamp, keep rows through the explicitly selected sample only.
     first = min(index, max(bisect_left(track.offsets, max(0, position - 60)), index - 999,
                            window.first_row if window else 0))
     rows = track.samples[first:index + 1]
-    offsets = track.offsets[first:index + 1]
+    x_values = list(range(first + 1, index + 2)) if by_row else track.offsets[first:index + 1]
     figure = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.09)
     shapes = []
     channels = (
@@ -91,21 +92,23 @@ def build_replay_chart(track: ReplayTrack, index: int, position: float, threshol
     )
     for row_index, (field, label, color) in enumerate(channels, start=1):
         values = [row[field] for row in rows]
-        figure.add_trace(go.Scatter(x=offsets, y=values, name=label,
+        figure.add_trace(go.Scatter(x=x_values, y=values, name=label,
                                    mode="markers", marker_size=4,
                                    line_color=color), row=row_index, col=1)
         figure.update_yaxes(title_text=label, row=row_index, col=1)
         if row_index > 1:
             abnormal = [i for i, value in enumerate(values) if abs(value) > threshold]
             figure.add_trace(go.Scatter(
-                x=[offsets[i] for i in abnormal], y=[values[i] for i in abnormal],
+                x=[x_values[i] for i in abnormal], y=[values[i] for i in abnormal],
                 mode="markers", marker={"color": "#dc2626", "size": 10, "symbol": "diamond"},
                 name=f"{label}超阈值",
             ), row=row_index, col=1)
             for value in (-threshold, threshold):
                 shapes.append(dict(type="line", xref=f"x{row_index} domain", yref=f"y{row_index}",
                                    x0=0, x1=1, y0=value, y1=value, line=dict(dash="dash", color="#dc2626")))
-    if event_index is None:
+    if by_row:
+        spans = ()  # Temporal bands have no width here; the individual flags are still shown.
+    elif event_index is None:
         spans = ((event["field"], _offset(track, event["start_timestamp"]), _offset(track, event["end_timestamp"]))
                  for event in detect_anomalies(rows, threshold)["events"][:CHART_EVENT_LIMIT])
     else:
@@ -118,13 +121,20 @@ def build_replay_chart(track: ReplayTrack, index: int, position: float, threshol
         else:
             shapes.append(dict(type="rect", **location, fillcolor="#dc2626", opacity=.13, line=dict(width=0)))
     if playhead:
-        observed = track.offsets[index]
+        observed = index + 1 if by_row else track.offsets[index]
         for suffix in ("", "2", "3"):
             shapes.append(dict(type="line", xref=f"x{suffix}", yref=f"y{suffix} domain", x0=observed,
                                x1=observed, y0=0, y1=1, line=dict(color="#39c4ce", dash="dash")))
-    x_range = [window.start, window.end] if window else [max(0, position - 60), max(10, position + 1)]
-    figure.update_xaxes(range=x_range)
-    figure.update_xaxes(title_text="相对运行时间（秒）", row=3, col=1)
+    if by_row:
+        stride = max(1, (window.last_row - window.first_row + 9) // 10)
+        figure.update_xaxes(range=[window.first_row + .5, window.last_row + 1.5],
+                            tickformat="d", tick0=window.first_row + 1, dtick=stride)
+        axis_label = "批次样本序号（同一 UTC 时刻）"
+    else:
+        x_range = [window.start, window.end] if window else [max(0, position - 60), max(10, position + 1)]
+        figure.update_xaxes(range=x_range)
+        axis_label = "相对运行时间（秒）"
+    figure.update_xaxes(title_text=axis_label, row=3, col=1)
     figure.update_layout(height=570, showlegend=False, margin=dict(l=20, r=20, t=15, b=20), shapes=shapes)
     return figure
 
