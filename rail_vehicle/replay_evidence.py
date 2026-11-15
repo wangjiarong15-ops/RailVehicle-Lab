@@ -41,9 +41,17 @@ class ReplayEvidenceScope:
         return self.last_row - self.first_row + 1
 
     def matches(self, timestamps):
-        return (len(timestamps) == self.batch_count and 0 <= self.first_row <= self.last_row < self.batch_count
+        return (self._valid_bounds(len(timestamps))
                 and timestamps[self.first_row] == self.first_timestamp
                 and timestamps[self.last_row] == self.last_timestamp)
+
+    def matches_track(self, track):
+        return (self._valid_bounds(len(track.samples))
+                and _utc(track.samples[self.first_row]["timestamp"]) == self.first_timestamp
+                and _utc(track.samples[self.last_row]["timestamp"]) == self.last_timestamp)
+
+    def _valid_bounds(self, length):
+        return length == self.batch_count and 0 <= self.first_row <= self.last_row < length
 
 
 def replay_evidence_csv(track, scope, *, batch_id, vehicle_id, threshold, fictional):

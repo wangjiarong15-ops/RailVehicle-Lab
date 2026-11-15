@@ -1,6 +1,7 @@
 """Projected history reads must agree with the complete read and exact replay rows."""
 
 from datetime import datetime, time, timedelta, timezone
+import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -9,7 +10,7 @@ from streamlit.testing.v1 import AppTest
 
 from rail_vehicle import db, run_data
 from rail_vehicle.demo_data import analysis_demo_data
-from rail_vehicle.pages import run_analysis
+from rail_vehicle.pages import bogie, run_analysis
 from rail_vehicle.pages.data_workflow import ANALYSIS_REPLAY_SCOPE
 from rail_vehicle.replay_evidence import ReplayEvidenceScope
 from rail_vehicle.time_filter import filter_samples_by_time_range
@@ -97,3 +98,61 @@ def test_workbench_uses_projection_for_time_window_but_preserves_exact_replay_ro
         full.assert_called_once_with(vehicle, batch)
         assert any("1 条" in item.value for item in app.markdown if "分析样本数" in item.value)
         assert {metric.label: metric.value for metric in app.metric}["平均速度（km/h）"] == "73.000"
+
+
+def test_same_time_window_round_trip_preserves_chart_evidence_and_report(history, monkeypatch):
+    path, vehicle, batch = history
+    with db.get_connection(path) as connection:
+        connection.execute("UPDATE run_samples SET lateral_accel = speed_kmh - 70 WHERE speed_kmh IN (72, 73)")
+    init_db = db.init_db
+    monkeypatch.setenv("RAIL_PUBLIC_DEMO", "false")
+    monkeypatch.setenv("AI_ENABLED", "false")
+    monkeypatch.setattr(db, "init_db", lambda: init_db(path))
+    for page in (bogie, run_analysis):
+        monkeypatch.setattr(page, "list_vehicles", lambda: list_vehicles(path))
+        monkeypatch.setattr(page, "list_vehicle_batches", lambda vid: run_data.list_vehicle_batches(vid, path))
+        monkeypatch.setattr(page, "list_batch_samples", lambda vid, bid: run_data.list_batch_samples(vid, bid, path))
+    get_vehicle = run_analysis.get_vehicle
+    monkeypatch.setattr(run_analysis, "get_vehicle", lambda vid: get_vehicle(vid, path))
+    app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"), default_timeout=20).run()
+    app.button(key="analysis_replay_batch").click().run()
+    app.number_input(key="bogie_loop_before").set_value(0.)
+    app.number_input(key="bogie_loop_after").set_value(0.).run()
+    app.button(key="bogie_start_loop").click().run()
+    app.button(key="bogie_window_analysis").click().run()
+    assert not app.exception
+    assert any("第 2–3 条" in info.value for info in app.info)
+    charts = {item.proto.id.rsplit("-", 1)[-1]: json.loads(item.proto.spec) for item in app.get("plotly_chart")}
+    lateral = charts["chart_lateral_accel"]
+    assert lateral["layout"]["xaxis"]["title"]["text"] == "批次样本序号"
+    assert lateral["data"][0]["x"] == lateral["data"][1]["x"] == [2, 3]
+    assert lateral["data"][0]["y"] == [2., 3.]
+
+    with patch.object(run_analysis, "generate_analysis_report_pdf", wraps=run_analysis.generate_analysis_report_pdf) as report:
+        app.button(key="generate_analysis_report").click().run()
+        payload = report.call_args.args[0]
+        assert payload["replay_rows"] == (2, 3) and payload["sample_count"] == 2
+        assert [sample["speed_kmh"] for sample in payload["samples"]] == [72, 73]
+        assert app.session_state["analysis_report_pdf"].startswith(b"%PDF-")
+
+    app.button(key="ai_center_link_single").click().run()
+    assert any("当前证据范围：批次第 2–3 条" in item.value for item in app.caption)
+    context = app.session_state["ai_center_contexts"]["single"]
+    assert context["selection"]["row_span"] == [2, 3]
+    assert context["payload"]["anomaly_events"][0]["sample_count"] == 2
+    assert app.button(key="ai_center_generate").disabled
+    next(button for button in app.button if button.label == "返回分析页面").click().run()
+
+    app.button(key="analysis_replay_batch").click().run()
+    loop = app.session_state[bogie.LOOP_KEY]["window"]
+    assert (loop.first_row, loop.last_row) == (1, 2)
+    assert app.session_state[bogie.FRAME_KEY] == 1 and not app.session_state[bogie.STATE_KEY].playing
+    assert not app.exception
+
+    app.button(key="bogie_return_analysis").click().run()
+    with db.get_connection(path) as connection:
+        connection.execute("DELETE FROM run_samples WHERE speed_kmh = 78")
+    app.button(key="analysis_replay_batch").click().run()
+    assert not app.exception
+    assert bogie.LOOP_KEY not in app.session_state
+    assert any("分析窗口与当前批次" in message.value for message in app.warning)

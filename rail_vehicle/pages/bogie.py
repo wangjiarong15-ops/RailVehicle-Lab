@@ -9,7 +9,7 @@ import streamlit as st
 from rail_vehicle.bogie import PART_DESCRIPTIONS, PARTS, VIEWS, build_bogie
 from rail_vehicle.bogie_inspection_context import inspection_context
 from rail_vehicle.bogie_replay import (
-    EVENT_FILTERS, EventSpanIndex, GAP, ILLUSTRATION_PERIOD, TEACHING, advance_event_loop, advance_teaching,
+    EVENT_FILTERS, EventLoop, EventSpanIndex, GAP, ILLUSTRATION_PERIOD, TEACHING, advance_event_loop, advance_teaching,
     control_event_loop, control_teaching, event_loop, event_positions, gap_cutoff, illustration_phase,
     replay_event_catalog, replay_scene,
 )
@@ -133,6 +133,14 @@ def _current_row(track, position, window):
     return window.index_at(track, position) if window else track.index_at(position)
 
 
+def _open_window(track, threshold, window, *, autoplay=False):
+    _clear_loop()
+    _seek(window.start, None if autoplay else window.first_row)
+    st.session_state[LOOP_KEY] = dict(track=track, threshold=threshold, window=window)
+    if autoplay:
+        st.session_state[STATE_KEY] = control_event_loop(st.session_state[STATE_KEY], "play", monotonic(), window)
+
+
 def _window_evidence(track, window, selection, threshold):
     scope = ReplayEvidenceScope.from_window(track, window)
     fictional = selection[0] == DEMO
@@ -230,12 +238,7 @@ def _event_explorer(track, cache, threshold, state, window):
         if not candidate.timed:
             st.caption("窗口内样本时间相同，可逐条核查和导出；没有可播放的时长。")
         if st.button("循环回放此区段" if candidate.timed else "逐帧核查此区段", key="bogie_start_loop"):
-            _clear_loop()
-            _seek(candidate.start, None if candidate.timed else candidate.first_row)
-            st.session_state[LOOP_KEY] = dict(track=track, threshold=threshold, window=candidate)
-            if candidate.timed:
-                st.session_state[STATE_KEY] = control_event_loop(
-                    st.session_state[STATE_KEY], "play", monotonic(), candidate)
+            _open_window(track, threshold, candidate, autoplay=candidate.timed)
             st.rerun()
 
 
@@ -412,6 +415,7 @@ def render():
     </style>""")
     target = st.session_state.pop("bogie_evidence_target", None)
     batch_target = st.session_state.pop("bogie_batch_target", None)
+    requested_scope = batch_target.get("scope") if batch_target and not target else None
     if STATE_KEY not in st.session_state:
         _clear_loop()
     choices = [TEACH, *demo_source_options(HISTORY, DEMO)]
@@ -435,7 +439,7 @@ def render():
         selection = (source,)
         try:
             selection, load = _load(source, requested)
-            if selection != st.session_state.get("bogie_selection") or (target and requested):
+            if selection != st.session_state.get("bogie_selection") or (requested and (target or requested_scope)):
                 track = load() if load else None
                 st.session_state["bogie_track"] = track
                 st.session_state["bogie_gap_cutoff"] = gap_cutoff(track) if track else None
@@ -447,11 +451,6 @@ def render():
         except (ValueError, TypeError, KeyError, OverflowError, sqlite3.Error, OSError):
             st.error("无法读取有效的运行数据，请检查批次后重试。")
             track = None
-        if requested and batch_target and not target and batch_target["batch_id"] is not None:
-            expected_batch = ((DEMO, batch_target["batch_id"]) if fictional else
-                              (HISTORY, batch_target["vehicle_id"], batch_target["batch_id"]))
-            if track is None or selection != expected_batch:
-                st.warning("未能打开入口指定的批次，请核对车辆和批次。")
         if "bogie_threshold" not in st.session_state:
             st.session_state["bogie_threshold"] = 1.0
         threshold = st.number_input("加速度绝对值阈值（m/s²）", min_value=0.0,
@@ -459,6 +458,18 @@ def render():
         if threshold is None:
             threshold = 1.0
             st.caption("输入为空，使用默认阈值 1.0 m/s²。")
+        if requested and batch_target and not target and batch_target["batch_id"] is not None:
+            expected_batch = ((DEMO, batch_target["batch_id"]) if fictional else
+                              (HISTORY, batch_target["vehicle_id"], batch_target["batch_id"]))
+            if track is None or selection != expected_batch:
+                st.warning("未能打开入口指定的批次，请核对车辆和批次。")
+            elif requested_scope is not None:
+                if isinstance(requested_scope, ReplayEvidenceScope) and requested_scope.matches_track(track):
+                    first, last = requested_scope.first_row, requested_scope.last_row
+                    _open_window(track, threshold,
+                                 EventLoop("所选分析范围", track.offsets[first], track.offsets[last], first, last))
+                else:
+                    st.warning("分析窗口与当前批次的观测记录不匹配，请回到运行分析重新选择。")
         if source == DEMO and track is not None:
             st.button("核查虚构证据 →", key="bogie_demo_evidence", on_click=navigate,
                       args=("AI 智能分析中心",), kwargs={

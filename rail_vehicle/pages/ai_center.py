@@ -288,6 +288,9 @@ def render():
             st.button("返回分析页面", on_click=navigate, args=(destination,), kwargs=return_options)
         item = available[kind]
         payload, selection = item["payload"], item["selection"]
+        if kind == "single" and "row_span" in selection:
+            first, last = selection["row_span"]
+            st.caption(f"当前证据范围：批次第 {first:,}–{last:,} 条观测。")
         replay_anchors = item.get("replay_anchors", {})
         can_jump = kind == "single" and all(key in selection for key in ("vehicle_id", "batch_id", "threshold"))
         events = payload.get("anomaly_events", []) if can_jump else []

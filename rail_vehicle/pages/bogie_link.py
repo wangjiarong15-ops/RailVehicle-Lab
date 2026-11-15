@@ -15,12 +15,14 @@ def _open_replay(target_key, target, from_workbench, from_evidence=False):
 
 
 def batch_replay_button(container, *, label, key, vehicle_id, batch_id=None, threshold=None,
-                        fictional=False, from_workbench=False):
+                        fictional=False, from_workbench=False, scope=None):
     target = {"vehicle_id": vehicle_id, "batch_id": batch_id}
     if threshold is not None:
         target["threshold"] = threshold
     if fictional:
         target["fictional"] = True
+    if scope is not None:
+        target["scope"] = scope
     container.button(label, key=key, width="stretch", on_click=_open_replay,
                      args=("bogie_batch_target", target, from_workbench))
 

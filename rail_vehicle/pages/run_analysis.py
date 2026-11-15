@@ -630,12 +630,18 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         speed_columns[2].metric("平均速度（km/h）", f"{result['speed']['mean']:.3f}", border=True)
 
         st.subheader("运行曲线")
+        by_row = replay_scope is not None and selected_start == selected_end
+        x_field, x_title = ("batch_row", "批次样本序号") if by_row else ("timestamp", "时间")
         chart_specs = (
-            ("speed_kmh", "速度—时间", "速度（km/h）"),
-            ("lateral_accel", "横向加速度—时间", "横向加速度（m/s²）"),
-            ("vertical_accel", "垂向加速度—时间", "垂向加速度（m/s²）"),
+            ("speed_kmh", f"速度—{x_title}", "速度（km/h）"),
+            ("lateral_accel", f"横向加速度—{x_title}", "横向加速度（m/s²）"),
+            ("vertical_accel", f"垂向加速度—{x_title}", "垂向加速度（m/s²）"),
         )
         ordered_samples = result["samples"]
+        if by_row:
+            st.caption("窗口内样本处于同一 UTC 时刻，按批次样本序号分开显示各条读值。")
+            ordered_samples = [dict(sample, batch_row=row) for row, sample in
+                               enumerate(ordered_samples, start=replay_scope.first_row + 1)]
         if len(ordered_samples) > CURVE_POINT_LIMIT:
             st.caption(f"长批次曲线预览：每条曲线或异常标记序列最多显示 {CURVE_POINT_LIMIT:,} 个原始点，"
                        "分段保留极值。缩小时间范围可查看细节；统计、事件、证据和 PDF 输入仍使用全部筛选样本。")
@@ -645,9 +651,9 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
             figure = go.Figure(
                 data=[
                     go.Scatter(
-                        x=[sample["timestamp"] for sample in preview],
+                        x=[sample[x_field] for sample in preview],
                         y=[sample[field] for sample in preview],
-                        mode="lines",
+                        mode="markers" if by_row else "lines",
                         name=y_title,
                         hovertemplate="%{x}<br>%{y:.4f}<extra></extra>",
                     )
@@ -655,10 +661,13 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
             )
             figure.update_layout(
                 title=title,
-                xaxis_title="时间",
+                xaxis_title=x_title,
                 yaxis_title=y_title,
                 margin={"l": 20, "r": 20, "t": 50, "b": 20},
             )
+            if by_row:
+                figure.update_xaxes(tickformat="d", dtick=max(1, (len(ordered_samples) + 8) // 10),
+                                    tick0=replay_scope.first_row + 1)
             if field in ("lateral_accel", "vertical_accel"):
                 axis_points = [
                     point
@@ -666,10 +675,15 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
                     if point["field"] == field
                 ]
                 if axis_points:
+                    if by_row:
+                        flagged_rows = (sample["batch_row"] for sample in ordered_samples
+                                        if abs(sample[field]) > threshold)
+                        axis_points = [dict(point, batch_row=row) for point, row in
+                                       zip(axis_points, flagged_rows, strict=True)]
                     axis_points = curve_preview(axis_points, "value")
                     figure.add_trace(
                         go.Scatter(
-                            x=[point["timestamp"] for point in axis_points],
+                            x=[point[x_field] for point in axis_points],
                             y=[point["value"] for point in axis_points],
                             mode="markers",
                             name="统计异常点",
@@ -809,10 +823,14 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
     with workbench_actions:
         replay, evidence = st.columns(2)
         with replay:
-            batch_replay_button(st, label="在三维中回放整个批次 →", key="analysis_replay_batch",
+            batch_replay_button(st, label="在三维中打开当前窗口 →" if replay_scope else "在三维中回放整个批次 →",
+                                key="analysis_replay_batch", scope=replay_scope,
                                 vehicle_id=vehicle_id, batch_id=batch_id, threshold=threshold,
                                 fictional=demo, from_workbench=True)
-            st.caption("使用整批样本及当前阈值。若要精确定位，请从「异常事件」打开区段。")
+            if replay_scope:
+                st.caption("保留批次样本范围和当前阈值，从窗口第一条观测暂停显示。")
+            else:
+                st.caption("使用整批样本及当前阈值。若要精确定位，请从「异常事件」打开区段。")
         with evidence:
             if demo:
                 st.button("核查当前证据（离线） →", key="workbench_demo_evidence", on_click=_open_demo_evidence,
