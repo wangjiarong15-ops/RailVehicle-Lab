@@ -3,6 +3,7 @@
 from collections.abc import Iterable, Mapping
 import math
 from datetime import datetime, timezone
+from itertools import pairwise
 from statistics import median
 from typing import Any
 
@@ -19,6 +20,23 @@ def _utc_timestamp(value: Any) -> datetime:
         raise ValueError("运行数据中存在无效的时间戳。") from exc
 
 
+def _unique_spacing(ordered: list[datetime]) -> list[float]:
+    return [(current - previous).total_seconds() for previous, current in pairwise(ordered)]
+
+
+def _sampling_summary(sample_count: int, unique_count: int, intervals: list[float]) -> dict[str, Any]:
+    if sample_count == 0:
+        raise ValueError("所选范围没有运行数据。")
+    return {
+        "sample_count": sample_count,
+        "unique_timestamp_count": unique_count,
+        "duplicate_timestamp_rows": sample_count - unique_count,
+        "interval_min_seconds": min(intervals) if intervals else None,
+        "interval_median_seconds": median(intervals) if intervals else None,
+        "interval_max_seconds": max(intervals) if intervals else None,
+    }
+
+
 def summarize_timestamps(timestamps: Iterable[Any]) -> dict[str, Any]:
     """Summarize duplicate timestamps and spacing between unique instants."""
     unique_timestamps: set[datetime] = set()
@@ -29,22 +47,8 @@ def summarize_timestamps(timestamps: Iterable[Any]) -> dict[str, Any]:
             sample_count += 1
     except (KeyError, TypeError, ValueError) as exc:
         raise ValueError("运行数据中存在无效的时间戳。") from exc
-    if sample_count == 0:
-        raise ValueError("所选范围没有运行数据。")
-
     ordered_timestamps = sorted(unique_timestamps)
-    intervals = [
-        (current - previous).total_seconds()
-        for previous, current in zip(ordered_timestamps, ordered_timestamps[1:])
-    ]
-    return {
-        "sample_count": sample_count,
-        "unique_timestamp_count": len(ordered_timestamps),
-        "duplicate_timestamp_rows": sample_count - len(ordered_timestamps),
-        "interval_min_seconds": min(intervals) if intervals else None,
-        "interval_median_seconds": median(intervals) if intervals else None,
-        "interval_max_seconds": max(intervals) if intervals else None,
-    }
+    return _sampling_summary(sample_count, len(ordered_timestamps), _unique_spacing(ordered_timestamps))
 
 
 def analyze_sampling_times(
@@ -85,24 +89,24 @@ def review_sampling_timestamps(
         instants = [_utc_timestamp(value) for value in timestamps]
     except (TypeError, ValueError) as exc:
         raise ValueError("运行数据中存在无效的时间戳。") from exc
-    summary = summarize_timestamps(instants)
+    ordered = sorted(set(instants))
+    intervals = _unique_spacing(ordered)
+    summary = _sampling_summary(len(instants), len(ordered), intervals)
     baseline = (expected_interval_seconds if expected_interval_seconds is not None
                 else summary["interval_median_seconds"])
     cutoff = baseline * gap_multiplier if baseline is not None else None
     if cutoff is not None and not math.isfinite(cutoff):
         raise ValueError("采样间隔与倍数的乘积超出可支持范围。")
-    ordered = sorted(set(instants))
     gaps = []
     gap_count = 0
-    for previous, current in zip(ordered, ordered[1:]):
-        interval = (current - previous).total_seconds()
+    for (previous, current), interval in zip(pairwise(ordered), intervals):
         if cutoff is not None and interval > cutoff:
             gap_count += 1
             if len(gaps) < detail_limit:
                 gaps.append({"start_timestamp": previous.isoformat(),
                              "end_timestamp": current.isoformat(),
                              "interval_seconds": interval})
-    reversals = sum(current < previous for previous, current in zip(instants, instants[1:]))
+    reversals = sum(current < previous for previous, current in pairwise(instants))
     concerns = bool(summary["duplicate_timestamp_rows"] or reversals or gap_count)
     return {**summary, "baseline_seconds": baseline,
             "baseline_source": "specified" if expected_interval_seconds is not None else "median",

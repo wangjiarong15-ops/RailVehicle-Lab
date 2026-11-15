@@ -1,6 +1,7 @@
 """Event drill-down uses existing detection without changing analysis facts."""
 
 from copy import deepcopy
+import json
 import unittest
 from unittest.mock import patch
 
@@ -113,6 +114,24 @@ class AnomalyReviewTests(unittest.TestCase):
         app.run()
         self.assertEqual(app.selectbox(key="anomaly_review_event").value, 0)
         self.assertEqual(len(app.get("plotly_chart")), 1)
+
+    def test_observation_edit_updates_chart_without_losing_same_event(self):
+        app = self.app()
+        app.selectbox(key="anomaly_review_event").select(1).run()
+        rows = samples()
+        rows[0]["speed_kmh"] = 91.25
+        app.session_state["samples"] = rows
+        app.run()
+        self.assertFalse(app.exception)
+        self.assertEqual(app.selectbox(key="anomaly_review_event").value, 1)
+        figure = json.loads(app.get("plotly_chart")[0].proto.spec)
+        self.assertIn(91.25, figure["data"][0]["y"])
+
+        rows[1]["vertical_accel"] = 0.0
+        app.session_state["anomalies"] = detect_anomalies(rows, 1)
+        app.run()
+        self.assertFalse(app.exception)
+        self.assertEqual(app.selectbox(key="anomaly_review_event").value, 0)
 
     def test_no_events_clears_previous_selection_without_chart(self):
         app = self.app()

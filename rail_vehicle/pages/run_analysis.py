@@ -23,7 +23,6 @@ from rail_vehicle.ai.ui import (
 )
 from rail_vehicle.ai.provider import input_fingerprint
 from rail_vehicle.batch_comparison import compare_run_batches
-from rail_vehicle.data_quality import analyze_sampling_times
 from rail_vehicle.timestamp_utils import parse_iso_timestamp
 from rail_vehicle.dynamics import analyze_run_data
 from rail_vehicle.anomaly import EVENT_DURATION_NOTE, detect_anomalies
@@ -39,7 +38,6 @@ from rail_vehicle.ai.center_state import clear_context
 from rail_vehicle.curve_preview import CURVE_POINT_LIMIT, curve_preview
 from rail_vehicle.replay_evidence import ReplayEvidenceScope
 from rail_vehicle.ui import AI, ANALYSIS_MODE, BOGIE, plot_chart, record_analysis, source_caption, workflow_caption, navigate
-from rail_vehicle.time_filter import filter_samples_by_time_range
 from rail_vehicle.run_data import (
     MAX_CSV_SIZE_MB,
     PREVIEW_LIMIT,
@@ -485,12 +483,8 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
             clear_result(st.session_state, ai_state_key)
             st.warning("开始时间不能晚于结束时间，请调整筛选范围。")
             return
-        try:
-            filtered_samples = filter_samples_by_time_range(samples, selected_start, selected_end)
-        except ValueError as exc:
-            clear_result(st.session_state, ai_state_key)
-            st.error(str(exc))
-            return
+        filtered_samples = [sample for sample, timestamp in zip(samples, timestamps)
+                            if selected_start <= timestamp <= selected_end]
     if not filtered_samples:
         clear_result(st.session_state, ai_state_key)
         st.info("所选时间范围内没有运行数据，请调整开始或结束时间。")
@@ -520,13 +514,6 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         return
     anomaly_result = detect_anomalies(result["samples"], threshold)
 
-    try:
-        sampling_summary = analyze_sampling_times(filtered_samples)
-    except ValueError as exc:
-        clear_result(st.session_state, ai_state_key)
-        st.error(str(exc))
-        return
-
     st.markdown(f"**分析样本数：** {result['sample_count']:,} 条　 ·　 **异常区段（按方向）：** {len(anomaly_result['events'])} 个")
     workbench_actions = st.container(border=True)
     with st.expander("基础结果说明（无需 AI）", expanded=False):
@@ -548,7 +535,17 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
     )
 
     with quality_tab:
-        with st.expander("采样分布与数据口径", expanded=False):
+        sampling_overview = st.container()
+        try:
+            sampling_review = render_sampling_quality(
+                filtered_samples, key=f"{'demo' if demo else 'history'}_sampling_{vehicle_id}_{batch_id}"
+            )
+        except ValueError as exc:
+            clear_result(st.session_state, ai_state_key)
+            st.error(str(exc))
+            return
+
+        with sampling_overview, st.expander("采样分布与数据口径", expanded=False):
             st.subheader("采样时间概览")
             st.caption(
                 "以下统计仅描述当前时间筛选范围内的采样分布。重复数表示共享同一 UTC 时刻的额外记录；"
@@ -556,19 +553,15 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
             )
             sampling_columns = st.columns(4)
             sampling_columns[0].metric(
-                "重复时间戳记录", f"{sampling_summary['duplicate_timestamp_rows']:,}"
+                "重复时间戳记录", f"{sampling_review['duplicate_timestamp_rows']:,}"
             )
             for column, label, key in (
                 (sampling_columns[1], "最小间隔（秒）", "interval_min_seconds"),
                 (sampling_columns[2], "中位间隔（秒）", "interval_median_seconds"),
                 (sampling_columns[3], "最大间隔（秒）", "interval_max_seconds"),
             ):
-                value = sampling_summary[key]
+                value = sampling_review[key]
                 column.metric(label, f"{value:.3f}" if value is not None else "—")
-
-        sampling_review = render_sampling_quality(
-            filtered_samples, key=f"{'demo' if demo else 'history'}_sampling_{vehicle_id}_{batch_id}"
-        )
 
     with overview_tab:
         st.subheader("速度统计")

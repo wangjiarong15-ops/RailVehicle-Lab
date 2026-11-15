@@ -40,12 +40,14 @@ def render_event_review(samples, anomalies, selection, *, allow_bogie=False, fic
         st.session_state.pop("anomaly_review_event", None)
         st.session_state.pop("anomaly_review_fingerprint", None)
         return
-    fingerprint = selection_fingerprint(dict(selection=selection, samples=samples, anomalies=anomalies))
+    events = anomalies["events"]
+    # The widget selects an event by index. Other observation changes affect
+    # its freshly computed chart, but do not change which event the index names.
+    fingerprint = selection_fingerprint(dict(selection=selection, threshold=anomalies["threshold"], events=events))
     if st.session_state.get("anomaly_review_fingerprint") != fingerprint:
         st.session_state.pop("anomaly_review_event", None)
         st.session_state["anomaly_review_fingerprint"] = fingerprint
     with st.expander("异常事件回查 · 定位局部运行变化"):
-        events = anomalies["events"]
         index = st.selectbox("选择异常事件", range(len(events)), key="anomaly_review_event",
                              format_func=lambda i: f"{i + 1}. {events[i]['type']} · {events[i]['start_timestamp']}")
         seconds = st.slider("事件前后窗口（秒）", 0, 60, 5, key="anomaly_review_seconds")
