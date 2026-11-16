@@ -112,3 +112,26 @@ def sample_status(sample: dict[str, Any], threshold: float) -> tuple[str, ...]:
     return tuple(label for field, label in
                  (("lateral_accel", "横向加速度"), ("vertical_accel", "垂向加速度"))
                  if abs(sample[field]) > threshold)
+
+
+def comparison_reference(track: ReplayTrack, row: int, threshold: float, cutoff: float | None,
+                         *, first: int = 0, last: int | None = None) -> int | None:
+    """Nearest observed row within 10 seconds/250 rows per side and the same sampling segment."""
+    last = len(track.samples) - 1 if last is None else last
+    if not 0 <= first <= row <= last < len(track.samples) or not sample_status(track.samples[row], threshold):
+        return None
+    offsets = track.offsets
+    candidates = []
+    for step in (-1, 1):
+        previous = row
+        for distance in range(1, 251):
+            candidate = row + distance * step
+            if not first <= candidate <= last or abs(offsets[candidate] - offsets[row]) > 10:
+                break
+            if cutoff is not None and abs(offsets[candidate] - offsets[previous]) > cutoff:
+                break
+            if not sample_status(track.samples[candidate], threshold):
+                candidates.append(candidate)
+                break
+            previous = candidate
+    return min(candidates, key=lambda i: (abs(offsets[i] - offsets[row]), i), default=None)

@@ -19,7 +19,7 @@ from rail_vehicle.deployment import demo_source_options
 from rail_vehicle.event_anchor import resolve_event_row
 from rail_vehicle.pages.cockpit import build_replay_chart
 from rail_vehicle.pages.data_workflow import analysis_button, render_replay_return
-from rail_vehicle.replay import ReplayState, advance_replay, control_replay, prepare_replay
+from rail_vehicle.replay import ReplayState, advance_replay, comparison_reference, control_replay, prepare_replay
 from rail_vehicle.replay_evidence import MAX_WINDOW_EXPORT_ROWS, ReplayEvidenceScope, replay_evidence_csv
 from rail_vehicle.run_data import list_batch_samples, list_vehicle_batches
 from rail_vehicle.ui import navigate, page_title, plot_chart
@@ -85,7 +85,7 @@ def _apply_preset():
     _reset_camera()
 
 
-def _inspection_controls(source):
+def _inspection_controls(source, comparison):
     preset = st.selectbox("观察预设", list(_PRESETS), key="bogie_inspection_preset", on_change=_apply_preset)
     st.caption(_PRESETS[preset][2])
     st.button("恢复所选预设", key="bogie_preset_reset", on_click=_apply_preset, width="stretch")
@@ -95,7 +95,6 @@ def _inspection_controls(source):
     focus = None if selected == "无" else selected
     st.session_state.setdefault("bogie_visible_parts", list(PARTS))
     parts = st.multiselect("显示部件", PARTS, key="bogie_visible_parts")
-    comparison = st.checkbox("对照正常运动")
     isolate = st.toggle("仅显示当前部件", key="bogie_isolate", disabled=focus is None) and focus is not None
     labels = st.toggle("显示部件标注", key="bogie_labels")
     exploded = st.toggle("分解示意", key="bogie_exploded", disabled=source != TEACH) and source == TEACH
@@ -314,14 +313,21 @@ def _display(track, duration, threshold, cutoff, teaching, inspection, event_ind
         if inspection.exploded:
             st.caption("分解示意 · 构件间距仅用于看清安装位置。")
         compare = inspection.comparison and bool(scene.parts) and not inspection.exploded
+        reference_row = None
+        if compare and track is not None and not state.playing and scene is not GAP:
+            bounds = {"first": window.first_row, "last": window.last_row} if window else {}
+            reference_row = comparison_reference(track, index, threshold, cutoff, **bounds)
         if not inspection.visible and not reviewing:
             st.info("请至少选择一个部件。回放和读值仍会更新。")
         else:
             try:
                 if compare:
                     active, reference = st.columns(2)
-                    active.caption("当前场景")
-                    reference.caption("同一相位 · 正常参照")
+                    active.caption("当前异常样本 · 示意姿态" if track is not None else "当前教学场景")
+                    if reference_row is not None:
+                        reference.caption("同批次未超阈值样本 · 示意姿态")
+                    else:
+                        reference.caption("同一相位 · 正常运动示意（无对照读数）")
                 else:
                     active = st.container()
                 height = 390 if compare else (720 if renderer == WEBGL else 500)
@@ -332,9 +338,24 @@ def _display(track, duration, threshold, cutoff, teaching, inspection, event_ind
                                 related_review=related_review)
                 if compare:
                     with reference:
-                        _model_view("正常运行", phase, state, inspection, (), height, "bogie_reference",
-                                    renderer, scene is not GAP, export_context=export_context, reference=True,
+                        position = track.offsets[reference_row] if reference_row is not None else state.position
+                        ref_state = ReplayState(position=position, rate=state.rate) if reference_row is not None else state
+                        _model_view("正常运行", illustration_phase(position), ref_state, inspection, (), height,
+                                    "bogie_reference", renderer, scene is not GAP, reference=True,
                                     periodic=track is None, related_review=related_review)
+                if reference_row is not None:
+                    ref_sample = track.samples[reference_row]
+                    st.table([{
+                        "样本": label, "批次行": row + 1, "时间（UTC）": values["timestamp"],
+                        "速度（km/h）": f"{values['speed_kmh']:.1f}",
+                        "横向（m/s²）": f"{values['lateral_accel']:.3f}",
+                        "垂向（m/s²）": f"{values['vertical_accel']:.3f}",
+                    } for label, row, values in (("当前异常", index, sample), ("未超阈值", reference_row, ref_sample))])
+                    st.caption("同一采样段内，优先选择时间最近且两轴均未超阈值的样本。未超阈值不代表车辆安全；模型姿态为示意。")
+                elif compare and track is not None:
+                    st.caption("暂停后查找附近的同批次样本；若当前范围内没有合适样本，只显示正常运动示意。")
+                elif inspection.comparison and track is not None:
+                    st.caption("定位到超阈值样本后显示对照。")
             except (TypeError, ValueError, RuntimeError):
                 st.error("三维视图暂时无法加载，仍可查看运行信号。")
     with panel, st.container(border=True, key="bogie_status_card"):
@@ -476,10 +497,13 @@ def render():
                           "ai_center_demo": True, "ai_demo_batch": selection[1],
                           "ai_demo_threshold": threshold,
                       })
+        comparison = st.toggle("对照未超阈值样本" if source != TEACH else "对照正常运动",
+                               key="bogie_compare", disabled=source != TEACH and track is None,
+                               help="暂停在异常样本后，查找同一采样段内相距不超过 10 秒的未超阈值样本。")
         with st.expander("视角与部件"):
             renderer = st.selectbox("渲染方式", [WEBGL, COMPAT] if webgl_available() else [COMPAT],
                                     key="bogie_renderer")
-            inspection = _inspection_controls(source)
+            inspection = _inspection_controls(source, comparison)
     if target and requested:
         row = None
         expected = ((DEMO, target["batch_id"]) if fictional else

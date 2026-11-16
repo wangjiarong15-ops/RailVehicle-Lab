@@ -87,7 +87,7 @@ class BogiePageTests(unittest.TestCase):
             self.assertFalse(app.exception)
             self.assertEqual(len(app.get("component_instance")), 1)
             app.selectbox(key="bogie_teaching").set_value("轴承异常示意").run()
-            app.checkbox[0].check().run()
+            app.toggle(key="bogie_compare").set_value(True).run()
             app.toggle(key="bogie_labels").set_value(True).run()
             self.assertFalse(app.exception)
             self.assertEqual(len(app.get("component_instance")), 2)

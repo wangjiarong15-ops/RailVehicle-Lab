@@ -269,7 +269,7 @@ def render():
                   args=("运行分析",), kwargs={ANALYSIS_MODE: "single"})
         _render_history()
         return
-    left, middle, right = st.columns([1.0, 1.8, 1.8])
+    left, right, middle = st.columns([1.0, 1.8, 1.8])
     with left:
         st.subheader("分析对象")
         requested = st.session_state.pop("ai_center_requested_kind", None)
@@ -301,27 +301,28 @@ def render():
         except Exception:
             st.warning("AI 配置读取失败，请检查本地配置；离线分析和报告仍可使用。")
             config = AIConfig(enabled=False)
-        st.caption(f"Provider：{config.provider}；密钥仅从本机配置读取，不在页面显示。")
-        model_key = f"ai_center_model_{config.provider}"
-        source_key = f"ai_center_config_model_{config.provider}"
-        # Keep manual edits on rerun, but do not keep using a stale model after
-        # the underlying configuration changes during the same session.
-        if model_key not in st.session_state or (source_key in st.session_state and st.session_state[source_key] != config.model):
-            st.session_state[model_key] = config.model
-        st.session_state[source_key] = config.model
-        model = st.text_input("模型名称", key=model_key)
-        timeout = st.number_input("超时（秒）", min_value=1, max_value=300,
-                                  value=int(config.timeout), key="ai_center_timeout")
+        with st.expander("AI 服务设置"):
+            st.caption(f"服务商：{config.provider}。密钥仅从本机配置读取。")
+            model_key = f"ai_center_model_{config.provider}"
+            source_key = f"ai_center_config_model_{config.provider}"
+            # Preserve manual edits unless this provider's default config changes.
+            if model_key not in st.session_state or (source_key in st.session_state and st.session_state[source_key] != config.model):
+                st.session_state[model_key] = config.model
+            st.session_state[source_key] = config.model
+            model = st.text_input("模型名称", key=model_key)
+            timeout = st.number_input("超时（秒）", min_value=1, max_value=300,
+                                      value=int(config.timeout), key="ai_center_timeout")
+            st.caption("模型与超时调整仅作用于当前会话。")
         config = replace(config, model=model.strip(), timeout=float(timeout))
         unavailable = ai_configuration_message(config)
         if unavailable:
             st.warning(unavailable)
         else:
             st.success("AI 服务已配置；仅在主动点击后请求。")
-        st.caption("Provider 和密钥通过本地配置管理；模型与超时调整仅作用于当前会话。")
     with middle:
         st.subheader("辅助解读")
         st.info("仅发送已计算的聚合指标与异常事件，不发送原始 CSV、样本、备注或 PDF。")
+        st.caption("可能原因和排查建议是待验证的假设。故障部位、成因和运行安全仍需独立确认。")
         failure_key = "ai_center_last_failure"
         failure_identity = (kind, item["input_fingerprint"], item["selection_fingerprint"], config.provider, config.model, config.timeout)
         previous_failure = st.session_state.get(failure_key)
@@ -367,7 +368,7 @@ def render():
                                        replay_anchors=replay_anchors)
                 _render_save_history(payload, selection, saved)
         else:
-            st.caption("尚未生成 AI 解读；右侧可离线核查当前计算指标。")
+            st.caption("尚未生成 AI 解读；可先在「数据与证据」核查本地计算结果。")
     with right:
         st.subheader("数据与证据")
         st.caption("下列信息为 Python 已计算事实；证据范围匹配不证明自然语言推理正确。")
@@ -375,10 +376,19 @@ def render():
             st.json(selection)
         try:
             details = evidence_detail_catalog(payload)
+            if can_jump:
+                st.metric("规则异常区段（按方向）", f"{len(events):,}", border=True)
+                if events:
+                    lateral = sum(details[event["evidence_id"]][0]["轴向"] == "lateral" for event in events)
+                    st.caption(f"横向 {lateral:,} 个 · 垂向 {len(events) - lateral:,} 个。可选中任一区段查看峰值、跨度和样本数。")
+                else:
+                    st.caption("本次筛选未检出超阈值区段；这一结果不能用于判定车辆安全。")
             st.caption(f"当前可引用 {len(details)} 个证据 ID。")
             if details:
                 st.caption("离线结果说明：选择证据后查看 Python 已计算的值及口径，无需 API。")
-                evidence_id = st.selectbox("核查证据", list(details), key=f"ai_center_evidence_{kind}")
+                event_ids = {event["evidence_id"] for event in events}
+                options = sorted(details, key=lambda item: item not in event_ids)
+                evidence_id = st.selectbox("核查证据", options, key=f"ai_center_evidence_{kind}")
                 rows = details[evidence_id]
                 st.dataframe([{"指标": row["指标"], "值 / 单位": f"{row['值']} {row['单位']}".strip()}
                               for row in rows], hide_index=True, width="stretch",

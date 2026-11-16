@@ -769,11 +769,15 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         anomaly_columns = st.columns(2)
         anomaly_columns[0].metric("数据异常点", len(anomaly_result["points"]), border=True)
         anomaly_columns[1].metric("统计异常区段", len(anomaly_result["events"]), border=True)
-        st.markdown("**异常事件列表**")
+        render_event_review(result["samples"], anomaly_result, {
+            "vehicle_id": vehicle_id, "batch_id": batch_id,
+            "start": selected_start.isoformat(), "end": selected_end.isoformat(),
+            **({"row_span": replay_rows} if replay_rows else {}),
+        }, allow_bogie=True, fictional=demo, anchors=event_anchors)
         if anomaly_result["events"]:
-            st.dataframe(
-                [
-                    {
+            with st.expander("查看全部异常区段"):
+                st.dataframe(
+                    [{
                         "异常类型": event["type"],
                         "开始时间": event["start_timestamp"],
                         "结束时间": event["end_timestamp"],
@@ -782,20 +786,12 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
                         "对应有符号值（m/s²）": f"{event['maximum_signed_value']:.4f}",
                         "峰值时间": event["maximum_timestamp"],
                         "异常样本数": event["sample_count"],
-                    }
-                    for event in anomaly_result["events"]
-                ],
-                hide_index=True,
-                width="stretch",
-            )
+                    } for event in anomaly_result["events"]],
+                    hide_index=True,
+                    width="stretch",
+                )
         else:
             st.info("当前批次未发现超过所设阈值的数据异常点。")
-
-        render_event_review(result["samples"], anomaly_result, {
-            "vehicle_id": vehicle_id, "batch_id": batch_id,
-            "start": selected_start.isoformat(), "end": selected_end.isoformat(),
-            **({"row_span": replay_rows} if replay_rows else {}),
-        }, allow_bogie=True, fictional=demo, anchors=event_anchors)
 
     selected_vehicle = next(
         vehicle for vehicle in vehicles if vehicle["id"] == vehicle_id
@@ -821,6 +817,7 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
     record_analysis("单批次统计分析", {"selection": ai_selection, "facts": ai_payload},
                     result["sample_count"], fictional=demo)
     with workbench_actions:
+        st.markdown("**从当前批次继续**")
         replay, evidence = st.columns(2)
         with replay:
             batch_replay_button(st, label="在三维中打开当前窗口 →" if replay_scope else "在三维中回放整个批次 →",
@@ -830,7 +827,7 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
             if replay_scope:
                 st.caption("保留批次样本范围和当前阈值，从窗口第一条观测暂停显示。")
             else:
-                st.caption("使用整批样本及当前阈值。若要精确定位，请从「异常事件」打开区段。")
+                st.caption("使用整批样本及当前阈值。若要精确定位，请从下方「异常事件」打开区段。")
         with evidence:
             if demo:
                 st.button("核查当前证据（离线） →", key="workbench_demo_evidence", on_click=_open_demo_evidence,
@@ -839,6 +836,7 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
             else:
                 _render_ai_interpretation(payload=ai_payload, selection=ai_selection, state_key=ai_state_key,
                                           replay_anchors=replay_anchors)
+        st.caption("「PDF 报告」使用当前筛选范围，包含所见统计、异常区段与曲线。")
     with report_tab:
         st.subheader("导出分析报告")
         st.caption("PDF 报告包含当前车辆、批次、时间范围、统计、异常事件、采样质量检查与规则及曲线。"

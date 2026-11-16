@@ -4,7 +4,7 @@ import unittest
 
 from rail_vehicle.replay import (
     ReplayState, advance_replay, control_replay, prepare_replay, sample_status, event_replay_window,
-    replay_long_gap_at,
+    replay_long_gap_at, comparison_reference,
 )
 
 
@@ -14,6 +14,24 @@ def row(timestamp, speed=60, lateral=0.1, vertical=-0.2):
 
 
 class ReplayTests(unittest.TestCase):
+    def test_comparison_uses_both_axes_and_an_exact_row(self):
+        stamp = "2026-10-08T08:00:{:02d}Z"
+        track = prepare_replay([row(stamp.format(0), lateral=-1), row(stamp.format(1), vertical=2),
+                                row(stamp.format(1), lateral=-3), row(stamp.format(1), vertical=1),
+                                row(stamp.format(2))])
+        self.assertEqual(comparison_reference(track, 2, 1, 3), 3)
+        self.assertEqual(comparison_reference(track, 1, 1, 3, first=0, last=2), 0)
+        self.assertIsNone(comparison_reference(track, 2, 1, 3, first=1, last=2))
+        self.assertIsNone(comparison_reference(track, 3, 1, 3))
+
+    def test_comparison_breaks_ties_earlier_and_does_not_bridge_gaps(self):
+        stamp = "2026-10-08T08:00:{:02d}Z"
+        track = prepare_replay([row(stamp.format(0)), row(stamp.format(5), lateral=2), row(stamp.format(10))])
+        self.assertEqual(comparison_reference(track, 1, 1, 5), 0)
+        self.assertIsNone(comparison_reference(track, 1, 1, 4))
+        distant = prepare_replay([row(stamp.format(0)), row(stamp.format(11), lateral=2)])
+        self.assertIsNone(comparison_reference(distant, 1, 1, None))
+
     def test_gap_warning_uses_observed_boundaries_and_strict_cutoff(self):
         track = prepare_replay([row("2026-10-08T08:00:00Z"), row("2026-10-08T08:00:01Z"),
                                 row("2026-10-08T08:00:01Z", 80), row("2026-10-08T08:00:11Z")])

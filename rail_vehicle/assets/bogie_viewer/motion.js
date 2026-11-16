@@ -13,7 +13,8 @@ export function motionClock() {
         last = now;
       }
       if (args.hold) envelope.fill(0);
-      else if (!latest) envelope = args.envelope.slice();
+      // Seeking a paused observation must not show the previous row's amplitude.
+      else if (!latest || !args.playing) envelope = args.envelope.slice();
       latest = args;
       received = now;
     },

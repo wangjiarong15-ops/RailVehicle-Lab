@@ -107,6 +107,7 @@ def test_same_time_window_round_trip_preserves_chart_evidence_and_report(history
     init_db = db.init_db
     monkeypatch.setenv("RAIL_PUBLIC_DEMO", "false")
     monkeypatch.setenv("AI_ENABLED", "false")
+    monkeypatch.setenv("RAIL_PORTABLE_HOME", str(path.parent))
     monkeypatch.setattr(db, "init_db", lambda: init_db(path))
     for page in (bogie, run_analysis):
         monkeypatch.setattr(page, "list_vehicles", lambda: list_vehicles(path))

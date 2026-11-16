@@ -2,7 +2,7 @@ import * as THREE from "three";
 import {OrbitControls} from "./vendor/OrbitControls.js";
 
 const angles = {
-  "整体视图": [5, -6.8, 3.7], "侧视图": [0, -1, 0], "正视图": [1, 0, 0],
+  "整体视图": [4.6, -7.1, 3.25], "侧视图": [0, -1, 0], "正视图": [1, 0, 0],
   "俯视图": [0, 0, 1], "底视图": [0, 0, -1],
 };
 const halfHeight = 1.55;

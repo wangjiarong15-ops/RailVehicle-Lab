@@ -47,7 +47,7 @@ def render_event_review(samples, anomalies, selection, *, allow_bogie=False, fic
     if st.session_state.get("anomaly_review_fingerprint") != fingerprint:
         st.session_state.pop("anomaly_review_event", None)
         st.session_state["anomaly_review_fingerprint"] = fingerprint
-    with st.expander("异常事件回查 · 定位局部运行变化"):
+    with st.expander("异常事件回查 · 定位局部运行变化", expanded=allow_bogie):
         index = st.selectbox("选择异常事件", range(len(events)), key="anomaly_review_event",
                              format_func=lambda i: f"{i + 1}. {events[i]['type']} · {events[i]['start_timestamp']}")
         seconds = st.slider("事件前后窗口（秒）", 0, 60, 5, key="anomaly_review_seconds")
@@ -60,6 +60,7 @@ def render_event_review(samples, anomalies, selection, *, allow_bogie=False, fic
                                 axis="lateral" if event["field"] == "lateral_accel" else "vertical",
                                 fictional=fictional, row_span=selection.get("row_span"),
                                 anchor=None if anchors is None else anchors[index], from_workbench=True)
+            st.caption("三维页暂停在事件首条异常样本。可开启未超阈值对照，并返回本页继续分析。")
         st.table([{"类型": event["type"], "开始": event["start_timestamp"], "结束": event["end_timestamp"],
                    "异常样本数": event["sample_count"], "绝对峰值（m/s²）": event["maximum_absolute_value"]}])
         st.caption("紫色虚线为所选事件起止边界；红色标记为窗口内同轴既有异常点，也可能属于相邻事件。"

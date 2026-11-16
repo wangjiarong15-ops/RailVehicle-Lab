@@ -29,11 +29,11 @@ export function studio(scene, renderer) {
   room.dispose();
   generator.dispose();
   scene.environment = environment.texture;
-  scene.environmentIntensity = .62;
+  scene.environmentIntensity = .72;
   scene.environmentRotation.x = Math.PI / 2;
 
-  const key = new THREE.DirectionalLight(0xfff3e6, 2.25);
-  key.position.set(2.8, -3.6, 5.93);
+  const key = new THREE.DirectionalLight(0xfff6ec, 2.40);
+  key.position.set(3.1, -4.4, 5.4);
   key.target.position.z = .33;
   key.castShadow = true;
   key.shadow.mapSize.set(1024, 1024);
@@ -45,7 +45,7 @@ export function studio(scene, renderer) {
   fill.position.set(-3, 4, 3);
   const rim = new THREE.DirectionalLight(0xd9e5ff, 1.20);
   rim.position.set(-5, -2, 2);
-  const ambient = new THREE.HemisphereLight(0xe0edff, 0x737c87, .65);
+  const ambient = new THREE.HemisphereLight(0xe0edff, 0x8894a0, .72);
   ambient.position.set(0, 0, 1); // The workbench uses Z-up, unlike the Three.js default.
   scene.add(key, key.target, fill, rim, ambient);
 

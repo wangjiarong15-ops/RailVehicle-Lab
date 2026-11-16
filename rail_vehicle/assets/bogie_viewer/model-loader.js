@@ -1,6 +1,8 @@
 import * as THREE from "three";
 
 const close = (a, b) => a.distanceTo(new THREE.Vector3(...b)) < .0001;
+// Distinguish rolled steel and painted bevels without changing the baked mesh or paint colour.
+const surfaceRoughness = new Map([["paint_edge", .38], ["steel", .34]]);
 
 function inspect(gltf, contract) {
   const root = new THREE.Group();
@@ -45,6 +47,12 @@ function inspect(gltf, contract) {
     }
     return [id, entry];
   }));
+  const materials = new Set([...parts.values()].flatMap(({meshes}) =>
+    meshes.flatMap((mesh) => [mesh.material].flat())));
+  for (const material of materials) {
+    if (material?.isMeshStandardMaterial && surfaceRoughness.has(material.name))
+      material.roughness = surfaceRoughness.get(material.name);
+  }
   return {root, parts};
 }
 

@@ -42,7 +42,6 @@ async function main() {
     await capture(page, "01-analysis-workbench");
 
     await tab(page, "异常事件").click();
-    await page.getByText("异常事件回查 · 定位局部运行变化", { exact: true }).click();
     await button(page, "在三维回放中查看此区段").click();
     await page.getByText("已定位到所选统计证据的异常样本。", { exact: true }).waitFor();
     await page.frameLocator('iframe[title*=bogie_viewer]').first()
@@ -50,6 +49,16 @@ async function main() {
     await checkViewport(page);
     await widget(page, "bogie_model_card").evaluate((element) => element.scrollIntoView({ block: "center" }));
     await capture(page, "02-event-bogie-glb");
+    await widget(page, "bogie_compare").getByText("对照未超阈值样本", { exact: true }).click();
+    await page.getByText("同批次未超阈值样本 · 示意姿态", { exact: true }).waitFor();
+    const view = (index) => page.frameLocator('iframe[title*=bogie_viewer]').nth(index)
+      .locator('#workbench[data-status=ready][data-model=glb]');
+    await view(1).waitFor({ timeout: 30000 });
+    assert.notEqual(await view(0).getAttribute("data-highlighted"), "");
+    assert.equal(await view(1).getAttribute("data-highlighted"), "");
+    await page.getByText("未超阈值", { exact: true }).waitFor();
+    await widget(page, "bogie_model_card").evaluate((element) => element.scrollIntoView({ block: "center" }));
+    await capture(page, "02b-observed-bogie-comparison");
 
     await widget(page, "bogie_return_analysis").getByRole("button").click();
     await widget(page, "ai_center_link_single").getByRole("button").click();
