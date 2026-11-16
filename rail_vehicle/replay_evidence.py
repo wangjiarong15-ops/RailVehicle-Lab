@@ -61,15 +61,19 @@ class ReportComparison:
     def matches_batch(self, vehicle_id, batch_id, fictional):
         return (self.vehicle_id, self.batch_id, self.fictional) == (None if fictional else vehicle_id, batch_id, fictional)
 
-    def matches_scope(self, samples, timestamps, *, threshold, start, end, row_span):
-        if len(samples) != self.batch_count or self.threshold != threshold:
+    def matches_scope(self, samples, *, threshold, start, end, row_span, first_row=1, batch_count=None):
+        """Validate by absolute row using either the full batch or a contiguous UTC slice."""
+        batch_count = len(samples) if batch_count is None else batch_count
+        if batch_count != self.batch_count or self.threshold != threshold:
             return False
-        first, last = row_span or (1, len(samples))
+        first, last = row_span or (1, batch_count)
         for observation in (self.current, self.reference):
             row = observation.row
-            if not 1 <= row <= len(samples) or not first <= row <= last or not start <= timestamps[row - 1] <= end:
+            position = row - first_row
+            if not (1 <= row <= batch_count and first <= row <= last and 0 <= position < len(samples)
+                    and start <= _utc(observation.timestamp) <= end):
                 return False
-            if observation != ComparisonObservation.capture(row, samples[row - 1]):
+            if observation != ComparisonObservation.capture(row, samples[position]):
                 return False
         return True
 

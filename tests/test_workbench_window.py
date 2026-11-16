@@ -11,8 +11,9 @@ from streamlit.testing.v1 import AppTest
 from rail_vehicle import db, run_data
 from rail_vehicle.demo_data import analysis_demo_data
 from rail_vehicle.pages import bogie, run_analysis
-from rail_vehicle.pages.data_workflow import ANALYSIS_REPLAY_SCOPE
-from rail_vehicle.replay_evidence import ReplayEvidenceScope
+from rail_vehicle.pages.data_workflow import ANALYSIS_REPLAY_SCOPE, REPORT_COMPARISON
+from rail_vehicle.replay import prepare_replay
+from rail_vehicle.replay_evidence import ReplayEvidenceScope, ReportComparison
 from rail_vehicle.time_filter import filter_samples_by_time_range
 from rail_vehicle.vehicle_data import add_vehicle, list_vehicles
 
@@ -51,8 +52,10 @@ def test_window_matches_full_filter_at_offsets_duplicates_and_boundaries(history
     assert window.samples == filter_samples_by_time_range(complete, START, END)
     assert [row["speed_kmh"] for row in window.samples] == [72, 73, 71, 76]
     assert window.bounds == (START - timedelta(seconds=1), START + timedelta(seconds=9))
+    assert (window.first_row, window.batch_count) == (2, 7)
     empty = run_data.list_batch_sample_window(vehicle, batch, END + timedelta(days=1), END + timedelta(days=2), path)
     assert empty.samples == [] and empty.bounds == window.bounds
+    assert (empty.first_row, empty.batch_count) == (8, 7)
 
 
 def test_dense_or_malformed_batch_requests_the_complete_reader(history):
@@ -68,6 +71,11 @@ def test_dense_or_malformed_batch_requests_the_complete_reader(history):
 
 def test_workbench_uses_projection_for_time_window_but_preserves_exact_replay_rows(history, monkeypatch):
     path, vehicle, batch = history
+    with db.get_connection(path) as connection:
+        connection.execute("UPDATE run_samples SET lateral_accel = -2 WHERE speed_kmh = 73")
+    track = prepare_replay(run_data.list_batch_samples(vehicle, batch, path))
+    comparison = ReportComparison.capture(track, 2, 1, vehicle_id=vehicle, batch_id=batch,
+                                          fictional=False, threshold=1, speed_tolerance=5)
     init_db = db.init_db
     monkeypatch.setenv("RAIL_PUBLIC_DEMO", "false")
     monkeypatch.setattr(db, "init_db", lambda: init_db(path))
@@ -89,6 +97,21 @@ def test_workbench_uses_projection_for_time_window_but_preserves_exact_replay_ro
         full.assert_not_called()
         projected.assert_called_once_with(vehicle, batch, START, END)
         assert any("4 条" in item.value for item in app.markdown if "分析样本数" in item.value)
+
+        app.session_state[REPORT_COMPARISON] = comparison
+        projected.reset_mock()
+        app.run()
+        assert not app.exception
+        full.assert_not_called()
+        projected.assert_called_once_with(vehicle, batch, START, END)
+        assert any("异常第 3 条，参照第 2 条" in item.value for item in app.success)
+
+        app.time_input(key=f"analysis_start_time_{vehicle}_{batch}").set_value(time(9, 30, 2))
+        app.time_input(key=f"analysis_end_time_{vehicle}_{batch}").set_value(time(9, 30, 2)).run()
+        assert not app.exception
+        full.assert_not_called()
+        assert REPORT_COMPARISON not in app.session_state
+        assert any("不再同时匹配" in item.value for item in app.info)
 
         app.session_state[ANALYSIS_REPLAY_SCOPE] = ((vehicle, batch), ReplayEvidenceScope(2, 2, 7, START, START))
         projected.reset_mock()

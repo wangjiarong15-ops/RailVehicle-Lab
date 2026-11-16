@@ -43,8 +43,8 @@ def test_report_handoff_revalidates_batch_identity_exact_rows_and_scope():
     scope = dict(start=instant, end=instant, threshold=1, row_span=(1, 2))
     assert handoff.matches_batch(6, 9, False)
     assert not handoff.matches_batch(7, 9, False)
-    assert handoff.matches_scope(track.samples, [instant] * 3, **scope)
-    assert not handoff.matches_scope(track.samples, [instant] * 3, **dict(scope, row_span=(2, 3)))
-    assert not handoff.matches_scope(track.samples, [instant] * 3, **dict(scope, threshold=2))
+    assert handoff.matches_scope(track.samples, **scope)
+    assert not handoff.matches_scope(track.samples, **dict(scope, row_span=(2, 3)))
+    assert not handoff.matches_scope(track.samples, **dict(scope, threshold=2))
     changed = [track.samples[0], track.samples[2], track.samples[1]]
-    assert not handoff.matches_scope(changed, [instant] * 3, **scope)
+    assert not handoff.matches_scope(changed, **scope)

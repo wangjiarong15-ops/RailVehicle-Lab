@@ -474,7 +474,7 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         st.caption("车辆、批次或数据来源已变化；原三维对照未附入报告。")
     existing_scope = st.session_state.get(ANALYSIS_REPLAY_SCOPE)
     window_request = None
-    if not demo and not target and comparison is None and not (existing_scope and existing_scope[0] == batch_identity):
+    if not demo and not target and not (existing_scope and existing_scope[0] == batch_identity):
         window_request = _projected_window_request(batch_identity, batch_row["sample_count"])
 
     def read_full_batch():
@@ -527,6 +527,7 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         else:
             st.session_state.pop(ANALYSIS_REPLAY_SCOPE, None)
     replay_rows = None
+    projected = None
     if replay_scope:
         selected_start, selected_end = replay_scope.first_timestamp, replay_scope.last_timestamp
         replay_rows = [replay_scope.first_row + 1, replay_scope.last_row + 1]
@@ -542,6 +543,7 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
             st.warning("开始时间不能晚于结束时间，请调整筛选范围。")
             return
         if window is not None and (selected_start, selected_end) == window_request:
+            projected = window
             filtered_samples = window.samples
         else:
             if window is not None:  # Streamlit may reset a time control if its default changes.
@@ -579,12 +581,15 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         st.error(str(exc))
         return
     anomaly_result, event_anchors = detect_anomalies_with_anchors(result["samples"], threshold)
-    if comparison is not None and not comparison.matches_scope(
-        samples, timestamps, threshold=threshold, start=selected_start, end=selected_end, row_span=replay_rows,
-    ):
-        st.session_state.pop(REPORT_COMPARISON, None)
-        comparison = None
-        st.info("两条观测不再同时匹配当前范围、阈值或批次记录；本报告不会附入原三维对照。")
+    if comparison is not None:
+        coordinates = {"first_row": projected.first_row, "batch_count": projected.batch_count} if projected else {}
+        if not comparison.matches_scope(
+            projected.samples if projected else samples,
+            threshold=threshold, start=selected_start, end=selected_end, row_span=replay_rows, **coordinates,
+        ):
+            st.session_state.pop(REPORT_COMPARISON, None)
+            comparison = None
+            st.info("两条观测不再同时匹配当前范围、阈值或批次记录；本报告不会附入原三维对照。")
 
     st.markdown(f"**分析样本数：** {result['sample_count']:,} 条　 ·　 **异常区段（按方向）：** {len(anomaly_result['events'])} 个")
     if comparison is not None:

@@ -33,10 +33,12 @@ _WINDOW_ID_CHUNK = 900  # Allow for SQLite builds with the older 999-variable li
 
 @dataclass(frozen=True)
 class BatchSampleWindow:
-    """Whole-batch time bounds and observations in an inclusive UTC window."""
+    """Inclusive UTC window with one-based coordinates in the full batch."""
 
     bounds: tuple[datetime, datetime]
     samples: list[dict[str, Any]]
+    first_row: int
+    batch_count: int
 
 
 @dataclass
@@ -452,8 +454,10 @@ def list_batch_sample_window(
         timeline.execute("SELECT id, timestamp FROM run_samples WHERE batch_id = ? AND vehicle_id = ?",
                          (batch_id, vehicle_id))
         first = last = None
+        before = batch_count = 0
         selected: list[tuple[datetime, str, int]] = []
         for sample_id, raw_time in timeline:
+            batch_count += 1
             try:
                 instant = _stored_utc_time(raw_time)
             except (OverflowError, TypeError, ValueError):
@@ -462,7 +466,9 @@ def list_batch_sample_window(
                 first = instant
             if last is None or instant > last:
                 last = instant
-            if start <= instant <= end:
+            if instant < start:
+                before += 1
+            elif instant <= end:
                 if len(selected) == MAX_PROJECTED_WINDOW_ROWS:
                     return None
                 selected.append((instant, raw_time, sample_id))
@@ -481,4 +487,5 @@ def list_batch_sample_window(
             ):
                 sample = dict(row)
                 payload_by_id[sample.pop("id")] = sample
-        return BatchSampleWindow((first, last), [payload_by_id[sample_id] for sample_id in sample_ids])
+        return BatchSampleWindow((first, last), [payload_by_id[sample_id] for sample_id in sample_ids],
+                                 first_row=before + 1, batch_count=batch_count)
