@@ -7,6 +7,7 @@ from rail_vehicle.ui import AI, ANALYSIS, ANALYSIS_MODE, BOGIE, DEMO_DATA, navig
 
 ANALYSIS_TARGET = "analysis_batch_target"
 ANALYSIS_REPLAY_SCOPE = "analysis_replay_scope"
+REPORT_COMPARISON = "analysis_report_comparison"
 IMPORT_VEHICLE = "import_vehicle_target"
 WORKBENCH_SOURCE = "workbench_analysis_source"
 WORKBENCH_RETURN = "workbench_analysis_return"
@@ -31,9 +32,11 @@ def remember_workbench_selection():
     st.session_state[WORKBENCH_RETURN] = (route, inputs)
 
 
-def return_to_workbench():
+def return_to_workbench(comparison=None):
     route, inputs = st.session_state.pop(WORKBENCH_RETURN)
     st.session_state.update(inputs)
+    if comparison is not None:
+        st.session_state[REPORT_COMPARISON] = comparison
     navigate(route, **{ANALYSIS_MODE: "single"})
 
 

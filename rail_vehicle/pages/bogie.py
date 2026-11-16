@@ -19,10 +19,10 @@ from rail_vehicle.demo_data import DEMO_BATCH_IDS, analysis_demo_data
 from rail_vehicle.deployment import demo_source_options
 from rail_vehicle.event_anchor import resolve_event_row
 from rail_vehicle.pages.cockpit import build_replay_chart
-from rail_vehicle.pages.data_workflow import analysis_button, render_replay_return
+from rail_vehicle.pages.data_workflow import WORKBENCH_RETURN, analysis_button, render_replay_return, return_to_workbench
 from rail_vehicle.replay import ReplayState, advance_replay, comparison_reference, control_replay, prepare_replay
 from rail_vehicle.replay_evidence import (
-    MAX_WINDOW_EXPORT_ROWS, ReplayEvidenceScope, comparison_evidence_csv, replay_evidence_csv,
+    MAX_WINDOW_EXPORT_ROWS, ReplayEvidenceScope, ReportComparison, comparison_evidence_csv, replay_evidence_csv,
 )
 from rail_vehicle.run_data import list_batch_samples, list_vehicle_batches
 from rail_vehicle.ui import navigate, page_title, plot_chart
@@ -379,6 +379,16 @@ def _display(track, duration, threshold, cutoff, teaching, inspection, event_ind
                         mime="text/csv", on_click="ignore", key="bogie_comparison_download",
                         help="仅导出这两条观测、批次行号、阈值与筛选范围，不包含模型姿态。",
                     )
+                    if WORKBENCH_RETURN in st.session_state:
+                        attachment = ReportComparison.capture(
+                            track, index, reference_row, vehicle_id=None if fictional else selection[1],
+                            batch_id=selection[-1], fictional=fictional, threshold=threshold,
+                            speed_tolerance=speed_tolerance,
+                        )
+                        if st.button("带着对照返回分析", key="bogie_comparison_to_report",
+                                     help="两条观测经原分析范围重新核对后，可附在本机 PDF 报告中。"):
+                            return_to_workbench(attachment)
+                            st.rerun(scope="app")
                 elif compare and track is not None:
                     if state.playing:
                         st.caption("暂停后查找附近的同批次样本。播放中仅显示正常运动示意。")

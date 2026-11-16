@@ -1,5 +1,6 @@
 """Running-data import and basic dynamics analysis page."""
 
+from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 import sqlite3
 
@@ -32,12 +33,12 @@ from rail_vehicle.pages.sampling_quality import render_sampling_quality
 from rail_vehicle.pages.ai_link import render_center_link, restore_source_widgets
 from rail_vehicle.pages.bogie_link import batch_replay_button
 from rail_vehicle.pages.data_workflow import (
-    ANALYSIS_REPLAY_SCOPE, ANALYSIS_TARGET, DEMO_EVIDENCE_SCOPE, IMPORT_VEHICLE, WORKBENCH_SOURCE,
+    ANALYSIS_REPLAY_SCOPE, ANALYSIS_TARGET, DEMO_EVIDENCE_SCOPE, IMPORT_VEHICLE, REPORT_COMPARISON, WORKBENCH_SOURCE,
     analysis_button, import_button, remember_workbench_selection,
 )
 from rail_vehicle.ai.center_state import clear_context
 from rail_vehicle.curve_preview import CURVE_POINT_LIMIT, curve_preview
-from rail_vehicle.replay_evidence import ReplayEvidenceScope
+from rail_vehicle.replay_evidence import ReplayEvidenceScope, ReportComparison
 from rail_vehicle.ui import AI, ANALYSIS_MODE, BOGIE, plot_chart, record_analysis, source_caption, workflow_caption, navigate
 from rail_vehicle.run_data import (
     MAX_CSV_SIZE_MB,
@@ -465,9 +466,15 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
     )
     batch_identity = (vehicle_id, batch_id)
     batch_row = next(batch for batch in batches if batch["id"] == batch_id)
+    comparison = st.session_state.get(REPORT_COMPARISON)
+    if comparison is not None and (not isinstance(comparison, ReportComparison)
+                                   or not comparison.matches_batch(vehicle_id, batch_id, demo)):
+        st.session_state.pop(REPORT_COMPARISON, None)
+        comparison = None
+        st.caption("车辆、批次或数据来源已变化；原三维对照未附入报告。")
     existing_scope = st.session_state.get(ANALYSIS_REPLAY_SCOPE)
     window_request = None
-    if not demo and not target and not (existing_scope and existing_scope[0] == batch_identity):
+    if not demo and not target and comparison is None and not (existing_scope and existing_scope[0] == batch_identity):
         window_request = _projected_window_request(batch_identity, batch_row["sample_count"])
 
     def read_full_batch():
@@ -572,8 +579,17 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         st.error(str(exc))
         return
     anomaly_result, event_anchors = detect_anomalies_with_anchors(result["samples"], threshold)
+    if comparison is not None and not comparison.matches_scope(
+        samples, timestamps, threshold=threshold, start=selected_start, end=selected_end, row_span=replay_rows,
+    ):
+        st.session_state.pop(REPORT_COMPARISON, None)
+        comparison = None
+        st.info("两条观测不再同时匹配当前范围、阈值或批次记录；本报告不会附入原三维对照。")
 
     st.markdown(f"**分析样本数：** {result['sample_count']:,} 条　 ·　 **异常区段（按方向）：** {len(anomaly_result['events'])} 个")
+    if comparison is not None:
+        st.success(f"三维对照已核对：异常第 {comparison.current.row:,} 条，参照第 {comparison.reference.row:,} 条。"
+                   "可在「PDF 报告」查看或移除。")
     workbench_actions = st.container(border=True)
     with st.expander("基础结果说明（无需 AI）", expanded=False):
         st.write(f"当前范围内平均速度 {result['speed']['mean']:.3f} km/h；"
@@ -841,6 +857,11 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         st.subheader("导出分析报告")
         st.caption("PDF 报告包含当前车辆、批次、时间范围、统计、异常事件、采样质量检查与规则及曲线。"
                    "调整采样检查规则后需重新生成 PDF。")
+        comparison_section = asdict(comparison) if comparison is not None else None
+        if comparison is not None:
+            st.caption("报告将附上这两条原始观测与对照条件；三维模型姿态不会写入报告。")
+            st.button("移除报告中的三维对照", key="analysis_remove_report_comparison",
+                      on_click=st.session_state.pop, args=(REPORT_COMPARISON, None))
         current_ai_result = None if demo else st.session_state.get("ai_single_batch_result")
         report_state_key = "demo_analysis_report_key" if demo else "analysis_report_key"
         report_pdf_key = "demo_analysis_report_pdf" if demo else "analysis_report_pdf"
@@ -855,7 +876,7 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         report_key = selection_fingerprint({
             "analysis": ai_payload, "selection": ai_selection,
             "sampling_quality": sampling_review, "ai_result": current_ai_pdf_fingerprint,
-            "vehicle": selected_vehicle, "samples": result["samples"],
+            "vehicle": selected_vehicle, "samples": result["samples"], "comparison": comparison_section,
         }) if generate or st.session_state.get(report_pdf_key) else None
         if st.session_state.get(report_state_key) != report_key:
             st.session_state.pop(report_state_key, None)
@@ -884,6 +905,7 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
                         if sampling_review["baseline_source"] == "specified" else None
                     ),
                     sampling_gap_multiplier=sampling_review["gap_multiplier"],
+                    report_comparison=comparison_section,
                     **({"replay_rows": replay_rows} if replay_rows else {}),
                 )
                 pdf_bytes = generate_analysis_report_pdf(report_data)

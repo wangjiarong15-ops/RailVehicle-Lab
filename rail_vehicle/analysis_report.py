@@ -238,6 +238,7 @@ def build_analysis_report_data(
     sampling_expected_interval_seconds: float | None = None,
     sampling_gap_multiplier: float = 3.0,
     replay_rows: tuple[int, int] | list[int] | None = None,
+    report_comparison: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Assemble a stable report payload from the current filtered analysis."""
     samples = analysis["samples"]
@@ -278,6 +279,7 @@ def build_analysis_report_data(
         },
         "sample_count": analysis["sample_count"],
         **({"replay_rows": tuple(replay_rows)} if replay_rows is not None else {}),
+        **({"report_comparison": report_comparison} if report_comparison is not None else {}),
         "speed": dict(analysis["speed"]),
         "lateral_accel": dict(analysis["lateral_accel"]),
         "vertical_accel": dict(analysis["vertical_accel"]),
@@ -643,6 +645,28 @@ def generate_analysis_report_pdf(report: dict[str, Any]) -> bytes:
                 small_style,
             )
         )
+
+        comparison = report.get("report_comparison")
+        if comparison is not None:
+            anomaly, reference = comparison["current"], comparison["reference"]
+            story.append(_paragraph("三维对照复核（观测记录）", heading_style))
+            limit = comparison["speed_tolerance"]
+            speed_filter = "不限速度差" if limit is None else f"速度差上限 {limit:g} km/h"
+            source = "内置虚构演示（非实际测量）" if comparison["fictional"] else "历史运行批次"
+            story.append(_paragraph(
+                f"{source} · 加速度绝对值阈值 {comparison['threshold']:g} m/s^2 · {speed_filter} · "
+                f"两条记录的速度差 {abs(anomaly['speed_kmh'] - reference['speed_kmh']):.3f} km/h。", body_style,
+            ))
+            rows = [["角色", "批次行", "UTC 时间", "速度 km/h", "横向 m/s^2", "垂向 m/s^2"]]
+            for label, sample in (("异常观测", anomaly), ("未超阈值参照", reference)):
+                rows.append([label, sample["row"], sample["timestamp"], f"{sample['speed_kmh']:.3f}",
+                             f"{sample['lateral_accel']:.4f}", f"{sample['vertical_accel']:.4f}"])
+            story.append(_table(rows, [content_width * ratio for ratio in (.18, .08, .26, .16, .16, .16)],
+                                small_style, header_style))
+            story.append(_paragraph(
+                "只附已核对的两条观测。三维姿态是示意；参照未超阈值或速度相近，不能证明车辆安全或运行工况相同。",
+                small_style,
+            ))
 
         sampling = report["sampling_summary"]
         def interval_text(key: str) -> str:

@@ -27,6 +27,54 @@ def _utc(value):
 
 
 @dataclass(frozen=True)
+class ComparisonObservation:
+    row: int
+    timestamp: str
+    speed_kmh: float
+    lateral_accel: float
+    vertical_accel: float
+
+    @classmethod
+    def capture(cls, row, sample):
+        return cls(row, _utc(sample["timestamp"]).isoformat(sep=" "),
+                   *(float(sample[field]) for field in ("speed_kmh", "lateral_accel", "vertical_accel")))
+
+
+@dataclass(frozen=True)
+class ReportComparison:
+    """A session-only snapshot, checked against absolute batch rows before use."""
+
+    vehicle_id: int | None
+    batch_id: int
+    fictional: bool
+    batch_count: int
+    threshold: float
+    speed_tolerance: float | None
+    current: ComparisonObservation
+    reference: ComparisonObservation
+
+    @classmethod
+    def capture(cls, track, current, reference, *, vehicle_id, batch_id, fictional, threshold, speed_tolerance):
+        return cls(vehicle_id, batch_id, fictional, len(track.samples), threshold, speed_tolerance,
+                   *(ComparisonObservation.capture(i + 1, track.samples[i]) for i in (current, reference)))
+
+    def matches_batch(self, vehicle_id, batch_id, fictional):
+        return (self.vehicle_id, self.batch_id, self.fictional) == (None if fictional else vehicle_id, batch_id, fictional)
+
+    def matches_scope(self, samples, timestamps, *, threshold, start, end, row_span):
+        if len(samples) != self.batch_count or self.threshold != threshold:
+            return False
+        first, last = row_span or (1, len(samples))
+        for observation in (self.current, self.reference):
+            row = observation.row
+            if not 1 <= row <= len(samples) or not first <= row <= last or not start <= timestamps[row - 1] <= end:
+                return False
+            if observation != ComparisonObservation.capture(row, samples[row - 1]):
+                return False
+        return True
+
+
+@dataclass(frozen=True)
 class ReplayEvidenceScope:
     first_row: int
     last_row: int

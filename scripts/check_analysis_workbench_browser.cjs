@@ -173,7 +173,9 @@ async function main() {
     await capture(page, "02b-observed-bogie-comparison");
     await checkComparisonDownloads(page, frames, view);
 
-    await widget(page, "bogie_return_analysis").getByRole("button").click();
+    await button(page, "带着对照返回分析").click();
+    const attached = page.getByText(/三维对照已核对：异常第 31 条，参照第 30 条/);
+    await attached.waitFor();
     await widget(page, "ai_center_link_single").getByRole("button").click();
     await page.getByRole("heading", { name: "AI 分析中心", exact: true }).waitFor();
     await page.getByText("核查证据", { exact: true }).waitFor();
@@ -193,6 +195,7 @@ async function main() {
     await verticalEvidence.waitFor();
 
     await button(page, "返回分析页面").click();
+    await attached.waitFor();
     await tab(page, "PDF 报告").click();
     await button(page, "生成 PDF 分析报告").click();
     await page.getByText("分析报告已生成，可以下载 PDF 文件。", { exact: true }).waitFor();
@@ -201,7 +204,11 @@ async function main() {
     ]);
     const pdf = await readFile(await download.path());
     assert.equal(pdf.subarray(0, 4).toString("ascii"), "%PDF");
+    await download.saveAs(resolve(output, "comparison-report.pdf"));
     await capture(page, "04-pdf-report");
+    await button(page, "移除报告中的三维对照").click();
+    await attached.waitFor({state: "hidden"});
+    await button(page, "下载 PDF 报告").waitFor({state: "hidden"});
 
     await page.setViewportSize({ width: 1366, height: 768 });
     await tab(page, "运行曲线").click();
