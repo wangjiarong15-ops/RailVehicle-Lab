@@ -21,7 +21,9 @@ from rail_vehicle.event_anchor import resolve_event_row
 from rail_vehicle.pages.cockpit import build_replay_chart
 from rail_vehicle.pages.data_workflow import analysis_button, render_replay_return
 from rail_vehicle.replay import ReplayState, advance_replay, comparison_reference, control_replay, prepare_replay
-from rail_vehicle.replay_evidence import MAX_WINDOW_EXPORT_ROWS, ReplayEvidenceScope, replay_evidence_csv
+from rail_vehicle.replay_evidence import (
+    MAX_WINDOW_EXPORT_ROWS, ReplayEvidenceScope, comparison_evidence_csv, replay_evidence_csv,
+)
 from rail_vehicle.run_data import list_batch_samples, list_vehicle_batches
 from rail_vehicle.ui import navigate, page_title, plot_chart
 from rail_vehicle.vehicle_data import list_vehicles
@@ -316,8 +318,8 @@ def _display(track, duration, threshold, cutoff, teaching, inspection, event_ind
         compare = inspection.comparison and bool(scene.parts) and not inspection.exploded
         link_group = camera_group if compare else None
         reference_row = None
+        bounds = {"first": window.first_row, "last": window.last_row} if window else {}
         if compare and track is not None and not state.playing and scene is not GAP:
-            bounds = {"first": window.first_row, "last": window.last_row} if window else {}
             reference_row = comparison_reference(track, index, threshold, cutoff, speed_tolerance=speed_tolerance,
                                                  **bounds)
         if not inspection.visible and not reviewing:
@@ -343,8 +345,16 @@ def _display(track, duration, threshold, cutoff, teaching, inspection, event_ind
                     with reference:
                         position = track.offsets[reference_row] if reference_row is not None else state.position
                         ref_state = ReplayState(position=position, rate=state.rate) if reference_row is not None else state
+                        reference_context = None
+                        if reference_row is not None and renderer == WEBGL:
+                            reference_context = inspection_context(
+                                sample=track.samples[reference_row], index=reference_row, total=len(track.samples),
+                                threshold=threshold, scene=replay_scene(track, position, reference_row, threshold, cutoff),
+                                teaching=teaching, fictional=source == DEMO, batch_id=selection[-1], reference=True,
+                            )
                         _model_view("正常运行", illustration_phase(position), ref_state, inspection, (), height,
                                     "bogie_reference", renderer, scene is not GAP, reference=True,
+                                    export_context=reference_context,
                                     periodic=track is None, related_review=related_review, camera_group=link_group)
                 if reference_row is not None:
                     ref_sample = track.samples[reference_row]
@@ -357,6 +367,18 @@ def _display(track, duration, threshold, cutoff, teaching, inspection, event_ind
                     speed_difference = abs(sample["speed_kmh"] - ref_sample["speed_kmh"])
                     st.caption(f"两条样本的速度差：{speed_difference:.2f} km/h。"
                                "同一采样段内优先选择时间最近的符合条件样本；未超阈值不代表车辆安全，模型姿态为示意。")
+                    fictional = source == DEMO
+                    st.download_button(
+                        "下载对照证据 CSV",
+                        comparison_evidence_csv(track, index, reference_row, batch_id=selection[-1],
+                                                vehicle_id=None if fictional else selection[1], fictional=fictional,
+                                                threshold=threshold, cutoff=cutoff, speed_tolerance=speed_tolerance,
+                                                **bounds),
+                        file_name=(f"railvehicle-comparison-{'demo' if fictional else 'batch'}-"
+                                   f"{abs(selection[-1])}-{index + 1}-{reference_row + 1}.csv"),
+                        mime="text/csv", on_click="ignore", key="bogie_comparison_download",
+                        help="仅导出这两条观测、批次行号、阈值与筛选范围，不包含模型姿态。",
+                    )
                 elif compare and track is not None:
                     if state.playing:
                         st.caption("暂停后查找附近的同批次样本。播放中仅显示正常运动示意。")

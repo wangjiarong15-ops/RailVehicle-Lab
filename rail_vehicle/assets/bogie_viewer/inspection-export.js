@@ -1,11 +1,10 @@
-const filename = "railvehicle-bogie-inspection.png";
 const font = '"Segoe UI", "Microsoft YaHei", sans-serif';
 
 function observationFields(metadata) {
   const source = metadata.observation;
-  if (!source) return [];
+  if (!source) return metadata.reference ? [["画面", "正常运动示意 · 无参照读数"]] : [];
   const rows = [["来源", [source.source, source.batch_label].filter(Boolean).join(" · ")]];
-  if (metadata.reference) rows.push(["画面", "正常运动参照 · 观测与阈值状态来自当前场景"]);
+  if (metadata.reference) rows.push(["画面", "同批次未超阈值参照 · 模型姿态为示意"]);
   if (!source.sample_number) return [...rows, ["场景", source.scene_label]];
   return [
     ...rows,
@@ -30,7 +29,7 @@ function wrapText(context, text, maxWidth) {
   return lines;
 }
 
-function savePng(output) {
+function savePng(output, filename) {
   return new Promise((resolve, reject) => {
     output.toBlob((blob) => {
       if (!blob) {
@@ -118,5 +117,5 @@ export async function exportInspectionPng(canvas, metadata) {
       y += lineHeight;
     }
   }
-  await savePng(output);
+  await savePng(output, metadata.reference ? "railvehicle-bogie-reference.png" : "railvehicle-bogie-inspection.png");
 }

@@ -5,7 +5,7 @@ from rail_vehicle.bogie_replay import GAP, Scene
 
 def inspection_context(*, sample, index: int | None, total: int, threshold: float,
                        scene: Scene, teaching: str, fictional: bool,
-                       batch_id: int | None = None) -> dict:
+                       batch_id: int | None = None, reference: bool = False) -> dict:
     """Copy the displayed values from a normalized replay sample.
 
     A long interval retains the preceding row's timestamp and readings. The
@@ -17,7 +17,8 @@ def inspection_context(*, sample, index: int | None, total: int, threshold: floa
     context = {
         "source": "内置虚构演示（非实际测量）" if fictional else "历史运行批次",
         "scene_label": scene.label,
-        "sample_kind": "间隔前最后一次观测" if scene is GAP else "当前观测样本",
+        "sample_kind": ("间隔前最后一次观测" if scene is GAP else
+                        "未超阈值参照样本" if reference else "当前观测样本"),
         "sample_number": index + 1,
         "sample_count": total,
         "timestamp": sample["timestamp"],
