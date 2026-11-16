@@ -115,12 +115,16 @@ def sample_status(sample: dict[str, Any], threshold: float) -> tuple[str, ...]:
 
 
 def comparison_reference(track: ReplayTrack, row: int, threshold: float, cutoff: float | None,
-                         *, first: int = 0, last: int | None = None) -> int | None:
+                         *, first: int = 0, last: int | None = None,
+                         speed_tolerance: float | None = None) -> int | None:
     """Nearest observed row within 10 seconds/250 rows per side and the same sampling segment."""
+    if speed_tolerance is not None and (not math.isfinite(speed_tolerance) or speed_tolerance < 0):
+        raise ValueError("参照速度差上限必须是有限的非负数。")
     last = len(track.samples) - 1 if last is None else last
     if not 0 <= first <= row <= last < len(track.samples) or not sample_status(track.samples[row], threshold):
         return None
     offsets = track.offsets
+    speed = track.samples[row]["speed_kmh"]
     candidates = []
     for step in (-1, 1):
         previous = row
@@ -130,7 +134,9 @@ def comparison_reference(track: ReplayTrack, row: int, threshold: float, cutoff:
                 break
             if cutoff is not None and abs(offsets[candidate] - offsets[previous]) > cutoff:
                 break
-            if not sample_status(track.samples[candidate], threshold):
+            sample = track.samples[candidate]
+            matching_speed = speed_tolerance is None or abs(sample["speed_kmh"] - speed) <= speed_tolerance
+            if matching_speed and not sample_status(sample, threshold):
                 candidates.append(candidate)
                 break
             previous = candidate

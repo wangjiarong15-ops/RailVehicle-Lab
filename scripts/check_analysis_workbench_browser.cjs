@@ -24,6 +24,63 @@ async function checkViewport(page) {
   assert.equal(await page.getByTestId("stException").count(), 0);
 }
 
+async function checkLinkedCameras(page, frames, view) {
+  const pose = async (index) => view(index).evaluate(({dataset}) =>
+    Object.fromEntries(["camera", "target", "zoom", "cameraLink"].map((key) => [key, dataset[key]])));
+  const center = async (index) => {
+    const canvas = frames.nth(index).locator("canvas");
+    await canvas.scrollIntoViewIfNeeded();
+    const box = await canvas.boundingBox();
+    assert(box, "The comparison canvas is not visible");
+    return [box.x + box.width / 2, box.y + box.height / 2];
+  };
+  async function drag(index, button = "left") {
+    const [x, y] = await center(index);
+    await page.mouse.move(x, y);
+    await page.mouse.down({button});
+    await page.mouse.move(x + 58, y + 28, {steps: 7});
+    await page.mouse.up({button});
+  }
+  async function until(predicate, message) {
+    const deadline = Date.now() + 6000;
+    do {
+      const [a, b] = await Promise.all([pose(0), pose(1)]);
+      if (predicate(a, b)) return [a, b];
+      await new Promise((done) => setTimeout(done, 40));
+    } while (Date.now() < deadline);
+    assert.fail(message);
+  }
+  const [initial] = await until((a, b) => a.cameraLink === "linked" && b.cameraLink === "linked" &&
+    a.camera && a.camera === b.camera, "The comparison cameras did not connect");
+  await drag(0);
+  const [rotated] = await until((a, b) => a.camera !== initial.camera && a.camera === b.camera,
+    "Rotation from the current sample did not reach the reference camera");
+  await drag(1, "right");
+  await until((a, b) => a.target !== rotated.target && a.target === b.target,
+    "Panning the reference did not reach the current sample camera");
+  const [x, y] = await center(1);
+  await page.mouse.move(x, y);
+  await page.mouse.wheel(0, -180);
+  await until((a, b) => Number(a.zoom) > Number(rotated.zoom) && Math.abs(Number(a.zoom) - Number(b.zoom)) < .03,
+    "Zooming the reference did not reach the current sample camera");
+  await widget(page, "bogie_link_cameras").getByText("联动两侧镜头", {exact: true}).click();
+  const [unlinked, alone] = await until((a, b) => a.cameraLink === "off" && b.cameraLink === "off",
+    "Both viewers should detach when the user disables linking");
+  await drag(0);
+  await until((a, b) => a.camera !== unlinked.camera && b.camera === alone.camera,
+    "The reference should stay fixed after unlinking");
+  await widget(page, "bogie_link_cameras").getByText("联动两侧镜头", {exact: true}).click();
+  const [relinked] = await until((a, b) => a.cameraLink === "linked" && b.cameraLink === "linked" && a.camera === b.camera,
+    "Re-enabling the link should use the current sample camera");
+  const presets = frames.nth(0).getByRole("combobox", {name: "视窗视角"});
+  await presets.selectOption("侧视图");
+  const [sideView] = await until((a, b) => a.camera !== relinked.camera && a.camera === b.camera,
+    "The camera preset did not reach both views");
+  await presets.selectOption("整体视图");
+  await until((a, b) => a.camera !== sideView.camera && a.camera === b.camera,
+    "Returning to the overall preset did not align both views");
+}
+
 async function main() {
   await mkdir(output, { recursive: true });
   const browser = await chromium.launch({ executablePath: process.env.RAIL_BROWSER_PATH,
@@ -51,12 +108,17 @@ async function main() {
     await capture(page, "02-event-bogie-glb");
     await widget(page, "bogie_compare").getByText("对照未超阈值样本", { exact: true }).click();
     await page.getByText("同批次未超阈值样本 · 示意姿态", { exact: true }).waitFor();
-    const view = (index) => page.frameLocator('iframe[title*=bogie_viewer]').nth(index)
+    const frames = page.frameLocator('iframe[title*=bogie_viewer]');
+    const view = (index) => frames.nth(index)
       .locator('#workbench[data-status=ready][data-model=glb]');
     await view(1).waitFor({ timeout: 30000 });
     assert.notEqual(await view(0).getAttribute("data-highlighted"), "");
     assert.equal(await view(1).getAttribute("data-highlighted"), "");
     await page.getByText("未超阈值", { exact: true }).waitFor();
+    await widget(page, "bogie_compare_speed").getByRole("combobox").click();
+    await page.getByRole("option", {name: "1 km/h", exact: true}).click();
+    await page.getByText(/两条样本的速度差：/).waitFor();
+    await checkLinkedCameras(page, frames, view);
     await widget(page, "bogie_model_card").evaluate((element) => element.scrollIntoView({ block: "center" }));
     await capture(page, "02b-observed-bogie-comparison");
 

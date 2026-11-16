@@ -1,6 +1,7 @@
 """Offline teaching and historical replay of the simplified bogie."""
 
 from dataclasses import dataclass
+from secrets import token_urlsafe
 import sqlite3
 from time import monotonic
 
@@ -59,14 +60,14 @@ class Inspection:
 
 def _model_view(mode, phase, state, inspection, highlight, height, key, renderer, continuous,
                 *, labels=False, focus=None, exploded=False, export_context=None, reference=False, periodic=False,
-                related_review=()):
+                related_review=(), camera_group=None):
     camera = dict(height=height, rails=inspection.rails, camera_revision=inspection.camera_revision)
     if renderer == WEBGL:
         render_webgl(mode=mode, phase=phase, state=state, visible=inspection.visible, highlight=highlight,
                      view=inspection.view, focus=focus, labels=labels, exploded=exploded,
                      spread=inspection.spread, continuous=continuous and not exploded, key=key,
                      export_context=export_context, reference=reference, periodic=periodic,
-                     related_review=related_review, **camera)
+                     related_review=related_review, camera_group=camera_group, **camera)
     else:
         plot_chart(build_bogie(mode, phase, inspection.visible, highlight, inspection.view,
                               labels=labels, exploded=exploded, spread=inspection.spread,
@@ -271,7 +272,7 @@ def _load(source, target):
 
 
 def _display(track, duration, threshold, cutoff, teaching, inspection, event_index, show_signals,
-             window, renderer, source, selection):
+             window, renderer, source, selection, camera_group, speed_tolerance):
     state = st.session_state[STATE_KEY]
     now = monotonic()
     if window:
@@ -313,10 +314,12 @@ def _display(track, duration, threshold, cutoff, teaching, inspection, event_ind
         if inspection.exploded:
             st.caption("分解示意 · 构件间距仅用于看清安装位置。")
         compare = inspection.comparison and bool(scene.parts) and not inspection.exploded
+        link_group = camera_group if compare else None
         reference_row = None
         if compare and track is not None and not state.playing and scene is not GAP:
             bounds = {"first": window.first_row, "last": window.last_row} if window else {}
-            reference_row = comparison_reference(track, index, threshold, cutoff, **bounds)
+            reference_row = comparison_reference(track, index, threshold, cutoff, speed_tolerance=speed_tolerance,
+                                                 **bounds)
         if not inspection.visible and not reviewing:
             st.info("请至少选择一个部件。回放和读值仍会更新。")
         else:
@@ -335,14 +338,14 @@ def _display(track, duration, threshold, cutoff, teaching, inspection, event_ind
                     _model_view(scene.mode, phase, state, inspection, scene.parts, height, "bogie_model",
                                 renderer, scene is not GAP, labels=inspection.labels, focus=inspection.focus,
                                 exploded=inspection.exploded, export_context=export_context, periodic=track is None,
-                                related_review=related_review)
+                                related_review=related_review, camera_group=link_group)
                 if compare:
                     with reference:
                         position = track.offsets[reference_row] if reference_row is not None else state.position
                         ref_state = ReplayState(position=position, rate=state.rate) if reference_row is not None else state
                         _model_view("正常运行", illustration_phase(position), ref_state, inspection, (), height,
                                     "bogie_reference", renderer, scene is not GAP, reference=True,
-                                    periodic=track is None, related_review=related_review)
+                                    periodic=track is None, related_review=related_review, camera_group=link_group)
                 if reference_row is not None:
                     ref_sample = track.samples[reference_row]
                     st.table([{
@@ -351,9 +354,17 @@ def _display(track, duration, threshold, cutoff, teaching, inspection, event_ind
                         "横向（m/s²）": f"{values['lateral_accel']:.3f}",
                         "垂向（m/s²）": f"{values['vertical_accel']:.3f}",
                     } for label, row, values in (("当前异常", index, sample), ("未超阈值", reference_row, ref_sample))])
-                    st.caption("同一采样段内，优先选择时间最近且两轴均未超阈值的样本。未超阈值不代表车辆安全；模型姿态为示意。")
+                    speed_difference = abs(sample["speed_kmh"] - ref_sample["speed_kmh"])
+                    st.caption(f"两条样本的速度差：{speed_difference:.2f} km/h。"
+                               "同一采样段内优先选择时间最近的符合条件样本；未超阈值不代表车辆安全，模型姿态为示意。")
                 elif compare and track is not None:
-                    st.caption("暂停后查找附近的同批次样本；若当前范围内没有合适样本，只显示正常运动示意。")
+                    if state.playing:
+                        st.caption("暂停后查找附近的同批次样本。播放中仅显示正常运动示意。")
+                    elif speed_tolerance is not None:
+                        st.caption(f"附近没有同时满足未超阈值及速度差 ≤ {speed_tolerance:g} km/h 的参照样本。"
+                                   "可调整速度差上限；当前不提供参照读数。")
+                    else:
+                        st.caption("附近没有符合条件的未超阈值样本；当前仅显示正常运动示意。")
                 elif inspection.comparison and track is not None:
                     st.caption("定位到超阈值样本后显示对照。")
             except (TypeError, ValueError, RuntimeError):
@@ -504,6 +515,18 @@ def render():
             renderer = st.selectbox("渲染方式", [WEBGL, COMPAT] if webgl_available() else [COMPAT],
                                     key="bogie_renderer")
             inspection = _inspection_controls(source, comparison)
+        camera_group = speed_tolerance = None
+        if comparison and track is not None:
+            speed_tolerance = st.selectbox("参照速度差上限", [None, 1.0, 3.0, 5.0, 10.0], index=3,
+                                          format_func=lambda value: "不限速度" if value is None else f"{value:g} km/h",
+                                          key="bogie_compare_speed",
+                                          help="与当前异常样本比较。找不到符合条件的样本时，不会自动放宽范围。")
+        if comparison and renderer == WEBGL:
+            if st.toggle("联动两侧镜头", value=True, key="bogie_link_cameras",
+                         help="同步旋转、平移和缩放。零件选择、隐藏和剖切仍各自独立。"):
+                if "bogie_camera_pair" not in st.session_state:
+                    st.session_state["bogie_camera_pair"] = token_urlsafe(18)
+                camera_group = st.session_state["bogie_camera_pair"]
     if target and requested:
         row = None
         expected = ((DEMO, target["batch_id"]) if fictional else
@@ -606,4 +629,4 @@ def render():
             st.fragment(run_every=(0.15 if track is None else 0.4) if state.playing else None)(_display)(
                 track, duration, threshold, st.session_state.get("bogie_gap_cutoff"),
                 teaching, inspection, event_index, show_signals, window, renderer, source,
-                selection)
+                selection, camera_group, speed_tolerance)

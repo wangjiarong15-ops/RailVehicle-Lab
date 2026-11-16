@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import {cameraRig} from "./camera.js";
+import {cameraLink} from "./camera-link.js";
 import {createAssembly} from "./geometry.js";
 import {inspection} from "./interaction.js";
 import {materials, studio} from "./lighting.js";
@@ -63,6 +64,13 @@ export async function mount() {
   let visibleComponents = 0;
   const invalidate = () => { dirty = true; };
   const rig = cameraRig(canvas, invalidate);
+  const linkStatus = document.querySelector("#camera-link-status");
+  const cameras = cameraLink(rig, (status) => {
+    workbench.dataset.cameraLink = status;
+    linkStatus.hidden = status === "off";
+    linkStatus.textContent = {waiting: "正在连接另一视窗", linked: "镜头已联动",
+      unsupported: "浏览器无法联动镜头"}[status] ?? "";
+  });
   const gauge = measurement(scene, invalidate);
   let measuring = false;
   let settling = false;
@@ -318,6 +326,7 @@ export async function mount() {
     Object.assign(workbench.dataset, {
       frames: ++frames, phase: angle.toFixed(4), zoom: rig.camera.zoom.toFixed(4),
       camera: rig.camera.position.toArray().map((x) => x.toFixed(3)).join(","),
+      target: rig.controls.target.toArray().map((x) => x.toFixed(3)).join(","),
       triangles: renderer.info.render.triangles, mode: args.mode,
       playing: String(args.playing),
       parts: args.visible.length, highlighted: args.highlight.join("、"), calls: renderer.info.render.calls,
@@ -340,6 +349,7 @@ export async function mount() {
     measureControl.removeEventListener("click", toggleMeasurement);
     clearMeasurementControl.removeEventListener("click", clearMeasurement);
     exportControl.removeEventListener("click", requestExport);
+    cameras.dispose();
     rig.controls.dispose();
     picker.dispose();
     browser?.dispose();
@@ -473,5 +483,6 @@ export async function mount() {
       select(leaving.selection);
       if (leaving.camera) rig.restore(leaving.camera);
     }
+    cameras.connect(next.cameraGroup, next.reference);
   };
 }

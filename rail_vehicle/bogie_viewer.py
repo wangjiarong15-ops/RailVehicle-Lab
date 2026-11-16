@@ -14,7 +14,7 @@ ASSETS = Path(__file__).with_name("assets") / "bogie_viewer"
 def webgl_available():
     return all((ASSETS / name).is_file() for name in (
         "index.html", "viewer.js", "viewer.css", "assembly.json", "geometry.js",
-        "lighting.js", "camera.js", "interaction.js", "motion.js", "model-loader.js",
+        "lighting.js", "camera.js", "camera-link.js", "interaction.js", "motion.js", "model-loader.js",
         "playback-batches.js", "part-browser.js", "measurement.js", "section-plane.js",
         "inspection-export.js", "view-bookmarks.js", "bookmark-transfer.js",
         "vendor/three.module.min.js", "vendor/three.core.min.js",
@@ -24,7 +24,7 @@ def webgl_available():
 
 def render_webgl(*, mode, phase, state, visible, highlight, view, focus, labels, rails,
                  exploded, spread, camera_revision, continuous, height, key, export_context=None, reference=False,
-                 periodic=False, related_review=()):
+                 periodic=False, related_review=(), camera_group=None):
     # Keep the same widget identity on replay ticks so the orbit camera and scene stay mounted.
     component = declare_component("bogie_viewer", path=str(ASSETS))
     component(
@@ -34,4 +34,5 @@ def render_webgl(*, mode, phase, state, visible, highlight, view, focus, labels,
         labels=labels, rails=rails, spread=spread if exploded else 0, revision=camera_revision,
         height=height, key=key, default=None,
         replayRunning=state.playing, exportContext=export_context, reference=reference, relatedReview=related_review,
+        cameraGroup=camera_group,
     )

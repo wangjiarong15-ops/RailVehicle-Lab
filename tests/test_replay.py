@@ -32,6 +32,18 @@ class ReplayTests(unittest.TestCase):
         distant = prepare_replay([row(stamp.format(0)), row(stamp.format(11), lateral=2)])
         self.assertIsNone(comparison_reference(distant, 1, 1, None))
 
+    def test_comparison_can_require_similar_speed_without_relaxing_it(self):
+        stamp = "2026-10-08T08:00:{:02d}Z"
+        track = prepare_replay([row(stamp.format(0), speed=79), row(stamp.format(1), speed=50),
+                                row(stamp.format(2), speed=80, lateral=-2),
+                                row(stamp.format(3), speed=80, vertical=2), row(stamp.format(4), speed=85)])
+        self.assertEqual(comparison_reference(track, 2, 1, 3), 1)
+        self.assertEqual(comparison_reference(track, 2, 1, 3, speed_tolerance=1), 0)
+        self.assertIsNone(comparison_reference(track, 2, 1, 3, speed_tolerance=0))
+        self.assertEqual(comparison_reference(track, 2, 1, 3, first=1, speed_tolerance=5), 4)
+        with self.assertRaises(ValueError):
+            comparison_reference(track, 2, 1, 3, speed_tolerance=float("inf"))
+
     def test_gap_warning_uses_observed_boundaries_and_strict_cutoff(self):
         track = prepare_replay([row("2026-10-08T08:00:00Z"), row("2026-10-08T08:00:01Z"),
                                 row("2026-10-08T08:00:01Z", 80), row("2026-10-08T08:00:11Z")])
