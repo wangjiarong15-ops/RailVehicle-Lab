@@ -117,13 +117,23 @@ async function localAudit(page, address) {
   await open(page, address);
   await heading(page, "工程工作台").waitFor();
   await assertNav(page);
-  const counts = await Promise.all(["登记车辆", "导入批次", "采样点总数"].map(async (label) => {
+  const readCounts = () => Promise.all(["登记车辆", "导入批次", "采样点总数"].map(async (label) => {
     const metric = page.getByTestId("stMetric").filter({hasText: label});
     return (await metric.getByTestId("stMetricValue").innerText()).trim();
   }));
-  assert.deepEqual(counts, ["0", "0", "0 点"],
+  assert.deepEqual(await readCounts(), ["0", "0", "0 点"],
     "The local audit writes a synthetic vehicle and CSV. Start app.py with a new RAIL_PORTABLE_HOME first.");
-  await nav(page, "车辆管理").click();
+  await screenshot(page, "local-first-run");
+  await page.getByRole("button", {name: /打开内置虚构演示/}).click();
+  await heading(page, "运行分析").waitFor();
+  assert(await page.getByRole("radio", exact("内置虚构演示")).isChecked());
+  await page.getByText(/分析样本数.*120 条.*异常区段.*2 个/).waitFor();
+  await page.getByText(/演示数据不会写入数据库.*历史导入批次/).waitFor();
+  await screenshot(page, "local-fictional-analysis");
+  await nav(page, WORKBENCH).click();
+  await heading(page, "工程工作台").waitFor();
+  assert.deepEqual(await readCounts(), ["0", "0", "0 点"], "Trying the demo must not populate SQLite");
+  await page.getByRole("button", exact("登记车辆")).click();
   await heading(page, "车辆参数").waitFor();
   await page.locator(".st-key-vehicle_add button").click();
   const dialog = page.getByRole("dialog", exact("车辆档案"));
@@ -170,7 +180,10 @@ async function localAudit(page, address) {
   await page.locator(".st-key-analysis_replay_batch button").waitFor();
   await fromTop(page);
   await screenshot(page, "local-analysis");
-  await nav(page, "分析报告").click();
+  await page.locator(".st-key-analysis_replay_batch button").click();
+  await assertBogie(page);
+  await page.getByRole("button", {name: /按原分析范围准备报告/}).click();
+  await heading(page, "分析报告").waitFor();
   await page.getByText("历史导入 · 车辆 PRODUCT-QA-001 · 批次 #1", {exact: true}).waitFor();
   await page.getByText("报告时间筛选（UTC，包含结束秒内的记录）：2026-10-08 09:30:00 至 2026-10-08 09:30:02",
                        {exact: true}).waitFor();
@@ -231,8 +244,8 @@ async function withPage(browser, address, width, height, audit) {
       console.log(`Public demo passed at ${width}x${height}: unified workflow, advanced tools, legacy links, private route blocked, offline evidence and 54-part GLB.`);
     }
     if (local) {
-      await withPage(browser, local, 1920, 1080, localAudit);
-      console.log("Local workspace passed: synthetic vehicle and CSV, analysis, offline PDF, linked GLB replay, legacy links and empty AI center.");
+      await withPage(browser, local, 1366, 768, localAudit);
+      console.log("Local workspace passed at 1366x768: offline trial leaves SQLite empty; synthetic CSV, linked GLB replay and original-scope PDF.");
     }
   } finally {
     await browser.close();

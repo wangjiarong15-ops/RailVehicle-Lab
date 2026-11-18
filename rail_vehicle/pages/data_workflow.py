@@ -2,7 +2,7 @@
 
 import streamlit as st
 
-from rail_vehicle.ui import AI, ANALYSIS, ANALYSIS_MODE, BATCH_VIEWS, BOGIE, COMPARISON, DEMO_DATA, REPORT, analysis_inputs, navigate
+from rail_vehicle.ui import AI, ANALYSIS, ANOMALIES, ANALYSIS_MODE, BATCH_VIEWS, BOGIE, COMPARISON, DEMO_DATA, REPORT, analysis_inputs, navigate
 
 
 ANALYSIS_TARGET = "analysis_batch_target"
@@ -24,12 +24,15 @@ def remember_workbench_selection():
     st.session_state[WORKBENCH_RETURN] = (route, analysis_inputs())
 
 
-def return_to_workbench(comparison=None):
+def return_to_workbench(comparison=None, *, prepare_report=False):
     route, inputs = st.session_state.pop(WORKBENCH_RETURN)
     if comparison is not None:
         inputs[REPORT_COMPARISON] = comparison
         if comparison.fictional:
             inputs[WORKBENCH_SOURCE] = "demo"
+    if prepare_report and route == DEMO_DATA:
+        inputs[WORKBENCH_SOURCE] = "demo"
+    if comparison is not None or prepare_report:
         route = REPORT
     navigate(route, **{**inputs, ANALYSIS_MODE: "single"})
 
@@ -112,7 +115,15 @@ def render_replay_return():
     if EVIDENCE_RETURN in st.session_state:
         st.button("返回证据核查", key="bogie_return_evidence", icon=":material/arrow_back:",
                   on_click=return_to_evidence)
-    render_workbench_return("bogie_return_analysis")
+    origin = st.session_state.get(WORKBENCH_RETURN)
+    if origin is None:
+        return
+    with st.container(horizontal=True, vertical_alignment="center"):
+        render_workbench_return("bogie_return_analysis")
+        if origin[0] in (ANALYSIS, ANOMALIES, DEMO_DATA) and EVIDENCE_RETURN not in st.session_state:
+            st.button("按原分析范围准备报告", key="bogie_original_report", icon=":material/description:",
+                      help="沿用进入三维前的批次、范围和异常阈值。",
+                      on_click=return_to_workbench, kwargs={"prepare_report": True})
 
 
 def open_analysis(vehicle_id, batch_id=None, *, threshold=None, scope=None, page=ANALYSIS):

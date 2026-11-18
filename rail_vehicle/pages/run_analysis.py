@@ -404,6 +404,7 @@ def _render_dynamics_analysis(*, demo: bool = False, view=ANALYSIS) -> None:
     if not vehicles:
         clear_result(st.session_state, ai_state_key)
         st.info("请先录入车辆并导入运行数据。")
+        st.caption("暂时没有 CSV 时，可以将上方数据来源切换为「内置虚构演示」。")
         st.button("前往车辆登记 →", key="analysis_register_vehicle", on_click=navigate, args=("车辆参数",))
         _render_teaching_link()
         return
@@ -437,6 +438,7 @@ def _render_dynamics_analysis(*, demo: bool = False, view=ANALYSIS) -> None:
     if not batches:
         clear_result(st.session_state, ai_state_key)
         st.info("该车辆还没有导入运行数据。")
+        st.caption("暂时没有 CSV 时，可以将上方数据来源切换为「内置虚构演示」。")
         import_button(st, label="前往 CSV 导入 →", key="analysis_import_data", vehicle_id=vehicle_id)
         _render_teaching_link()
         return
@@ -1199,4 +1201,6 @@ def render(*, view=ANALYSIS) -> None:
 
     source = st.radio("数据来源", ("history", "demo"), key=control, horizontal=True, on_change=select_source,
                       format_func={"history": "历史导入批次", "demo": "内置虚构演示"}.get)
+    if source == "demo":
+        st.caption("演示数据不会写入数据库。要使用自己的 CSV，请切回「历史导入批次」。")
     _render_dynamics_analysis(demo=source == "demo", view=view)

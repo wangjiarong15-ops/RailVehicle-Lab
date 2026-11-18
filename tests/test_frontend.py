@@ -17,7 +17,7 @@ from rail_vehicle.demo_data import demo_csv_content
 from rail_vehicle.run_data import import_run_data, validate_run_csv, list_import_batches
 from rail_vehicle.vehicle_data import add_vehicle, update_vehicle, list_vehicles
 from rail_vehicle.pages import home, vehicles, run_analysis
-from rail_vehicle.pages.data_workflow import ANALYSIS_TARGET
+from rail_vehicle.pages.data_workflow import ANALYSIS_TARGET, WORKBENCH_SOURCE
 
 
 MAIN_NAV = ("工作台", "车辆管理", "数据管理", "运行分析", "异常检测", "批次对比", "AI 智能分析", "三维可视化", "分析报告")
@@ -108,6 +108,9 @@ class FrontendTests(unittest.TestCase):
         action.click().run()
         self.assertEqual(app.session_state["navigation_page"], "车辆参数")
         self.assertNotIn("home_CSV 数据导入", [button.key for button in app.button])
+        app.button(key="home_try_demo").click().run()
+        self.assertEqual(app.session_state["navigation_page"], "运行分析")
+        self.assertEqual(app.session_state[WORKBENCH_SOURCE], "demo")
 
     def test_home_with_registered_vehicles_suggests_csv_import(self):
         app = self.home()
@@ -115,6 +118,7 @@ class FrontendTests(unittest.TestCase):
         self.assertNotIn("home_车辆参数", [button.key for button in app.button])
         action = app.button(key="home_CSV 数据导入")
         self.assertEqual(action.proto.type, "primary")
+        self.assertEqual(app.button(key="home_try_demo").proto.type, "secondary")
         action.click().run()
         self.assertEqual(app.session_state["navigation_page"], "CSV 数据导入")
 
@@ -188,6 +192,7 @@ class FrontendTests(unittest.TestCase):
         self.assertEqual(list(app.dataframe[0].value["编号"]), ["#1", "#2"])
         self.assertEqual(len(app.get("plotly_chart")), 1)
         self.assertEqual(app.button(key="home_latest_analysis").proto.type, "primary")
+        self.assertNotIn("home_try_demo", [button.key for button in app.button])
         self.assertFalse({"home_运行分析", "home_车辆参数", "home_CSV 数据导入"} & {b.key for b in app.button})
         self.assertTrue(any(h.value == "当前批次摘要" for h in app.subheader))
         app.number_input(key="home_threshold").set_value(10.).run()

@@ -122,6 +122,7 @@ class StatisticsDemoTests(unittest.TestCase):
             self.assertFalse(app.exception)
             self.assertEqual(app.slider(key="bogie_seek").value, 70.)
             self.assertEqual(app.session_state[DEMO_EVIDENCE_SCOPE][1], selection)
+            self.assertNotIn("bogie_original_report", [button.key for button in app.button])
             app.button(key="bogie_return_evidence").click().run()
             self.assertFalse(app.exception)
             self.assertEqual(app.selectbox(key="ai_demo_evidence").value, evidence_id)
@@ -137,6 +138,23 @@ class StatisticsDemoTests(unittest.TestCase):
             self.assertEqual(build.call_args.kwargs["analysis"]["sample_count"], expected["sample_count"])
             self.assertEqual(len(build.call_args.kwargs["anomalies"]["events"]), len(events))
             self.ai.assert_not_called()
+
+    def test_bogie_report_shortcut_uses_original_fictional_batch_range_and_threshold(self):
+        app = self.app()
+        app.button(key="statistics_demo_calculate").click().run()
+        app.selectbox(key="demo_dynamics_batch_id").set_value(-2).run()
+        app.time_input(key="analysis_end_time_-1_-2").set_value(time(9, 31, 15)).run()
+        app.number_input(key="demo_analysis_threshold").set_value(1.1).run()
+        app.button(key="analysis_replay_batch").click().run()
+        app.number_input(key="bogie_threshold").set_value(2.).run()
+        app.button(key="bogie_original_report").click().run()
+        self.assertFalse(app.exception)
+        self.assertEqual(app.session_state["navigation_page"], "分析报告")
+        self.assertEqual(app.selectbox(key="demo_dynamics_batch_id").value, -2)
+        self.assertEqual(app.time_input(key="analysis_end_time_-1_-2").value, time(9, 31, 15))
+        self.assertEqual(app.number_input(key="demo_analysis_threshold").value, 1.1)
+        self.assertTrue(any("76 条观测 · 2 个规则异常区段" in item.value for item in app.markdown))
+        self.assertNotIn("demo_analysis_report_pdf", app.session_state)
 
     def test_timerange_recalculates_and_empty_range_preserves_private_cache(self):
         app = self.app()

@@ -9,9 +9,9 @@ from rail_vehicle.deployment import public_demo_enabled
 from rail_vehicle.dynamics import analyze_run_data
 from rail_vehicle.anomaly import detect_anomalies
 from rail_vehicle.pages.bogie_link import batch_replay_button
-from rail_vehicle.pages.data_workflow import analysis_button, import_button
+from rail_vehicle.pages.data_workflow import WORKBENCH_SOURCE, analysis_button, import_button
 from rail_vehicle.pages.demo_center import render_walkthrough
-from rail_vehicle.ui import ANOMALIES, REPORT, ANALYSIS_MODE, navigate, plot_chart, page_title, kpi, chart_container, empty_state, data_table, source_caption
+from rail_vehicle.ui import ANALYSIS, ANOMALIES, REPORT, ANALYSIS_MODE, navigate, plot_chart, page_title, kpi, chart_container, empty_state, data_table, source_caption
 from rail_vehicle.dashboard_chart import (dashboard_chart, dashboard_events, display_timestamp,
                                          DISPLAY_TIMEZONES, EVENTS_PER_PAGE, HOME_PLOT_CONFIG)
 
@@ -157,5 +157,10 @@ def _render_next_step(data, preview, threshold):
                 analysis_button(st, label="准备报告", key="home_latest_report", page=REPORT,
                                 vehicle_id=preview["vehicle_id"], batch_id=preview["batch_id"], threshold=threshold)
             else:
-                st.button("选择运行批次", type="primary", on_click=navigate, args=("运行分析",),
+                st.button("选择运行批次", type="primary", on_click=navigate, args=(ANALYSIS,),
                           kwargs={ANALYSIS_MODE: "single"})
+            if data["batch_count"] == 0:
+                st.button("打开内置虚构演示", key="home_try_demo", icon=":material/science:", on_click=navigate,
+                          args=(ANALYSIS,), kwargs={WORKBENCH_SOURCE: "demo", ANALYSIS_MODE: "single"})
+        if data["batch_count"] == 0:
+            st.caption("暂时没有 CSV？可先用内置虚构数据体验异常回查、三维回放和报告。演示数据不会写入数据库。")
