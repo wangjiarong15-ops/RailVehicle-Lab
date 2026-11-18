@@ -151,19 +151,38 @@ async function localAudit(page, address) {
   await page.getByText(/导入成功.*共保存 3 行/).waitFor();
   await fromTop(page);
   await screenshot(page, "local-import");
-  await page.locator(".st-key-import_analyze_latest button").click();
+  await page.locator(".st-key-import_anomalies_latest button").click();
+  await heading(page, "异常检测").waitFor();
+  await page.getByText(/分析样本数.*3 条.*异常区段.*1 个/).waitFor();
+  await page.locator(".st-key-run_analysis_bogie_jump button").click();
+  await assertBogie(page);
+  await page.getByText("已定位到所选统计证据的异常样本。", {exact: true}).waitFor();
+  const observation = page.locator(".st-key-bogie_status_card");
+  await observation.getByText(/09:30:01.*第 2\/3 条/).waitFor();
+  await observation.getByText("1.800", {exact: true}).waitFor();
+  await fromTop(page);
+  await screenshot(page, "local-event-replay");
+  await page.locator(".st-key-bogie_return_analysis button").click();
+  await heading(page, "异常检测").waitFor();
+  await nav(page, "运行分析").click();
   await heading(page, "运行分析").waitFor();
   await page.getByText(/分析样本数.*3 条.*异常区段.*1 个/).waitFor();
   await page.locator(".st-key-analysis_replay_batch button").waitFor();
   await fromTop(page);
   await screenshot(page, "local-analysis");
   await nav(page, "分析报告").click();
+  await page.getByText("历史导入 · 车辆 PRODUCT-QA-001 · 批次 #1", {exact: true}).waitFor();
+  await page.getByText("报告时间筛选（UTC，包含结束秒内的记录）：2026-10-08 09:30:00 至 2026-10-08 09:30:02",
+                       {exact: true}).waitFor();
+  await page.getByText("3 条观测 · 1 个规则异常区段", {exact: true}).waitFor();
   await page.locator(".st-key-generate_analysis_report button").click();
   const [pdf] = await Promise.all([
     page.waitForEvent("download"),
     page.getByRole("button", exact("下载 PDF 报告")).click(),
   ]);
   assert.equal((await readFile(await pdf.path())).subarray(0, 4).toString(), "%PDF");
+  await fromTop(page);
+  await screenshot(page, "local-report");
 
   await page.locator(".st-key-analysis_replay_batch button").click();
   await assertBogie(page);

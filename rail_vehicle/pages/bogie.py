@@ -310,7 +310,7 @@ def _display(track, duration, threshold, cutoff, teaching, inspection, event_ind
             threshold=threshold, scene=scene, teaching=teaching, fictional=source == DEMO,
             batch_id=selection[-1] if track is not None else None,
         )
-    model, panel = st.columns([5.6, 1.4], gap="small")
+    model, panel = st.columns([5.2, 1.8], gap="small")
     with model, st.container(border=True, key="bogie_model_card"):
         st.caption("模型视窗　/　拖动旋转 · 滚轮缩放 · " + ("单击检查 · 双击聚焦" if renderer == WEBGL else "悬停查看名称"))
         if inspection.exploded:
@@ -403,8 +403,11 @@ def _display(track, duration, threshold, cutoff, teaching, inspection, event_ind
                 st.error("三维视图暂时无法加载，仍可查看运行信号。")
     with panel, st.container(border=True, key="bogie_status_card"):
         if track is not None:
-            st.subheader("间隔前最后一次观测" if scene is GAP else "当前观测样本")
-            st.caption(f"{sample['timestamp']} · 第 {index + 1:,}/{len(track.samples):,} 条")
+            st.subheader("观测读数")
+            if scene is GAP:
+                st.caption("间隔前最后一次观测")
+            date, _, clock = sample["timestamp"].partition(" ")  # ReplayTrack stores normalized UTC.
+            st.caption(f"{date} UTC  \n{clock.removesuffix('+00:00')} · 第 {index + 1:,}/{len(track.samples):,} 条")
             st.metric("速度（km/h）", f"{sample['speed_kmh']:.1f}")
             st.metric("横向加速度（m/s²）", f"{sample['lateral_accel']:.3f}")
             st.metric("垂向加速度（m/s²）", f"{sample['vertical_accel']:.3f}")

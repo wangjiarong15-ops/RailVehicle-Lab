@@ -156,6 +156,9 @@ def test_same_time_window_round_trip_preserves_chart_evidence_and_report(history
 
     with patch.object(run_analysis, "generate_analysis_report_pdf", wraps=run_analysis.generate_analysis_report_pdf) as report:
         app.sidebar.button(key="nav_分析报告").click().run()
+        assert any("报告范围：批次第 2–3 条观测（按样本行）" in item.value for item in app.markdown)
+        assert any("2 条观测 · 1 个规则异常区段" in item.value for item in app.markdown)
+        assert any("异常规则：加速度绝对值大于 1 m/s²。" in item.value for item in app.caption)
         app.button(key="generate_analysis_report").click().run()
         payload = report.call_args.args[0]
         assert payload["replay_rows"] == (2, 3) and payload["sample_count"] == 2

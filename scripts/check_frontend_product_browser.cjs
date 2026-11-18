@@ -74,6 +74,11 @@ async function audit(browser, width, height) {
     const canvas = frame.locator("canvas");
     const box = await canvas.boundingBox();
     assert(box && box.width >= 420 && box.height >= 320, "GLB canvas too small");
+    const readings = page.locator(".st-key-bogie_status_card");
+    await readings.getByRole("heading", { name: "观测读数", exact: true }).waitFor();
+    await readings.getByText(/09:30:30.*第 31\/120 条/).waitFor();
+    const readingsBox = await readings.boundingBox();
+    assert(readingsBox && readingsBox.width >= 175, "Not enough space for observation readings");
     await save("06-bogie");
     await viewer.scrollIntoViewIfNeeded();
     await save("07-bogie-detail", false);
@@ -94,6 +99,7 @@ async function audit(browser, width, height) {
     await heading(page, "异常检测").waitFor();
     await open("分析报告", "分析报告");
     await expectThreshold();
+    await page.getByText("异常规则：加速度绝对值大于 1.1 m/s²。", { exact: true }).waitFor();
     await button(page, "generate_analysis_report").click();
     const [pdf] = await Promise.all([page.waitForEvent("download"),
       page.getByRole("button", { name: "下载 PDF 报告", exact: true }).click()]);

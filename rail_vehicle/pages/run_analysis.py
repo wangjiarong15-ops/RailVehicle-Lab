@@ -85,7 +85,7 @@ def _batch_actions(batch_id, vehicles, *, scope):
         vehicle_id = next(iter(by_id))
         st.caption(f"车辆 {by_id[vehicle_id]['vehicle_code']} · 批次 #{batch_id}")
     else:
-        st.caption("该批次包含多辆车，请选择要分析或回放的车辆。")
+        st.caption("该批次包含多辆车，请选择要查看的车辆。")
 
         def vehicle_label(vehicle_id):
             vehicle = by_id[vehicle_id]
@@ -95,7 +95,7 @@ def _batch_actions(batch_id, vehicles, *, scope):
                                   key=f"import_{scope}_vehicle_{batch_id}")
         if vehicle_id is None:
             return
-    analysis, replay = st.columns(2)
+    analysis, anomalies, replay = st.columns(3, gap="small")
     if scope == "receipt":
         analysis_label, replay_label = "分析本次导入 →", "回放本次导入 →"
         suffix = "latest" if len(by_id) == 1 else "selected"
@@ -103,6 +103,8 @@ def _batch_actions(batch_id, vehicles, *, scope):
         analysis_label, replay_label, suffix = "分析历史批次 →", "回放历史批次 →", "history"
     analysis_button(analysis, label=analysis_label, key=f"import_analyze_{suffix}",
                     vehicle_id=vehicle_id, batch_id=batch_id)
+    analysis_button(anomalies, label="查看该批次异常 →", key=f"import_anomalies_{suffix}",
+                    vehicle_id=vehicle_id, batch_id=batch_id, page=ANOMALIES)
     batch_replay_button(replay, label=replay_label, key=f"import_bogie_{suffix}",
                         vehicle_id=vehicle_id, batch_id=batch_id)
 
@@ -687,7 +689,7 @@ def _render_dynamics_analysis(*, demo: bool = False, view=ANALYSIS) -> None:
     if view == REPORT:
         with main_view:
             _render_report_view(vehicles, selected_vehicle, vehicle_id, batch_id, batches, selected_start,
-                                selected_end, result, anomaly_result, sampling_review, replay_rows, comparison,
+                                selected_end, result, anomaly_result, sampling_review, replay_rows, comparison, threshold,
                                 ai_payload, ai_selection, demo=demo)
 
 
@@ -866,7 +868,7 @@ def _render_anomaly_view(result, anomaly_result, threshold, vehicle_id, batch_id
             st.info("当前批次未发现超过所设阈值的数据异常点。")
 
 def _render_report_view(vehicles, selected_vehicle, vehicle_id, batch_id, batches, selected_start,
-                        selected_end, result, anomaly_result, sampling_review, replay_rows, comparison,
+                        selected_end, result, anomaly_result, sampling_review, replay_rows, comparison, threshold,
                         ai_payload, ai_selection, *, demo):
     with st.container(border=True):
         st.subheader("导出分析报告")
@@ -880,10 +882,20 @@ def _render_report_view(vehicles, selected_vehicle, vehicle_id, batch_id, batche
         current_ai_result = None if demo else st.session_state.get("ai_single_batch_result")
         selected_batch = next(batch for batch in batches if batch["id"] == batch_id)
         st.markdown("**报告内容预览**")
-        st.write(f"车辆 {selected_vehicle['vehicle_code']} · 批次 #{batch_id}")
+        st.write(f"{'虚构演示' if demo else '历史导入'} · 车辆 {selected_vehicle['vehicle_code']} · 批次 #{batch_id}")
         st.text(selected_batch["file_name"])
-        st.caption(f"{selected_start:%Y-%m-%d %H:%M:%S} 至 {selected_end:%Y-%m-%d %H:%M:%S} UTC · "
-                   f"{result['sample_count']:,} 条观测 · {len(anomaly_result['events']):,} 个规则异常区段")
+        if replay_rows:
+            st.write(f"报告范围：批次第 {replay_rows[0]:,}–{replay_rows[1]:,} 条观测（按样本行）")
+            range_label = "窗口时间（UTC）"
+            timespec = "auto"
+        else:
+            range_label = "报告时间筛选（UTC，包含结束秒内的记录）"
+            timespec = "seconds"
+        start_text = selected_start.replace(tzinfo=None).isoformat(sep=" ", timespec=timespec)
+        end_text = selected_end.replace(tzinfo=None).isoformat(sep=" ", timespec=timespec)
+        st.caption(f"{range_label}：{start_text} 至 {end_text}")
+        st.write(f"{result['sample_count']:,} 条观测 · {len(anomaly_result['events']):,} 个规则异常区段")
+        st.caption(f"异常规则：加速度绝对值大于 {threshold:g} m/s²。")
         st.caption("包含运行统计、曲线、异常记录和采样质量。AI 解读仅在与本报告证据及范围完全匹配时附入。")
         report_state_key = "demo_analysis_report_key" if demo else "analysis_report_key"
         report_pdf_key = "demo_analysis_report_pdf" if demo else "analysis_report_pdf"
