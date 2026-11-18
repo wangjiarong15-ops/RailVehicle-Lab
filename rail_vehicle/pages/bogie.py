@@ -310,9 +310,9 @@ def _display(track, duration, threshold, cutoff, teaching, inspection, event_ind
             threshold=threshold, scene=scene, teaching=teaching, fictional=source == DEMO,
             batch_id=selection[-1] if track is not None else None,
         )
-    model, panel = st.columns([5, 1.25], gap="small")
+    model, panel = st.columns([5.6, 1.4], gap="small")
     with model, st.container(border=True, key="bogie_model_card"):
-        st.caption("拖动旋转 · 滚轮缩放 · " + ("单击检查 · 双击聚焦" if renderer == WEBGL else "悬停查看名称"))
+        st.caption("模型视窗　/　拖动旋转 · 滚轮缩放 · " + ("单击检查 · 双击聚焦" if renderer == WEBGL else "悬停查看名称"))
         if inspection.exploded:
             st.caption("分解示意 · 构件间距仅用于看清安装位置。")
         compare = inspection.comparison and bool(scene.parts) and not inspection.exploded
@@ -491,7 +491,7 @@ def render():
         st.session_state["bogie_source"] = DEMO if fictional else HISTORY
     if requested and "threshold" in requested:
         st.session_state["bogie_threshold"] = requested["threshold"]
-    options, main = st.columns([1, 5.2], gap="medium")
+    options, main = st.columns([1.18, 5.82], gap="small")
     with options:
         st.subheader("场景与结构")
         source = st.radio("数据来源", choices, key="bogie_source")

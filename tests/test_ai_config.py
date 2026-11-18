@@ -30,7 +30,7 @@ def analysis_with_invalid_ai_config():
         if st.session_state.get("navigation_page") == "AI 智能分析中心":
             ai_center.render()
         else:
-            run_analysis._render_dynamics_analysis()
+            run_analysis._render_dynamics_analysis(view=st.session_state.get("navigation_page", "运行分析"))
 
 
 class _MissingSecrets:
@@ -96,6 +96,7 @@ class AIConfigTests(unittest.TestCase):
         app.run()
         self.assertFalse(app.exception)
         self.assertGreaterEqual(len(app.get("plotly_chart")), 3)
+        app.button(key="batch_continue_分析报告").click().run()
         app.button(key="generate_analysis_report").click().run()
         self.assertFalse(app.exception)
         self.assertTrue(app.session_state["analysis_report_pdf"].startswith(b"%PDF"))

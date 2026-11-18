@@ -12,7 +12,7 @@ import streamlit as st
 
 COLORS = ["#176BCE", "#0D9488", "#8258B5", "#E39A24", "#D34444", "#526E8B"]
 THEME_TOKENS = {
-    "dark": {"surface": "#101F31", "accent": "#65ADFF", "muted": "#A8BAD0", "line": "#273B51"},
+    "dark": {"surface": "#1C293C", "accent": "#7CB4FF", "muted": "#ABC0D7", "line": "#304158"},
     "light": {"surface": "#FFFFFF", "accent": "#176BCE", "muted": "#455D78", "line": "#D7E2EF"},
 }
 pio.templates["rail"] = go.layout.Template(layout=dict(
@@ -32,7 +32,7 @@ def apply_design():
     # Scope styling to our keyed components and a few stable native test IDs.
     st.html("""<style>
     /* Presentation-only visual refresh: native Streamlit behavior unchanged. */
-    [data-testid="stMainBlockContainer"] {padding-top:4.15rem;padding-bottom:3rem;max-width:1680px;}
+    [data-testid="stMainBlockContainer"] {padding-top:3.45rem;padding-bottom:2.5rem;max-width:1680px;}
     [data-testid="stSidebarUserContent"] {padding-top:.35rem;}
     [data-testid="stHeading"] h1 {letter-spacing:-.035em;font-weight:700;padding-top:.2rem;padding-bottom:.6rem;}
     [data-testid="stHeading"] h2 {letter-spacing:-.02em;}
@@ -62,12 +62,16 @@ def apply_design():
       transition:background-color .18s ease;}
     .rv-themes a:hover {background:rgba(80,146,220,.13);}
     .rv-themes a:focus-visible {outline:2px solid var(--rv-accent,#4D9DFF);outline-offset:3px;}
+    [data-testid="stSidebarCollapseButton"] {visibility:visible;}
     [class*="st-key-nav_"] button {border-radius:8px;text-align:left;min-height:2.15rem;
       justify-content:flex-start;padding-inline:.9rem;gap:.65rem;
       transition:background-color .16s ease,transform .16s ease;}
     [data-testid="stSidebarUserContent"] [data-testid="stButton"] button > div {
       width:100%;justify-content:flex-start;}
     [class*="st-key-nav_"] button [data-testid="stIconMaterial"] {width:20px;min-width:20px;}
+    .rv-nav-label {font-size:.72rem;font-weight:650;letter-spacing:.08em;
+      padding:.48rem .65rem .12rem;color:var(--rv-muted,#B4C5DA);}
+    [class*="st-key-nav_"] button:focus-visible {outline:2px solid var(--rv-accent,#4D9DFF);outline-offset:2px;}
     [class*="st-key-nav_"] button[data-testid="stBaseButton-primary"] {
       background:rgba(72,129,196,.18);border:1px solid rgba(91,154,227,.28);
       border-left:3px solid var(--rv-accent,#4D9DFF);color:inherit;}
@@ -163,8 +167,29 @@ def action_button(label, **kwargs):
 
 
 def navigate(page, **settings):
+    current = st.session_state.get("navigation_page")
+    if current != page:
+        if current in BATCH_VIEWS:
+            st.session_state["rail_analysis_inputs"] = analysis_inputs()
+        if page in BATCH_VIEWS:
+            st.session_state.update(st.session_state.get("rail_analysis_inputs", {}))
+        if current == COMPARISON:
+            st.session_state["rail_comparison_inputs"] = {
+                key: value for key, value in st.session_state.items()
+                if key == "comparison_vehicle_id" or key.startswith("comparison_batch_ids_")
+            }
+        if page == COMPARISON:
+            st.session_state.update(st.session_state.get("rail_comparison_inputs", {}))
     st.session_state.update(settings)
     st.session_state["navigation_page"] = page
+
+
+def analysis_inputs():
+    prefixes = ("dynamics_", "demo_dynamics_", "analysis_start_", "analysis_end_",
+                "anomaly_review_event", "anomaly_review_seconds", "history_sampling_", "demo_sampling_")
+    fields = {"workbench_analysis_source", "analysis_threshold", "demo_analysis_threshold", "analysis_replay_scope"}
+    return {key: value for key, value in st.session_state.items()
+            if key in fields or key.startswith(prefixes)}
 
 
 def record_analysis(kind, selection, count, *, fictional=False):
@@ -181,76 +206,73 @@ def record_analysis(kind, selection, count, *, fictional=False):
 
 HOME = "平台首页"
 ANALYSIS = "运行分析"
+ANOMALIES = "异常检测"
+COMPARISON = "批次对比"
+REPORT = "分析报告"
 DATA_PAGES = ("车辆参数", "CSV 数据导入")
 DEMO_DATA = "统计与异常演示"
+BATCH_VIEWS = (ANALYSIS, ANOMALIES, REPORT, DEMO_DATA)
 BOGIE = "三维转向架仿真"
 AI = "AI 智能分析中心"
 ADVANCED_PAGES = ("演示中心", "动态运行驾驶舱", "振动与平稳性分析", "多车辆运行对比", "机器学习异常检测")
 ANALYSIS_MODE = "workbench_analysis_mode"
 
 
-def _workspaces(public):
-    routes = (DEMO_DATA, BOGIE, AI) if public else (ANALYSIS, DEMO_DATA, BOGIE, AI)
-    analysis = ("分析工作台", ":material/monitoring:", DEMO_DATA if public else ANALYSIS, routes)
-    data = ("车辆与数据", ":material/database:", DATA_PAGES[0], DATA_PAGES)
-    advanced = ("高级工具", ":material/tune:", HOME, (HOME, *ADVANCED_PAGES))
-    return (analysis, advanced) if public else (analysis, data, advanced)
+_WORKSPACE = ((HOME, "工作台", "dashboard"),
+              (DATA_PAGES[0], "车辆管理", "train"), (DATA_PAGES[1], "数据管理", "database"))
+_CORE = ((ANALYSIS, "运行分析", "monitoring"), (ANOMALIES, "异常检测", "warning"),
+         (COMPARISON, "批次对比", "compare_arrows"), (AI, "AI 智能分析", "psychology"))
+_ENGINEERING = ((BOGIE, "三维可视化", "view_in_ar"), (REPORT, "分析报告", "description"))
+_SPECIALTY = ((DEMO_DATA, "虚构数据分析", "science"), *zip(ADVANCED_PAGES, ADVANCED_PAGES,
+              ("school", "speed", "waves", "compare", "model_training")))
 
 
-def render_navigation(public):
-    workspaces = _workspaces(public)
-    allowed = {route for _, _, _, routes in workspaces for route in routes}
-    aliases = {label: default for label, _, default, _ in workspaces}
-    aliases.update({"综合工作台": HOME, "三维诊断工作台": BOGIE, "AI 分析中心": AI})
-    if public:
-        aliases["车辆与数据"] = DEMO_DATA
+def render_navigation(public, on_select=navigate):
+    core = ((DEMO_DATA, "虚构数据分析", "monitoring"), _CORE[1], _CORE[3]) if public else _CORE
+    groups = (("工作空间", _WORKSPACE[:1] if public else _WORKSPACE),
+              ("核心分析", core), ("工程应用", _ENGINEERING))
+    specialty = _SPECIALTY[1:] if public else _SPECIALTY
+    allowed = {route for _, rows in groups for route, _, _ in rows} | {row[0] for row in specialty}
+    aliases = {label: route for _, rows in groups for route, label, _ in rows}
+    aliases.update({"分析工作台": DEMO_DATA if public else ANALYSIS, "高级工具": HOME,
+                    "车辆与数据": DEMO_DATA if public else DATA_PAGES[0],
+                    "综合工作台": HOME, "三维诊断工作台": BOGIE, "AI 分析中心": AI,
+                    "同车多批次对比": COMPARISON})
     requested = st.session_state.get("navigation_page")
     if requested is None:
         requested = st.query_params.get("rail_page")
     selected = aliases.get(requested, requested)
     if selected not in allowed:
-        selected = workspaces[0][2]
+        selected = DEMO_DATA if public else HOME
+    if not public and selected == ANALYSIS and st.session_state.get(ANALYSIS_MODE) == "comparison":
+        selected = COMPARISON
     st.session_state["navigation_page"] = selected
+
+    def render_rows(rows):
+        for route, label, icon in rows:
+            st.button(label, icon=f":material/{icon}:", key=f"nav_{route}", width="stretch",
+                      type="primary" if route == selected else "tertiary", on_click=on_select, args=(route,))
+
     with st.sidebar:
         st.html('<div class="rv-brand"><div class="rv-brand-icon" aria-hidden="true">RV</div>'
                 '<div><div class="rv-brand-name">RailVehicle-Lab</div>'
                 '<div class="rv-brand-subtitle">轨道车辆异常分析与三维可视化</div></div></div>')
         with st.container(gap="xxsmall"):
-            for label, icon, default, routes in workspaces:
-                comparison = selected == ANALYSIS and st.session_state.get(ANALYSIS_MODE) == "comparison"
-                active = label == "高级工具" if comparison else selected in routes
-                st.button(label, icon=icon, key=f"nav_{label}", width="stretch",
-                          type="primary" if active else "tertiary", on_click=navigate, args=(default,),
-                          kwargs={ANALYSIS_MODE: "single"} if default == ANALYSIS else None)
-        st.caption("● 公开虚构数据演示" if public else "● 本地 SQLite 工作空间")
-        with st.expander("工作空间外观", icon=":material/palette:"):
-            st.html('<div class="rv-themes">' + ''.join(
-                f'<a target="_self" href="{escape(theme_url(mode, selected), quote=True)}">{label}</a>'
-                for mode, label in (("dark", "◐ 深色"), ("light", "◑ 浅色"))) + '</div>')
-            st.caption("切换会重载当前页面；数据库数据不受影响，未保存的实验或 AI 结果需重新生成。")
+            for label, rows in groups:
+                st.html(f'<div class="rv-nav-label">{label}</div>')
+                render_rows(rows)
+            with st.expander("专项工具", icon=":material/tune:", expanded=selected in {r[0] for r in specialty}):
+                with st.container(gap="xxsmall"):
+                    render_rows(specialty)
+            with st.container(horizontal=True, gap="xsmall"):
+                with st.popover("设置", icon=":material/settings:"):
+                    st.markdown("**系统设置 · 工作空间外观**")
+                    st.html('<div class="rv-themes">' + ''.join(
+                        f'<a target="_self" href="{escape(theme_url(mode, selected), quote=True)}">{label}</a>'
+                        for mode, label in (("dark", "◐ 深色"), ("light", "◑ 浅色"))) + '</div>')
+                    st.caption("切换外观会重载页面并结束当前会话，已保存的数据库数据不受影响。")
+                with st.popover("关于", icon=":material/info:"):
+                    st.markdown("**RailVehicle-Lab** · 轨道车辆异常分析与三维可视化")
+                    st.caption("规则异常、三维结构示意和 AI 辅助解释不能作为故障确诊或运营安全结论。")
+            st.caption("● 公开虚构数据演示" if public else "● 本地工作空间")
     return selected
-
-
-def render_data_navigation(selected):
-    with st.container(horizontal=True, border=True, vertical_alignment="center"):
-        st.caption("车辆与数据")
-        for route in DATA_PAGES:
-            st.button(route, key=f"nav_{route}", type="primary" if route == selected else "tertiary",
-                      on_click=navigate, args=(route,))
-
-
-def render_advanced_navigation(selected, *, public=False):
-    with st.expander("高级工具", icon=":material/tune:", expanded=True):
-        st.caption("专项分析与虚构数据演示。选择工具后才进入对应页面。")
-        with st.container(horizontal=True):
-            st.button("数据总览" if not public else "演示路线", key="nav_overview", on_click=navigate,
-                      args=(HOME,), type="primary" if selected == HOME else "secondary")
-            if not public:
-                st.button("同车多批次对比", key="nav_batch_comparison", on_click=navigate, args=(ANALYSIS,),
-                          kwargs={ANALYSIS_MODE: "comparison"},
-                          type="primary" if selected == ANALYSIS else "secondary")
-                st.button("本机 AI 历史", key="nav_ai_history", on_click=navigate, args=(AI,),
-                          kwargs={"ai_center_demo": False, "ai_center_show_history": True})
-            for route in ADVANCED_PAGES:
-                st.button(route, key=f"nav_{route}", type="primary" if route == selected else "secondary",
-                          on_click=navigate, args=(route,))

@@ -1,6 +1,9 @@
 [server]
 address = "127.0.0.1"
 
+[client]
+toolbarMode = "viewer"
+
 [theme]
 base = "dark"
 font = "sans-serif"
@@ -9,9 +12,9 @@ headingFontSizes = ["26px", "23px", "18px", "16px", "14px", "12px"]
 baseRadius = "medium"
 
 [theme.dark]
-primaryColor = "#4D9DFF"
-backgroundColor = "#091422"
-secondaryBackgroundColor = "#132338"
+primaryColor = "#3B82F6"
+backgroundColor = "#0B1220"
+secondaryBackgroundColor = "#1C293C"
 textColor = "#E5EDF8"
 borderColor = "#263C55"
 dataframeHeaderBackgroundColor = "#1B304A"
@@ -19,8 +22,8 @@ dataframeHeaderTextColor = "#E5EDF8"
 chartCategoricalColors = ["#63ACFF", "#39CCBC", "#BA9BFF", "#F5B65A", "#FF737D", "#9BB3D0"]
 
 [theme.dark.sidebar]
-backgroundColor = "#0B192A"
-secondaryBackgroundColor = "#1B304A"
+backgroundColor = "#131E30"
+secondaryBackgroundColor = "#1C293C"
 textColor = "#E5EDF8"
 primaryColor = "#4D9DFF"
 

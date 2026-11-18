@@ -33,13 +33,13 @@ from rail_vehicle.pages.sampling_quality import render_sampling_quality
 from rail_vehicle.pages.ai_link import render_center_link, restore_source_widgets
 from rail_vehicle.pages.bogie_link import batch_replay_button
 from rail_vehicle.pages.data_workflow import (
-    ANALYSIS_REPLAY_SCOPE, ANALYSIS_TARGET, DEMO_EVIDENCE_SCOPE, IMPORT_VEHICLE, REPORT_COMPARISON, WORKBENCH_SOURCE,
+    ANALYSIS_REPLAY_SCOPE, ANALYSIS_TARGET, BATCH_HANDOFF, DEMO_EVIDENCE_SCOPE, IMPORT_VEHICLE, REPORT_COMPARISON, WORKBENCH_SOURCE,
     analysis_button, import_button, remember_workbench_selection,
 )
 from rail_vehicle.ai.center_state import clear_context
 from rail_vehicle.curve_preview import CURVE_POINT_LIMIT, curve_preview
 from rail_vehicle.replay_evidence import ReplayEvidenceScope, ReportComparison
-from rail_vehicle.ui import AI, ANALYSIS_MODE, BOGIE, plot_chart, record_analysis, source_caption, workflow_caption, navigate
+from rail_vehicle.ui import AI, ANALYSIS, ANOMALIES, BOGIE, REPORT, plot_chart, record_analysis, source_caption, workflow_caption, navigate
 from rail_vehicle.run_data import (
     MAX_CSV_SIZE_MB,
     PREVIEW_LIMIT,
@@ -378,7 +378,8 @@ def _render_teaching_link():
               icon=":material/view_in_ar:")
 
 
-def _render_dynamics_analysis(*, demo: bool = False) -> None:
+def _render_dynamics_analysis(*, demo: bool = False, view=ANALYSIS) -> None:
+    st.session_state.pop(BATCH_HANDOFF, None)
     target = None
     if not demo:
         restore_source_widgets("single")
@@ -389,10 +390,6 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
     if not demo:
         clear_context(st.session_state, "single")
     source_caption(fictional=demo)
-    workflow_caption("选择批次 → 查看曲线与异常 → 三维观察、证据核查或导出 PDF")
-    st.caption(
-        "基础动力学统计分析 · 描述性统计结果不代表法规合规或安全结论。"
-    )
     if demo:
         from rail_vehicle.demo_data import analysis_demo_data
         demo_vehicle, demo_batches, demo_samples = analysis_demo_data()
@@ -594,8 +591,8 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
     st.markdown(f"**分析样本数：** {result['sample_count']:,} 条　 ·　 **异常区段（按方向）：** {len(anomaly_result['events'])} 个")
     if comparison is not None:
         st.success(f"三维对照已核对：异常第 {comparison.current.row:,} 条，参照第 {comparison.reference.row:,} 条。"
-                   "可在「PDF 报告」查看或移除。")
-    workbench_actions = st.container(border=True)
+                   "可在「分析报告」查看或移除。")
+    main_view = st.container()
     with st.expander("基础结果说明（无需 AI）", expanded=False):
         st.write(f"当前范围内平均速度 {result['speed']['mean']:.3f} km/h；"
                  f"横向和垂向加速度 RMS 分别为 {result['lateral_accel']['rms']:.4f}、"
@@ -610,11 +607,7 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
             "RMS = √(Σx² / n)。加速度峰值取绝对值最大点，同时显示该点的有符号原始值和时间。"
         )
 
-    overview_tab, events_tab, report_tab, quality_tab = st.tabs(
-        ["运行曲线", "异常事件", "PDF 报告", "采样质量"]
-    )
-
-    with quality_tab:
+    with st.expander("采样质量与报告规则"):
         sampling_overview = st.container()
         try:
             sampling_review = render_sampling_quality(
@@ -643,7 +636,63 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
                 value = sampling_review[key]
                 column.metric(label, f"{value:.3f}" if value is not None else "—")
 
-    with overview_tab:
+    if view == ANALYSIS:
+        _render_run_curves(main_view, result, threshold=threshold, anomaly_result=anomaly_result,
+                           replay_scope=replay_scope, by_row=replay_scope is not None and selected_start == selected_end)
+
+    if view == ANOMALIES:
+        with main_view:
+            _render_anomaly_view(result, anomaly_result, threshold, vehicle_id, batch_id, selected_start,
+                                 selected_end, replay_rows, event_anchors, demo=demo)
+
+    selected_vehicle = next(vehicle for vehicle in vehicles if vehicle["id"] == vehicle_id)
+    ai_payload = build_single_batch_payload(
+        analysis=result, anomalies=anomaly_result, vehicle=selected_vehicle, batch_ref="B1",
+        selected_start=selected_start.isoformat(), selected_end=selected_end.isoformat(),
+    )
+    ai_selection = {
+        "vehicle_id": vehicle_id, "batch_id": batch_id, "selected_start": selected_start.isoformat(),
+        "selected_end": selected_end.isoformat(), "threshold": threshold,
+    }
+    if replay_rows:
+        ai_selection["row_span"] = replay_rows
+    replay_anchors = anchors_by_evidence(ai_payload, event_anchors)
+    record_analysis("单批次统计分析", {"selection": ai_selection, "facts": ai_payload},
+                    result["sample_count"], fictional=demo)
+    st.session_state[BATCH_HANDOFF] = {
+        "target": {"vehicle_id": vehicle_id, "batch_id": batch_id, "threshold": threshold, "fictional": demo,
+                   **({"scope": replay_scope} if replay_scope else {})},
+        "demo_evidence": (ai_payload, ai_selection, replay_anchors) if demo else None,
+    }
+    with st.container(border=True):
+        st.markdown("**继续处理当前批次**")
+        replay, evidence, related = st.columns(3)
+        with replay:
+            batch_replay_button(st, label="在三维中打开当前窗口 →" if replay_scope else "在三维中回放整个批次 →",
+                                key="analysis_replay_batch", scope=replay_scope, vehicle_id=vehicle_id,
+                                batch_id=batch_id, threshold=threshold, fictional=demo, from_workbench=True)
+        with evidence:
+            if demo:
+                st.button("核查当前证据（离线） →", key="workbench_demo_evidence", on_click=_open_demo_evidence,
+                          args=(ai_payload, ai_selection, replay_anchors), width="stretch")
+            else:
+                _render_ai_interpretation(payload=ai_payload, selection=ai_selection, state_key=ai_state_key,
+                                          replay_anchors=replay_anchors)
+        destinations = (ANALYSIS, REPORT) if view == ANOMALIES else (ANALYSIS, ANOMALIES) if view == REPORT else (ANOMALIES, REPORT)
+        with related, st.container(horizontal=True):
+            for destination in destinations:
+                st.button(destination, key=f"batch_continue_{destination}", on_click=navigate, args=(destination,),
+                          kwargs={WORKBENCH_SOURCE: "demo" if demo else "history"})
+
+    if view == REPORT:
+        with main_view:
+            _render_report_view(vehicles, selected_vehicle, vehicle_id, batch_id, batches, selected_start,
+                                selected_end, result, anomaly_result, sampling_review, replay_rows, comparison,
+                                ai_payload, ai_selection, demo=demo)
+
+
+def _render_run_curves(container, result, *, threshold, anomaly_result, replay_scope, by_row):
+    with container:
         st.subheader("速度统计")
         speed_columns = st.columns(3)
         speed_columns[0].metric("最大速度（km/h）", f"{result['speed']['maximum']:.3f}", border=True)
@@ -651,7 +700,6 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         speed_columns[2].metric("平均速度（km/h）", f"{result['speed']['mean']:.3f}", border=True)
 
         st.subheader("运行曲线")
-        by_row = replay_scope is not None and selected_start == selected_end
         x_field, x_title = ("batch_row", "批次样本序号") if by_row else ("timestamp", "时间")
         chart_specs = (
             ("speed_kmh", f"速度—{x_title}", "速度（km/h）"),
@@ -779,7 +827,10 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
             width="stretch",
         )
 
-    with events_tab:
+
+def _render_anomaly_view(result, anomaly_result, threshold, vehicle_id, batch_id, selected_start,
+                         selected_end, replay_rows, event_anchors, *, demo):
+    with st.container():
         st.subheader("数据异常检测")
         st.caption(
             f"规则：横向或垂向加速度绝对值严格大于 {threshold:.3f} m/s² 时标记为统计异常点。"
@@ -814,51 +865,10 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
         else:
             st.info("当前批次未发现超过所设阈值的数据异常点。")
 
-    selected_vehicle = next(
-        vehicle for vehicle in vehicles if vehicle["id"] == vehicle_id
-    )
-    ai_payload = build_single_batch_payload(
-        analysis=result,
-        anomalies=anomaly_result,
-        vehicle=selected_vehicle,
-        batch_ref="B1",
-        selected_start=selected_start.isoformat(),
-        selected_end=selected_end.isoformat(),
-    )
-    ai_selection = {
-        "vehicle_id": vehicle_id,
-        "batch_id": batch_id,
-        "selected_start": selected_start.isoformat(),
-        "selected_end": selected_end.isoformat(),
-        "threshold": threshold,
-    }
-    if replay_rows:
-        ai_selection["row_span"] = replay_rows
-    replay_anchors = anchors_by_evidence(ai_payload, event_anchors)
-    record_analysis("单批次统计分析", {"selection": ai_selection, "facts": ai_payload},
-                    result["sample_count"], fictional=demo)
-    with workbench_actions:
-        st.markdown("**从当前批次继续**")
-        replay, evidence = st.columns(2)
-        with replay:
-            batch_replay_button(st, label="在三维中打开当前窗口 →" if replay_scope else "在三维中回放整个批次 →",
-                                key="analysis_replay_batch", scope=replay_scope,
-                                vehicle_id=vehicle_id, batch_id=batch_id, threshold=threshold,
-                                fictional=demo, from_workbench=True)
-            if replay_scope:
-                st.caption("保留批次样本范围和当前阈值，从窗口第一条观测暂停显示。")
-            else:
-                st.caption("使用整批样本及当前阈值。若要精确定位，请从下方「异常事件」打开区段。")
-        with evidence:
-            if demo:
-                st.button("核查当前证据（离线） →", key="workbench_demo_evidence", on_click=_open_demo_evidence,
-                          args=(ai_payload, ai_selection, replay_anchors), width="stretch")
-                st.caption("查看当前筛选范围的计算证据，不调用 AI。")
-            else:
-                _render_ai_interpretation(payload=ai_payload, selection=ai_selection, state_key=ai_state_key,
-                                          replay_anchors=replay_anchors)
-        st.caption("「PDF 报告」使用当前筛选范围，包含所见统计、异常区段与曲线。")
-    with report_tab:
+def _render_report_view(vehicles, selected_vehicle, vehicle_id, batch_id, batches, selected_start,
+                        selected_end, result, anomaly_result, sampling_review, replay_rows, comparison,
+                        ai_payload, ai_selection, *, demo):
+    with st.container(border=True):
         st.subheader("导出分析报告")
         st.caption("PDF 报告包含当前车辆、批次、时间范围、统计、异常事件、采样质量检查与规则及曲线。"
                    "调整采样检查规则后需重新生成 PDF。")
@@ -868,6 +878,13 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
             st.button("移除报告中的三维对照", key="analysis_remove_report_comparison",
                       on_click=st.session_state.pop, args=(REPORT_COMPARISON, None))
         current_ai_result = None if demo else st.session_state.get("ai_single_batch_result")
+        selected_batch = next(batch for batch in batches if batch["id"] == batch_id)
+        st.markdown("**报告内容预览**")
+        st.write(f"车辆 {selected_vehicle['vehicle_code']} · 批次 #{batch_id}")
+        st.text(selected_batch["file_name"])
+        st.caption(f"{selected_start:%Y-%m-%d %H:%M:%S} 至 {selected_end:%Y-%m-%d %H:%M:%S} UTC · "
+                   f"{result['sample_count']:,} 条观测 · {len(anomaly_result['events']):,} 个规则异常区段")
+        st.caption("包含运行统计、曲线、异常记录和采样质量。AI 解读仅在与本报告证据及范围完全匹配时附入。")
         report_state_key = "demo_analysis_report_key" if demo else "analysis_report_key"
         report_pdf_key = "demo_analysis_report_pdf" if demo else "analysis_report_pdf"
         current_ai_pdf_fingerprint = (
@@ -889,12 +906,9 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
 
         if generate:
             try:
-                selected_vehicle = demo_vehicle if demo else get_vehicle(vehicle_id)
+                selected_vehicle = selected_vehicle if demo else get_vehicle(vehicle_id)
                 if selected_vehicle is None:
                     raise ValueError("找不到所选车辆，请刷新页面后重试。")
-                selected_batch = next(
-                    batch for batch in batches if batch["id"] == batch_id
-                )
                 report_data = build_analysis_report_data(
                     vehicle=selected_vehicle,
                     batch=selected_batch,
@@ -943,9 +957,10 @@ def _render_dynamics_analysis(*, demo: bool = False) -> None:
             )
 
 
-def render_statistics_demo() -> None:
+def render_statistics_demo(*, view=ANALYSIS) -> None:
     """Offline, explicitly fictional entry into the existing analysis workflow."""
-    page_title("分析工作台", "数据来源：内置虚构演示", primary=True)
+    st.session_state.pop(BATCH_HANDOFF, None)
+    page_title(view if view != ANALYSIS else "虚构数据分析", "数据来源：内置虚构演示", primary=True)
     st.info("内置虚构数据 · 两个 120 条记录的批次，未导入数据库，不代表真实车辆。"
             "仅演示基础动力学统计与规则异常，不判断车辆故障或运行安全。")
     st.caption("默认阈值 1 m/s²：第 30–32 秒有横向变化，第 70–71 秒有垂向变化；虚构批次 2 在第 93–94 秒有双轴同点变化。"
@@ -953,7 +968,7 @@ def render_statistics_demo() -> None:
     if st.button("计算虚构运行分析", key="statistics_demo_calculate", type="primary"):
         st.session_state["statistics_demo_started"] = True
     if st.session_state.get("statistics_demo_started"):
-        _render_dynamics_analysis(demo=True)
+        _render_dynamics_analysis(demo=True, view=view)
 
 
 def _render_batch_comparison() -> None:
@@ -1151,12 +1166,17 @@ def _render_batch_comparison() -> None:
         )
 
 
-def render() -> None:
-    if st.session_state.get(ANALYSIS_MODE) == "comparison":
-        page_title("同车多批次对比", "高级工具 · 比较同一车辆的历史运行批次", primary=True)
-        _render_batch_comparison()
-        return
-    page_title("分析工作台", "围绕一个批次，从运行曲线追溯异常，再核查证据和导出报告。", primary=True)
+def render_comparison() -> None:
+    page_title("批次对比", "按相对运行时间比较同一车辆的多个历史批次", primary=True)
+    _render_batch_comparison()
+
+
+def render(*, view=ANALYSIS) -> None:
+    page_title(view, {
+        ANALYSIS: "查看当前范围的速度、横向与垂向加速度曲线及统计。",
+        ANOMALIES: "按阈值核查异常区段和原始观测，定位到三维回放。",
+        REPORT: "确认车辆、范围与报告内容，再生成和下载 PDF。",
+    }[view], primary=True)
     control = "workbench_source_control"
     st.session_state[control] = st.session_state.get(WORKBENCH_SOURCE, "history")
 
@@ -1167,4 +1187,4 @@ def render() -> None:
 
     source = st.radio("数据来源", ("history", "demo"), key=control, horizontal=True, on_change=select_source,
                       format_func={"history": "历史导入批次", "demo": "内置虚构演示"}.get)
-    _render_dynamics_analysis(demo=source == "demo")
+    _render_dynamics_analysis(demo=source == "demo", view=view)

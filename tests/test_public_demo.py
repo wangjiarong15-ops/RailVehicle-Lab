@@ -32,7 +32,8 @@ class PublicDemoTests(unittest.TestCase):
             app = AppTest.from_file(str(Path(__file__).resolve().parents[1]/"app.py")).run()
             self.assertFalse(app.exception)
             navigation = [button.key.removeprefix("nav_") for button in app.sidebar.button]
-            self.assertEqual(navigation, ["分析工作台", "高级工具"])
+            self.assertEqual(navigation[:6], ["平台首页", "统计与异常演示", "异常检测", "AI 智能分析中心",
+                                               "三维转向架仿真", "分析报告"])
             self.assertEqual(app.session_state["navigation_page"], "统计与异常演示")
             self.assertFalse(app.file_uploader)
             self.assertFalse({"nav_车辆参数", "nav_运行分析", "nav_CSV 数据导入"} & {b.key for b in app.button})
@@ -50,9 +51,8 @@ class PublicDemoTests(unittest.TestCase):
                 ("fleet", "多车辆运行对比", "fleet_source"),
             ):
                 with self.subTest(page=page):
-                    app.sidebar.button(key="nav_高级工具").click().run()
-                    self.assertFalse({"nav_batch_comparison", "nav_ai_history"} & {b.key for b in app.button})
-                    app.button(key="nav_演示中心").click().run()
+                    self.assertFalse({"nav_批次对比", "nav_ai_history"} & {b.key for b in app.button})
+                    app.sidebar.button(key="nav_演示中心").click().run()
                     if app.button(key=f"launch_demo_{name}").disabled:
                         continue
                     app.button(key=f"launch_demo_{name}").click().run()
@@ -76,8 +76,7 @@ class PublicDemoTests(unittest.TestCase):
             app = AppTest.from_file(str(Path(__file__).resolve().parents[1]/"app.py"), default_timeout=30).run()
             for kind, action, state_key in (("ml", "ml_train", ML_KEY), ("vibration", "vibration_calculate", VIBRATION_KEY)):
                 with self.subTest(kind=kind):
-                    app.sidebar.button(key="nav_高级工具").click().run()
-                    app.button(key="nav_演示中心").click().run()
+                    app.sidebar.button(key="nav_演示中心").click().run()
                     if app.button(key=f"launch_demo_{kind}").disabled:
                         continue
                     app.button(key=f"launch_demo_{kind}").click().run()

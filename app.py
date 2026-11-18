@@ -14,10 +14,9 @@ from rail_vehicle.pages import demo_center, fleet_comparison
 from rail_vehicle.pages import home
 from rail_vehicle.pages import ai_center
 from rail_vehicle.pages import bogie
-from rail_vehicle.pages.data_workflow import clear_workbench_navigation
+from rail_vehicle.pages.data_workflow import clear_workbench_navigation, select_workspace_page
 from rail_vehicle.ui import (
-    ADVANCED_PAGES, ANALYSIS, ANALYSIS_MODE, DATA_PAGES, apply_design, initialize_theme, page_title,
-    render_advanced_navigation, render_data_navigation, render_navigation,
+    ANALYSIS, ANOMALIES, COMPARISON, REPORT, apply_design, initialize_theme, page_title, render_navigation,
 )
 
 
@@ -26,17 +25,14 @@ def main() -> None:
         page_title="轨道车辆异常分析与三维可视化平台",
         page_icon="🚆",
         layout="wide",
+        initial_sidebar_state="expanded",
     )
     public_demo = public_demo_enabled()
     if not public_demo:
         init_db()
 
     apply_design()
-    page = render_navigation(public_demo)
-    if page in DATA_PAGES:
-        render_data_navigation(page)
-    elif page in ADVANCED_PAGES or (page == ANALYSIS and st.session_state.get(ANALYSIS_MODE) == "comparison"):
-        render_advanced_navigation(page, public=public_demo)
+    page = render_navigation(public_demo, on_select=select_workspace_page)
     clear_workbench_navigation(page)
     if page != "动态运行驾驶舱":
         # Returning to the cockpit starts paused, never advances while hidden.
@@ -52,8 +48,13 @@ def main() -> None:
     elif page == "CSV 数据导入":
         page_title("CSV 数据导入", "数据工作台 / 文件上传 → 格式校验 → 预览 → 保存")
         run_analysis._render_import()
-    elif page == "运行分析":
-        run_analysis.render()
+    elif page in (ANALYSIS, ANOMALIES, REPORT):
+        if public_demo:
+            run_analysis.render_statistics_demo(view=page)
+        else:
+            run_analysis.render(view=page)
+    elif page == COMPARISON:
+        run_analysis.render_comparison()
     elif page == "动态运行驾驶舱":
         cockpit.render()
     elif page == "三维转向架仿真":

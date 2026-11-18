@@ -2,7 +2,7 @@
 
 import streamlit as st
 
-from rail_vehicle.ui import AI, ANALYSIS, ANALYSIS_MODE, BOGIE, DEMO_DATA, navigate
+from rail_vehicle.ui import AI, ANALYSIS, ANALYSIS_MODE, BATCH_VIEWS, BOGIE, COMPARISON, DEMO_DATA, REPORT, analysis_inputs, navigate
 
 
 ANALYSIS_TARGET = "analysis_batch_target"
@@ -13,31 +13,64 @@ WORKBENCH_SOURCE = "workbench_analysis_source"
 WORKBENCH_RETURN = "workbench_analysis_return"
 DEMO_EVIDENCE_SCOPE = "workbench_demo_evidence_scope"
 EVIDENCE_RETURN = "workbench_evidence_return"
-_WORKBENCH_WIDGET_PREFIXES = (
-    "dynamics_", "demo_dynamics_", "analysis_start_", "analysis_end_", "anomaly_review_event",
-    "anomaly_review_seconds", "history_sampling_", "demo_sampling_",
-)
+BATCH_HANDOFF = "workbench_batch_handoff"
 
 
 def remember_workbench_selection():
     """Keep UI inputs across a visit to the existing 3D or evidence view."""
     route = st.session_state.get("navigation_page")
-    if route not in (ANALYSIS, DEMO_DATA):
+    if route not in BATCH_VIEWS:
         return
-    inputs = {key: value for key, value in st.session_state.items()
-              if key.startswith(_WORKBENCH_WIDGET_PREFIXES)}
-    for key in (WORKBENCH_SOURCE, "analysis_threshold", "demo_analysis_threshold", ANALYSIS_REPLAY_SCOPE):
-        if key in st.session_state:
-            inputs[key] = st.session_state[key]
-    st.session_state[WORKBENCH_RETURN] = (route, inputs)
+    st.session_state[WORKBENCH_RETURN] = (route, analysis_inputs())
 
 
 def return_to_workbench(comparison=None):
     route, inputs = st.session_state.pop(WORKBENCH_RETURN)
-    st.session_state.update(inputs)
     if comparison is not None:
-        st.session_state[REPORT_COMPARISON] = comparison
-    navigate(route, **{ANALYSIS_MODE: "single"})
+        inputs[REPORT_COMPARISON] = comparison
+        if comparison.fictional:
+            inputs[WORKBENCH_SOURCE] = "demo"
+        route = REPORT
+    navigate(route, **{**inputs, ANALYSIS_MODE: "single"})
+
+
+def select_workspace_page(page):
+    """Carry only the result actually computed on the active batch view."""
+    current = st.session_state.get("navigation_page")
+    if current == page:
+        return
+    handoff = st.session_state.get(BATCH_HANDOFF) if current in BATCH_VIEWS else None
+    if handoff and page == AI:
+        # Local imports keep the link helpers reusable without an import cycle.
+        from rail_vehicle.pages.ai_link import _open_center
+        from rail_vehicle.pages.run_analysis import _open_demo_evidence
+        if handoff["target"]["fictional"]:
+            _open_demo_evidence(*handoff["demo_evidence"])
+        else:
+            _open_center("single")
+        return
+    if handoff and page == BOGIE:
+        remember_workbench_selection()
+        navigate(page, bogie_batch_target=handoff["target"])
+        return
+    if current == COMPARISON and page == AI:
+        from rail_vehicle.ai.center_state import current_context
+        from rail_vehicle.pages.ai_link import _open_center
+        if current_context(st.session_state, "batch") is not None:
+            _open_center("batch")
+            return
+    settings = {ANALYSIS_MODE: "single"}
+    if current == DEMO_DATA and page in BATCH_VIEWS:
+        settings[WORKBENCH_SOURCE] = "demo"
+    if handoff and not handoff["target"]["fictional"]:
+        vehicle_id = handoff["target"]["vehicle_id"]
+        if page == COMPARISON:
+            settings["comparison_vehicle_id"] = vehicle_id
+        elif page == "车辆参数":
+            settings["vehicle_focus_target"] = vehicle_id
+        elif page == "CSV 数据导入":
+            settings[IMPORT_VEHICLE] = vehicle_id
+    navigate(page, **settings)
 
 
 def remember_evidence_selection(*, fictional):
@@ -82,7 +115,7 @@ def render_replay_return():
     render_workbench_return("bogie_return_analysis")
 
 
-def open_analysis(vehicle_id, batch_id=None, *, threshold=None, scope=None):
+def open_analysis(vehicle_id, batch_id=None, *, threshold=None, scope=None, page=ANALYSIS):
     settings = {ANALYSIS_TARGET: {"vehicle_id": vehicle_id, "batch_id": batch_id},
                 "dynamics_vehicle_id": vehicle_id, WORKBENCH_SOURCE: "history", ANALYSIS_MODE: "single"}
     if batch_id is not None:
@@ -91,13 +124,14 @@ def open_analysis(vehicle_id, batch_id=None, *, threshold=None, scope=None):
         settings[ANALYSIS_TARGET]["threshold"] = threshold
     if scope is not None:
         settings[ANALYSIS_TARGET]["scope"] = scope
-    navigate("运行分析", **settings)
+    navigate(page, **settings)
 
 
-def analysis_button(container, *, label, key, vehicle_id, batch_id=None, threshold=None, scope=None, primary=False):
+def analysis_button(container, *, label, key, vehicle_id, batch_id=None, threshold=None, scope=None, primary=False,
+                    page=ANALYSIS):
     container.button(label, key=key, width="stretch", type="primary" if primary else "secondary",
                      on_click=open_analysis, args=(vehicle_id, batch_id),
-                     kwargs=dict(threshold=threshold, scope=scope))
+                     kwargs=dict(threshold=threshold, scope=scope, page=page))
 
 
 def import_button(container, *, label, key, vehicle_id=None, primary=False):

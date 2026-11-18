@@ -25,6 +25,7 @@ def review_app():
 
 
 def analysis_app():
+    import streamlit as st
     from unittest.mock import patch
     from rail_vehicle.pages import ai_center, run_analysis
     from rail_vehicle.ai.config import AIConfig
@@ -37,7 +38,7 @@ def analysis_app():
          patch.object(run_analysis, "list_vehicle_batches", return_value=batches), \
          patch.object(run_analysis, "list_batch_samples", return_value=samples()), \
          patch.object(ai_center.AIConfig, "from_sources", return_value=AIConfig(enabled=False)):
-        run_analysis._render_dynamics_analysis()
+        run_analysis._render_dynamics_analysis(view=st.session_state.get("navigation_page", "运行分析"))
 
 
 class AnomalyReviewTests(unittest.TestCase):
@@ -148,15 +149,25 @@ class AnomalyReviewTests(unittest.TestCase):
             self.assertFalse(app.exception)
             context = deepcopy(ai.call_args.kwargs["payload"])
             metrics = [(metric.label, metric.value) for metric in app.metric]
+            self.assertEqual(len(app.get("plotly_chart")), 3)
+            app.button(key="batch_continue_分析报告").click().run()
             app.button(key="generate_analysis_report").click().run()
             self.assertFalse(app.exception)
             self.assertFalse(app.error)
             pdf = app.session_state["analysis_report_pdf"]
             self.assertTrue(pdf.startswith(b"%PDF"))
+            app.button(key="batch_continue_异常检测").click().run()
+            event_metrics = [(metric.label, metric.value) for metric in app.metric]
             app.selectbox(key="anomaly_review_event").select(3).run()
             app.slider(key="anomaly_review_seconds").set_value(0).run()
             self.assertFalse(app.exception)
             self.assertEqual(app.session_state["analysis_report_pdf"], pdf)
             self.assertEqual(ai.call_args.kwargs["payload"], context)
+            self.assertEqual([(metric.label, metric.value) for metric in app.metric], event_metrics)
+            self.assertEqual(len(app.get("plotly_chart")), 1)
+            app.button(key="batch_continue_运行分析").click().run()
             self.assertEqual([(metric.label, metric.value) for metric in app.metric], metrics)
-            self.assertEqual(len(app.get("plotly_chart")), 4)
+            self.assertEqual(len(app.get("plotly_chart")), 3)
+            app.button(key="batch_continue_分析报告").click().run()
+            self.assertEqual(app.session_state["analysis_report_pdf"], pdf)
+            self.assertTrue(app.get("download_button"))

@@ -89,6 +89,7 @@ def test_workbench_uses_projection_for_time_window_but_preserves_exact_replay_ro
                      side_effect=lambda vid, bid, start, end: run_data.list_batch_sample_window(vid, bid, start, end, path)) as projected,
     ):
         app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"), default_timeout=15).run()
+        app.sidebar.button(key="nav_运行分析").click().run()
         assert not app.exception and full.called
         app.time_input(key=f"analysis_start_time_{vehicle}_{batch}").set_value(time(9, 30, 1)).run()
         full.reset_mock()
@@ -139,6 +140,7 @@ def test_same_time_window_round_trip_preserves_chart_evidence_and_report(history
     get_vehicle = run_analysis.get_vehicle
     monkeypatch.setattr(run_analysis, "get_vehicle", lambda vid: get_vehicle(vid, path))
     app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"), default_timeout=20).run()
+    app.sidebar.button(key="nav_运行分析").click().run()
     app.button(key="analysis_replay_batch").click().run()
     app.number_input(key="bogie_loop_before").set_value(0.)
     app.number_input(key="bogie_loop_after").set_value(0.).run()
@@ -153,6 +155,7 @@ def test_same_time_window_round_trip_preserves_chart_evidence_and_report(history
     assert lateral["data"][0]["y"] == [2., 3.]
 
     with patch.object(run_analysis, "generate_analysis_report_pdf", wraps=run_analysis.generate_analysis_report_pdf) as report:
+        app.sidebar.button(key="nav_分析报告").click().run()
         app.button(key="generate_analysis_report").click().run()
         payload = report.call_args.args[0]
         assert payload["replay_rows"] == (2, 3) and payload["sample_count"] == 2

@@ -278,10 +278,9 @@ def render():
         if st.session_state.get("ai_center_kind") not in available:
             st.session_state["ai_center_kind"] = next(iter(available))
         kind = st.selectbox("分析类型", list(available), format_func=lambda value: CONTEXTS[value][0], key="ai_center_kind")
-        destination = {"single": "运行分析", "batch": "运行分析", "ml": "机器学习异常检测",
+        destination = {"single": "运行分析", "batch": "批次对比", "ml": "机器学习异常检测",
                        "vibration": "振动与平稳性分析", "fleet": "多车辆运行对比"}[kind]
-        return_options = {ANALYSIS_MODE: "comparison" if kind == "batch" else "single",
-                          WORKBENCH_SOURCE: "history"} if kind in {"single", "batch"} else None
+        return_options = {ANALYSIS_MODE: "single", WORKBENCH_SOURCE: "history"} if kind == "single" else None
         if kind == "single" and WORKBENCH_RETURN in st.session_state:
             st.button("返回分析页面", on_click=return_to_workbench)
         else:

@@ -45,17 +45,18 @@ class SamplingQualityPageTests(unittest.TestCase):
             app = AppTest.from_function(analysis_app).run()
             self.assertFalse(app.exception)
             context = deepcopy(ai.call_args.kwargs["payload"])
+            metrics = {metric.label: metric.value for metric in app.metric}
+            app.button(key="batch_continue_异常检测").click().run()
+            anomaly_points = {metric.label: metric.value for metric in app.metric}["数据异常点"]
+            app.button(key="batch_continue_分析报告").click().run()
             app.button(key="generate_analysis_report").click().run()
             self.assertFalse(app.exception)
             pdf = app.session_state["analysis_report_pdf"]
-            metrics = {metric.label: metric.value for metric in app.metric}
             app.number_input(key="history_sampling_1_1_expected_interval").set_value(.1).run()
             self.assertFalse(app.exception)
             updated = {metric.label: metric.value for metric in app.metric}
             self.assertEqual(metrics["长采样间隔"], "1")
             self.assertEqual(updated["长采样间隔"], "4")
-            self.assertEqual(metrics["数据异常点"], updated["数据异常点"])
-            self.assertEqual(metrics["平均速度（km/h）"], updated["平均速度（km/h）"])
             self.assertEqual(ai.call_args.kwargs["payload"], context)
             self.assertNotIn("analysis_report_pdf", app.session_state)
             self.assertEqual(len(app.get("download_button")), 0)
@@ -66,6 +67,12 @@ class SamplingQualityPageTests(unittest.TestCase):
             app.number_input(key="history_sampling_1_1_gap_multiplier").set_value(100.).run()
             self.assertNotIn("analysis_report_pdf", app.session_state)
             self.assertEqual(len(app.get("download_button")), 0)
+            app.button(key="batch_continue_运行分析").click().run()
+            updated = {metric.label: metric.value for metric in app.metric}
+            self.assertEqual(metrics["平均速度（km/h）"], updated["平均速度（km/h）"])
+            app.button(key="batch_continue_异常检测").click().run()
+            updated = {metric.label: metric.value for metric in app.metric}
+            self.assertEqual(anomaly_points, updated["数据异常点"])
 
     def test_rule_changes_recompute_gaps_and_keep_other_results(self):
         app = AppTest.from_function(quality_app)

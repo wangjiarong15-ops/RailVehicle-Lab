@@ -104,7 +104,7 @@ def actual_run_source_app():
     from rail_vehicle.pages import ai_center, run_analysis
     if st.session_state.get("navigation_page") == "AI 智能分析中心":
         ai_center.render()
-    elif st.session_state.get("test_kind") == "batch":
+    elif st.session_state.get("navigation_page") == "批次对比":
         run_analysis._render_batch_comparison()
     else:
         run_analysis._render_dynamics_analysis()
@@ -128,7 +128,8 @@ def test_actual_run_analysis_round_trip_preserves_selection_and_invalidates_chan
          patch.object(ai_center.AIConfig, "from_sources", return_value=config), \
          patch.object(ai_center, "create_configured_provider", return_value=LocalFake()) as factory:
         app = AppTest.from_function(actual_run_source_app, default_timeout=20)
-        app.session_state["test_kind"] = kind
+        source_page = "批次对比" if kind == "batch" else "运行分析"
+        app.session_state["navigation_page"] = source_page
         app.run()
         assert not app.exception
         if kind == "single":
@@ -142,7 +143,7 @@ def test_actual_run_analysis_round_trip_preserves_selection_and_invalidates_chan
         assert app.session_state[result_key]["scope_validation"] == "verified"
         next(button for button in app.button if button.label == "返回分析页面").click().run()
         assert not app.exception
-        assert app.session_state["navigation_page"] == "运行分析"
+        assert app.session_state["navigation_page"] == source_page
         assert result_key in app.session_state
         if kind == "single":
             assert app.number_input(key="analysis_threshold").value == 1.5
@@ -222,7 +223,7 @@ def test_all_five_contexts_accept_only_their_own_aggregate_types():
 
 
 def test_each_center_context_returns_to_its_source_without_calling_provider():
-    targets = {"single": "运行分析", "batch": "运行分析", "ml": "机器学习异常检测",
+    targets = {"single": "运行分析", "batch": "批次对比", "ml": "机器学习异常检测",
                "vibration": "振动与平稳性分析", "fleet": "多车辆运行对比"}
     state = {}
     for kind, payload in all_fictional_payloads().items():

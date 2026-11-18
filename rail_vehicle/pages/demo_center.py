@@ -35,7 +35,7 @@ DEMOS = {
         settings=dict(fleet_source="内置虚构对比"), clear=("fleet_comparison_result", "experiment_fleet_ai")),
     "statistics": dict(page="统计与异常演示", title="1 · 统计与异常回查", dependency=None,
         description="用两批虚构数据展示时间筛选、统计指标、异常区段和局部回查。",
-        steps="点击“计算虚构运行分析”；选择批次、调整阈值、展开事件回查，再导出离线 PDF。",
+        steps="点击“计算虚构运行分析”；选择批次、调整阈值，随后从侧栏进入“异常检测”回查事件，或进入“分析报告”导出离线 PDF。",
         settings=dict(demo_analysis_threshold=1.0),
         clear=("statistics_demo_started", "demo_analysis_report_key", "demo_analysis_report_pdf")),
     "bogie": dict(page="三维转向架仿真", title="2 · 三维回放", dependency=None,

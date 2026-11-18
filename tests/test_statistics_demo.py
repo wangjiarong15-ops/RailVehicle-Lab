@@ -58,10 +58,12 @@ class StatisticsDemoTests(unittest.TestCase):
             self.assertFalse(app.exception)
             self.assertTrue(calculate.called)
             self.assertTrue(any("120" in item.value for item in app.markdown))
-            self.assertEqual(len(app.get("plotly_chart")), 4)
-            labels = [tab.label for tab in app.tabs]
-            self.assertTrue(all(label in labels for label in ("运行曲线", "采样质量", "异常事件", "PDF 报告")))
+            self.assertEqual(len(app.get("plotly_chart")), 3)
+            self.assertTrue(all(app.sidebar.button(key=f"nav_{route}") for route in ("异常检测", "分析报告")))
+            self.assertTrue(any("采样质量" in section.label for section in app.expander))
             self.assertTrue(any("内置虚构演示" in item.value for item in app.caption))
+            app.sidebar.button(key="nav_异常检测").click().run()
+            self.assertEqual(len(app.get("plotly_chart")), 1)
             text = " ".join(item.value for item in [*app.markdown, *app.caption])
             self.assertIn("基础结果说明（无需 AI）", [item.label for item in app.expander])
             self.assertIn("5 条（4.17%）", text)
@@ -72,6 +74,7 @@ class StatisticsDemoTests(unittest.TestCase):
     def test_threshold_changes_existing_rule_metrics_and_removes_event_review(self):
         app = self.app()
         app.button(key="statistics_demo_calculate").click().run()
+        app.sidebar.button(key="nav_异常检测").click().run()
         metrics = {metric.label: metric.value for metric in app.metric}
         self.assertEqual(metrics["数据异常点"], "5")
         self.assertEqual(metrics["统计异常区段"], "2")
@@ -79,7 +82,7 @@ class StatisticsDemoTests(unittest.TestCase):
         self.assertFalse(app.exception)
         self.assertEqual({metric.label: metric.value for metric in app.metric}["数据异常点"], "0")
         self.assertTrue(any("0 条（0.00%）" in item.value for item in app.markdown))
-        self.assertEqual(len(app.get("plotly_chart")), 3)
+        self.assertEqual(len(app.get("plotly_chart")), 0)
 
     def test_workspace_event_evidence_and_pdf_share_current_fictional_scope(self):
         with patch.object(run_analysis, "build_analysis_report_data", wraps=run_analysis.build_analysis_report_data) as build:
@@ -88,12 +91,14 @@ class StatisticsDemoTests(unittest.TestCase):
             app.selectbox(key="demo_dynamics_batch_id").set_value(-2).run()
             app.time_input(key="analysis_end_time_-1_-2").set_value(time(9, 31, 15)).run()
             app.number_input(key="demo_analysis_threshold").set_value(1.1).run()
-            app.selectbox(key="anomaly_review_event").set_value(1).run()
             samples = analysis_demo_data()[2][-2][:76]
             expected = analyze_run_data(samples, 1.1)
             events = detect_anomalies(samples, 1.1)["events"]
             self.assertEqual(len(events), 2)
             self.assertEqual({m.label: m.value for m in app.metric}["平均速度（km/h）"], f"{expected['speed']['mean']:.3f}")
+            app.sidebar.button(key="nav_异常检测").click().run()
+            self.assertEqual(app.number_input(key="demo_analysis_threshold").value, 1.1)
+            app.selectbox(key="anomaly_review_event").set_value(1).run()
 
             app.button(key="run_analysis_bogie_jump").click().run()
             self.assertFalse(app.exception)
@@ -104,7 +109,7 @@ class StatisticsDemoTests(unittest.TestCase):
             self.assertEqual(app.selectbox(key="anomaly_review_event").value, 1)
             self.assertEqual(app.time_input(key="analysis_end_time_-1_-2").value, time(9, 31, 15))
 
-            app.button(key="workbench_demo_evidence").click().run()
+            app.sidebar.button(key="nav_AI 智能分析中心").click().run()
             self.assertFalse(app.exception)
             payload, selection, _ = app.session_state[DEMO_EVIDENCE_SCOPE]
             self.assertEqual(payload["sample_count"], expected["sample_count"])
@@ -125,6 +130,7 @@ class StatisticsDemoTests(unittest.TestCase):
             app.button(key="ai_demo_return_analysis").click().run()
             self.assertEqual(app.selectbox(key="demo_dynamics_batch_id").value, -2)
             self.assertEqual(app.time_input(key="analysis_end_time_-1_-2").value, time(9, 31, 15))
+            app.sidebar.button(key="nav_分析报告").click().run()
             app.button(key="demo_generate_analysis_report").click().run()
             self.assertFalse(app.exception)
             self.assertTrue(app.session_state["demo_analysis_report_pdf"].startswith(b"%PDF"))
@@ -137,6 +143,7 @@ class StatisticsDemoTests(unittest.TestCase):
         app.session_state["ai_single_batch_result"] = {"private": "preserve"}
         app.session_state["analysis_report_pdf"] = b"PRIVATE PDF"
         app.button(key="statistics_demo_calculate").click().run()
+        app.sidebar.button(key="nav_异常检测").click().run()
         app.time_input(key="analysis_end_time_-1_-1").set_value(time(9, 30, 10)).run()
         self.assertTrue(any("11" in item.value for item in app.markdown if "分析样本数" in item.value))
         self.assertEqual({metric.label: metric.value for metric in app.metric}["数据异常点"], "0")
@@ -151,6 +158,7 @@ class StatisticsDemoTests(unittest.TestCase):
             app = self.app()
             app.session_state["ai_single_batch_result"] = {"status": "available", "analysis": "must not enter demo"}
             app.button(key="statistics_demo_calculate").click().run()
+            app.sidebar.button(key="nav_分析报告").click().run()
             app.button(key="demo_generate_analysis_report").click().run()
             self.assertFalse(app.exception)
             self.assertFalse(app.error)
@@ -183,6 +191,7 @@ class StatisticsDemoTests(unittest.TestCase):
             app = self.app()
             app.session_state["analysis_report_pdf"] = b"PRIVATE"
             app.button(key="statistics_demo_calculate").click().run()
+            app.sidebar.button(key="nav_分析报告").click().run()
             app.button(key="demo_generate_analysis_report").click().run()
             self.assertIsNone(build.call_args.kwargs["sampling_expected_interval_seconds"])
             self.assertEqual(build.call_args.kwargs["sampling_gap_multiplier"], 3.)

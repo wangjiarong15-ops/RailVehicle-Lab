@@ -25,8 +25,7 @@ class DemoCenterTests(unittest.TestCase):
 
     def app(self):
         app = AppTest.from_file(str(Path(__file__).resolve().parents[1]/"app.py"), default_timeout=15).run()
-        app.sidebar.button(key="nav_高级工具").click().run()
-        app.button(key="nav_演示中心").click().run()
+        app.sidebar.button(key="nav_演示中心").click().run()
         self.assertEqual(len(app.exception), 0)
         return app
 
@@ -47,11 +46,12 @@ class DemoCenterTests(unittest.TestCase):
               patch.object(ai_center, "create_configured_provider", side_effect=AssertionError("API request"))):
             app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"), default_timeout=15).run()
             self.assertEqual(app.session_state["navigation_page"], "统计与异常演示")
-            app.sidebar.button(key="nav_高级工具").click().run()
+            app.sidebar.button(key="nav_平台首页").click().run()
             app.button(key="launch_demo_statistics").click().run()
             app.button(key="statistics_demo_calculate").click().run()
             app.selectbox(key="demo_dynamics_batch_id").set_value(-2).run()
             app.number_input(key="demo_analysis_threshold").set_value(1.1).run()
+            app.sidebar.button(key="nav_异常检测").click().run()
             app.button(key="run_analysis_bogie_jump").click().run()
             self.assertFalse(app.exception)
             self.assertEqual(app.selectbox(key="bogie_demo_batch").value, -2)

@@ -11,7 +11,7 @@ assert(["127.0.0.1", "localhost"].includes(url.hostname), "Use only a local test
 url.searchParams.set("embed_options", "dark_theme");
 const output = resolve(process.argv[3] || "screenshots");
 const button = (page, name) => page.getByRole("button", { name, exact: true });
-const tab = (page, name) => page.getByRole("tab", { name, exact: true });
+const nav = (page, name) => page.getByTestId("stSidebar").getByRole("button", { name: new RegExp(`${name}$`) });
 const widget = (page, key) => page.locator(`.st-key-${key}`);
 
 async function capture(page, name) {
@@ -142,13 +142,12 @@ async function main() {
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.goto(url.href);
-    await page.getByRole("heading", { name: "分析工作台", exact: true }).waitFor();
-    await tab(page, "运行曲线").waitFor();
+    await nav(page, "运行分析").click();
     await page.getByTestId("stPlotlyChart").first().waitFor();
     await checkViewport(page);
     await capture(page, "01-analysis-workbench");
 
-    await tab(page, "异常事件").click();
+    await nav(page, "异常检测").click();
     await button(page, "在三维回放中查看此区段").click();
     await page.getByText("已定位到所选统计证据的异常样本。", { exact: true }).waitFor();
     await page.frameLocator('iframe[title*=bogie_viewer]').first()
@@ -196,7 +195,7 @@ async function main() {
 
     await button(page, "返回分析页面").click();
     await attached.waitFor();
-    await tab(page, "PDF 报告").click();
+    await page.getByRole("heading", { name: "分析报告", exact: true }).waitFor();
     await button(page, "生成 PDF 分析报告").click();
     await page.getByText("分析报告已生成，可以下载 PDF 文件。", { exact: true }).waitFor();
     const [download] = await Promise.all([
@@ -211,7 +210,7 @@ async function main() {
     await button(page, "下载 PDF 报告").waitFor({state: "hidden"});
 
     await page.setViewportSize({ width: 1366, height: 768 });
-    await tab(page, "运行曲线").click();
+    await nav(page, "运行分析").click();
     await page.getByTestId("stPlotlyChart").first().waitFor();
     await checkViewport(page);
     await capture(page, "05-workbench-1366");

@@ -53,6 +53,7 @@ def test_workbench_and_offline_ai_evidence_jump_to_the_same_second_event(tmp_pat
         monkeypatch.setattr(page, "list_batch_samples", lambda *_: rows)
 
     app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"), default_timeout=20).run()
+    app.sidebar.button(key="nav_异常检测").click().run()
     assert not app.exception
     app.selectbox(key="anomaly_review_event").set_value(1).run()
     app.button(key="run_analysis_bogie_jump").click().run()
