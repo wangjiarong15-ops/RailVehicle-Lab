@@ -17,3 +17,6 @@ data/
 
 # Temporary PDF generation and rendering artifacts
 tmp/pdfs/
+
+tmp/browser-qa/
+tmp/browser-tools/

@@ -514,6 +514,21 @@ python -m pytest -q
 
 测试还会用临时 SQLite 数据库运行 Streamlit 的车辆页和运行分析页基础启动检查，不会修改项目本机数据库。
 
+### 浏览器回归
+
+安装项目和 Node.js 后，在仓库目录执行：
+
+```powershell
+npm install --prefix tmp/browser-tools --no-save playwright@1.58.2
+node tmp/browser-tools/node_modules/playwright/cli.js install --only-shell chromium
+$env:RAIL_PLAYWRIGHT_MODULE = (Resolve-Path tmp/browser-tools/node_modules/playwright).Path
+python -m scripts.run_browser_checks
+```
+
+如果本机已有 Edge，也可把 `RAIL_BROWSER_PATH` 指向它的可执行文件；仍需安装 Playwright，但可省略下载 Chromium。可以加 `--suite resume` 只跑刷新、主题与事件定位，或加 `--suite frontend` 只跑导航、三维 GLB 和 PDF。完整检查会自动启动本机 Streamlit、使用临时虚构数据库并关闭服务；日志和截图分别保存在 `tmp/browser-qa/run-*` 的每次运行目录中。
+
+GitHub Actions 的 `browser regression` 在指向 `main` 的 PR、推送到 `main` 或 V0.5 工作台开发分支时执行，也可手动运行。它使用 Chromium 在 1366×768、1920×1080 两种尺寸检查工作台，并保留截图和日志 14 天。浏览器回归关闭在线 AI，不读取本机实际数据库或 AI 密钥。
+
 ## 目录结构
 
 ```text

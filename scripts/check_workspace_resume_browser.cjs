@@ -13,6 +13,8 @@ const button = (page, key) => page.locator(`.st-key-${key} button:visible`);
 const nav = (page, label) => page.getByTestId("stSidebar").getByRole("button", { name: new RegExp(`${label}$`) });
 const status = page => page.locator(".st-key-bogie_status_card");
 const event = page => page.locator(".st-key-anomaly_review_event");
+const stayLocal = page => page.route("**/*", route => new URL(route.request().url()).origin === address.origin ||
+  /^(blob:|data:)/.test(route.request().url()) ? route.continue() : route.abort());
 const saved = (page, name, index) => page.waitForFunction(([name, index]) => {
   const key = Object.keys(sessionStorage).find(key => key.startsWith("rail_workspace_v1:"));
   if (!key) return false;
@@ -27,7 +29,7 @@ async function theme(page, label, mode) {
 }
 
 async function audit(browser, width, height) {
-  const page = await browser.newPage({ viewport: { width, height }, acceptDownloads: true });
+  const page = await browser.newPage({ viewport: { width, height }, locale: "en-US", timezoneId: "UTC" });
   page.setDefaultTimeout(30000);
   const errors = [];
   page.on("pageerror", error => errors.push(String(error)));
@@ -125,8 +127,21 @@ async function audit(browser, width, height) {
     await heading(page, "异常检测").waitFor();
     await page.getByText(/未继续打开旧证据/).waitFor();
     assert.equal(await heading(page, "AI 分析中心").count(), 0);
+    // Copying the URL into a separate browser context cannot restore this tab's selection.
+    const fresh = await browser.newPage({ viewport: { width, height } });
+    try {
+      await stayLocal(fresh);
+      await fresh.goto(page.url());
+      await heading(fresh, "工程工作台").waitFor();
+      assert.equal(await fresh.getByTestId("stException").count(), 0);
+    } finally {
+      await fresh.close();
+    }
     assert.deepEqual(errors, []);
-    console.log(JSON.stringify({width, height, restoredSamples: 76, event: "event.vertical.001", row: 71, staleRejected: true}));
+    console.log(JSON.stringify({width, height, restoredSamples: 76, event: "event.vertical.001", row: 71, staleRejected: true, freshTabIsolated: true}));
+  } catch (error) {
+    await page.screenshot({ path: resolve(output, `${width}-failure.png`) }).catch(() => {});
+    throw error;
   } finally {
     await page.close();
   }

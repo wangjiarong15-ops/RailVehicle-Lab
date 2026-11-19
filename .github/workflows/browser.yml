@@ -1,0 +1,49 @@
+name: browser regression
+
+on:
+  push:
+    branches: [main, 'codex/v05-core-workflow-*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser:
+    name: Chromium / workbench and context restore
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install project dependencies
+        run: python -m pip install -e .
+      - name: Install Playwright and Chromium
+        run: |
+          tools="${RUNNER_TEMP}/rail-browser-tools"
+          npm install --prefix "$tools" --no-save --no-audit --no-fund playwright@1.58.2
+          node "$tools/node_modules/playwright/cli.js" install --with-deps --only-shell chromium
+          printf 'RAIL_PLAYWRIGHT_MODULE=%s\n' "$tools/node_modules/playwright" >> "$GITHUB_ENV"
+      - name: Run headless browser regression on fictional data
+        run: python -m scripts.run_browser_checks --output tmp/browser-qa
+      - name: Upload browser screenshots and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rail-browser-regression
+          path: tmp/browser-qa/
+          retention-days: 14
+          if-no-files-found: ignore
