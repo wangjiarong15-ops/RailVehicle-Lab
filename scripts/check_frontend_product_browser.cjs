@@ -153,12 +153,25 @@ async function audit(browser, width, height) {
     await save("10-comparison");
     await open("运行分析", "运行分析");
     await expectThreshold();
+    // A Streamlit update can remove aria-expanded from the sidebar container.
+    // Check the sidebar's actual viewport geometry after its transition settles.
+    const sidebarInViewport = (expanded) => page.waitForFunction((shouldBeOpen) => {
+      const node = document.querySelector('[data-testid="stSidebar"]');
+      if (!node) return !shouldBeOpen;
+      const { left, right, width, height } = node.getBoundingClientRect();
+      const visibleWidth = getComputedStyle(node).visibility === "hidden"
+        ? 0 : Math.max(0, Math.min(right, window.innerWidth) - Math.max(left, 0));
+      return shouldBeOpen ? width > 100 && height > 0 && visibleWidth >= width - 1
+        : visibleWidth <= 1 || height === 0;
+    }, expanded);
     await page.getByTestId("stSidebarCollapseButton").locator("button").click();
-    await page.getByTestId("stExpandSidebarButton").waitFor();
-    assert.equal(await sidebar(page).getAttribute("aria-expanded"), "false");
-    await page.getByTestId("stExpandSidebarButton").click();
-    await nav(page, "运行分析").waitFor();
-    assert.equal(await sidebar(page).getAttribute("aria-expanded"), "true");
+    const expand = page.getByTestId("stExpandSidebarButton");
+    await expand.waitFor();
+    await sidebarInViewport(false);
+    await expand.click();
+    await expand.waitFor({ state: "hidden" });
+    await sidebarInViewport(true);
+    await nav(page, "运行分析").and(page.getByTestId("stBaseButton-primary")).waitFor();
     await expectThreshold();
     const light = new URL(address);
     light.searchParams.set("embed_options", "light_theme");
