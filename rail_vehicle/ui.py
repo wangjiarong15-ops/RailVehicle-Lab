@@ -229,8 +229,8 @@ _SPECIALTY = ((DEMO_DATA, "虚构数据分析", "science"), *zip(ADVANCED_PAGES,
 
 def render_navigation(public, on_select=navigate):
     core = ((DEMO_DATA, "虚构数据分析", "monitoring"), _CORE[1], _CORE[3]) if public else _CORE
-    groups = (("工作空间", _WORKSPACE[:1] if public else _WORKSPACE),
-              ("核心分析", core), ("工程应用", _ENGINEERING))
+    groups = (("工作台", _WORKSPACE[:1] if public else _WORKSPACE),
+              ("工程分析", core + _ENGINEERING))
     specialty = _SPECIALTY[1:] if public else _SPECIALTY
     allowed = {route for _, rows in groups for route, _, _ in rows} | {row[0] for row in specialty}
     aliases = {label: route for _, rows in groups for route, label, _ in rows}
@@ -264,6 +264,7 @@ def render_navigation(public, on_select=navigate):
             with st.expander("专项工具", icon=":material/tune:", expanded=selected in {r[0] for r in specialty}):
                 with st.container(gap="xxsmall"):
                     render_rows(specialty)
+            st.html('<div class="rv-nav-label">系统管理</div>')
             with st.container(horizontal=True, gap="xsmall"):
                 with st.popover("设置", icon=":material/settings:"):
                     st.markdown("**系统设置 · 工作空间外观**")

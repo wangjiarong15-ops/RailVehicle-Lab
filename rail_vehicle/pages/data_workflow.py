@@ -14,6 +14,12 @@ WORKBENCH_RETURN = "workbench_analysis_return"
 DEMO_EVIDENCE_SCOPE = "workbench_demo_evidence_scope"
 EVIDENCE_RETURN = "workbench_evidence_return"
 BATCH_HANDOFF = "workbench_batch_handoff"
+AI_REPLAY_SCOPE = "workbench_ai_replay_scope"
+
+
+def evidence_replay_scope(selection):
+    scoped = st.session_state.get(AI_REPLAY_SCOPE)
+    return scoped[1] if scoped and scoped[0] == selection else None
 
 
 def remember_workbench_selection():
@@ -50,7 +56,7 @@ def select_workspace_page(page):
         if handoff["target"]["fictional"]:
             _open_demo_evidence(*handoff["demo_evidence"])
         else:
-            _open_center("single")
+            _open_center("single", handoff["evidence_id"], handoff["evidence_selection"], handoff["target"].get("scope"))
         return
     if handoff and page == BOGIE:
         remember_workbench_selection()
@@ -100,6 +106,7 @@ def return_to_evidence():
 def clear_workbench_navigation(page):
     if page not in (AI, BOGIE):
         st.session_state.pop(WORKBENCH_RETURN, None)
+        st.session_state.pop(AI_REPLAY_SCOPE, None)
     if page != BOGIE:
         st.session_state.pop(EVIDENCE_RETURN, None)
     if page != AI and EVIDENCE_RETURN not in st.session_state:
@@ -111,6 +118,14 @@ def render_workbench_return(key):
         st.button("返回原分析范围", key=key, icon=":material/arrow_back:", on_click=return_to_workbench)
 
 
+def render_original_report_link(key):
+    origin = st.session_state.get(WORKBENCH_RETURN)
+    if origin is not None and origin[0] in BATCH_VIEWS and origin[0] != REPORT:
+        st.button("按原分析范围准备报告", key=key, icon=":material/description:",
+                  help="沿用进入当前页面前的批次、范围和异常阈值。",
+                  on_click=return_to_workbench, kwargs={"prepare_report": True})
+
+
 def render_replay_return():
     if EVIDENCE_RETURN in st.session_state:
         st.button("返回证据核查", key="bogie_return_evidence", icon=":material/arrow_back:",
@@ -120,10 +135,8 @@ def render_replay_return():
         return
     with st.container(horizontal=True, vertical_alignment="center"):
         render_workbench_return("bogie_return_analysis")
-        if origin[0] in (ANALYSIS, ANOMALIES, DEMO_DATA) and EVIDENCE_RETURN not in st.session_state:
-            st.button("按原分析范围准备报告", key="bogie_original_report", icon=":material/description:",
-                      help="沿用进入三维前的批次、范围和异常阈值。",
-                      on_click=return_to_workbench, kwargs={"prepare_report": True})
+        if EVIDENCE_RETURN not in st.session_state:
+            render_original_report_link("bogie_original_report")
 
 
 def open_analysis(vehicle_id, batch_id=None, *, threshold=None, scope=None, page=ANALYSIS):

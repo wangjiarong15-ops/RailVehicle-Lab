@@ -11,7 +11,7 @@ from streamlit.testing.v1 import AppTest
 from rail_vehicle import db, run_data
 from rail_vehicle.demo_data import analysis_demo_data
 from rail_vehicle.pages import bogie, run_analysis
-from rail_vehicle.pages.data_workflow import ANALYSIS_REPLAY_SCOPE, REPORT_COMPARISON
+from rail_vehicle.pages.data_workflow import ANALYSIS_REPLAY_SCOPE, BATCH_HANDOFF, REPORT_COMPARISON
 from rail_vehicle.replay import prepare_replay
 from rail_vehicle.replay_evidence import ReplayEvidenceScope, ReportComparison
 from rail_vehicle.time_filter import filter_samples_by_time_range
@@ -98,6 +98,7 @@ def test_workbench_uses_projection_for_time_window_but_preserves_exact_replay_ro
         full.assert_not_called()
         projected.assert_called_once_with(vehicle, batch, START, END)
         assert any("4 条" in item.value for item in app.markdown if "分析样本数" in item.value)
+        assert app.session_state[BATCH_HANDOFF]["target"]["scope"] == ReplayEvidenceScope(1, 4, 7, START, END)
 
         app.session_state[REPORT_COMPARISON] = comparison
         projected.reset_mock()
@@ -122,6 +123,19 @@ def test_workbench_uses_projection_for_time_window_but_preserves_exact_replay_ro
         full.assert_called_once_with(vehicle, batch)
         assert any("1 条" in item.value for item in app.markdown if "分析样本数" in item.value)
         assert {metric.label: metric.value for metric in app.metric}["平均速度（km/h）"] == "73.000"
+
+
+def test_analysis_slice_checks_row_range_and_timestamps(history):
+    path, vehicle, batch = history
+    track = prepare_replay(run_data.list_batch_samples(vehicle, batch, path))
+    fragment = track.samples[1:5]
+    scope = ReplayEvidenceScope.from_analysis_slice(fragment, first_row=1, batch_count=7)
+    assert (scope.first_row, scope.last_row, scope.count) == (1, 4, 4)
+    assert scope.matches_track(track)
+    assert not scope.matches_track(prepare_replay(track.samples[:-1]))
+    assert ReplayEvidenceScope.from_analysis_slice(track.samples, first_row=0, batch_count=7) is None
+    with pytest.raises(ValueError):
+        ReplayEvidenceScope.from_analysis_slice(fragment, first_row=4, batch_count=7)
 
 
 def test_same_time_window_round_trip_preserves_chart_evidence_and_report(history, monkeypatch):

@@ -210,6 +210,33 @@ async function localAudit(page, address) {
   await page.getByText(/当前会话还没有可核查的分析结果/).waitFor();
   await page.locator(".st-key-ai_center_open_analysis button").click();
   await heading(page, "运行分析").waitFor();
+
+  await nav(page, "车辆管理").click();
+  await page.locator(".st-key-vehicle_add button").click();
+  await dialog.getByRole("textbox", exact("车辆编号 *")).fill("PRODUCT-QA-002");
+  await dialog.getByRole("textbox", exact("车型 *")).fill("虚构验收车型二");
+  await dialog.getByRole("button", exact("保存车辆")).click();
+  await dialog.waitFor({state: "detached"});
+  await nav(page, "数据管理").click();
+  await page.getByTestId("stFileUploader").locator('input[type="file"]').setInputFiles({
+    name: "fictional-product-multi.csv", mimeType: "text/csv",
+    buffer: Buffer.from([
+      "timestamp,vehicle_id,speed_kmh,lateral_accel,vertical_accel",
+      "2026-10-09T09:30:00Z,PRODUCT-QA-001,75,0.1,0.1",
+      "2026-10-09T09:30:00Z,PRODUCT-QA-002,76,0.2,2.1",
+      "2026-10-09T09:30:01Z,PRODUCT-QA-002,77,0.2,0.3",
+    ].join("\n")),
+  });
+  await page.getByText("格式检查通过，可以导入。", {exact: true}).waitFor();
+  await page.getByRole("button", exact("导入到 SQLite")).click();
+  await page.getByText(/导入成功：批次 #2，共保存 3 行/).waitFor();
+  const receiptVehicle = page.locator(".st-key-import_receipt_vehicle_2").getByRole("combobox");
+  await receiptVehicle.click();
+  await page.getByRole("option", exact("PRODUCT-QA-002 · 2 条")).click();
+  await screenshot(page, "local-import-multi");
+  await page.locator(".st-key-import_anomalies_selected button").click();
+  await heading(page, "异常检测").waitFor();
+  await page.getByText(/分析样本数.*2 条.*异常区段.*1 个/).waitFor();
   assert.equal(await page.getByTestId("stException").count(), 0);
 }
 
@@ -245,7 +272,7 @@ async function withPage(browser, address, width, height, audit) {
     }
     if (local) {
       await withPage(browser, local, 1366, 768, localAudit);
-      console.log("Local workspace passed at 1366x768: offline trial leaves SQLite empty; synthetic CSV, linked GLB replay and original-scope PDF.");
+      console.log("Local workspace passed at 1366x768: offline trial leaves SQLite empty; single- and multi-vehicle CSV, linked GLB replay and original-scope PDF.");
     }
   } finally {
     await browser.close();

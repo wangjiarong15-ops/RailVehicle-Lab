@@ -18,7 +18,8 @@ from rail_vehicle.deployment import public_demo_enabled
 from rail_vehicle.event_anchor import anchors_by_evidence
 from rail_vehicle.pages.bogie_link import event_replay_button
 from rail_vehicle.pages.data_workflow import (
-    DEMO_EVIDENCE_SCOPE, WORKBENCH_RETURN, WORKBENCH_SOURCE, render_workbench_return, return_to_workbench,
+    DEMO_EVIDENCE_SCOPE, WORKBENCH_RETURN, WORKBENCH_SOURCE, evidence_replay_scope,
+    render_original_report_link, render_workbench_return, return_to_workbench,
 )
 from rail_vehicle.ui import ANALYSIS_MODE, navigate, page_title
 
@@ -38,14 +39,15 @@ def _render_history():
             st.caption("仅保留最近 10 次通过校验的生成记录。")
 
 
-def _event_button(event, selection, key, label, *, from_evidence=False, anchor=None):
+def _event_button(event, selection, key, label, *, from_evidence=False, anchor=None, scope=None):
     event_replay_button(label=label, key=key, vehicle_id=selection["vehicle_id"],
                         batch_id=selection["batch_id"], threshold=selection["threshold"],
                         timestamp=event["start_timestamp"], axis=event["type"], row_span=selection.get("row_span"),
-                        from_evidence=from_evidence, anchor=anchor)
+                        from_evidence=from_evidence, anchor=anchor, scope=scope)
 
 
-def _cited_event_links(analysis, events, selection, *, key_prefix="ai_center", from_evidence=False, replay_anchors=None):
+def _cited_event_links(analysis, events, selection, *, key_prefix="ai_center", from_evidence=False, replay_anchors=None,
+                       scope=None):
     claims = [analysis["summary"]]
     for section in ("observations", "possible_causes", "further_checks", "limitations"):
         claims.extend(analysis[section])
@@ -54,7 +56,7 @@ def _cited_event_links(analysis, events, selection, *, key_prefix="ai_center", f
     if matches:
         evidence_id = st.selectbox("AI 解读引用的异常区段", list(matches), key=f"{key_prefix}_cited_event")
         _event_button(matches[evidence_id], selection, f"{key_prefix}_cited_event_jump", "回放 AI 引用的统计区段",
-                      from_evidence=from_evidence, anchor=(replay_anchors or {}).get(evidence_id))
+                      from_evidence=from_evidence, anchor=(replay_anchors or {}).get(evidence_id), scope=scope)
         st.caption("定位依据为原统计区段。高亮表示关联结构，不能确认部件故障。")
     else:
         st.caption("本次 AI 解读未引用可定位的异常区段。")
@@ -197,9 +199,10 @@ def _render_demo_evidence():
 
     st.info("虚构数据证据演示 · 数值由 Python 计算；本演示未生成 AI 解读，也不读取 AI 配置。")
     scoped = st.session_state.get(DEMO_EVIDENCE_SCOPE)
+    playback_scope = None
     if scoped:
-        payload, selection, *saved_anchors = scoped
-        replay_anchors = saved_anchors[0] if saved_anchors else {}
+        payload, selection, replay_anchors = scoped
+        playback_scope = evidence_replay_scope(selection)
         vehicle_id, batch, threshold = (selection[name] for name in ("vehicle_id", "batch_id", "threshold"))
         st.caption(f"虚构批次 {-batch} · 阈值 {threshold:g} m/s² · 当前分析范围："
                    f"{selection['selected_start']} — {selection['selected_end']}")
@@ -225,6 +228,8 @@ def _render_demo_evidence():
     with facts, st.container(border=True):
         st.subheader("核查 Python 计算的证据")
         evidence_ids = [*events, *(item for item in catalog if item not in events)]
+        if st.session_state.get("ai_demo_evidence") not in evidence_ids:
+            st.session_state.pop("ai_demo_evidence", None)
         evidence_id = st.selectbox("虚构证据 ID", evidence_ids, key="ai_demo_evidence")
         rows = catalog[evidence_id]
         st.dataframe([{"指标": row["指标"], "值 / 单位": f"{row['值']} {row['单位']}".strip()}
@@ -235,13 +240,15 @@ def _render_demo_evidence():
             event_replay_button(label="在三维回放中查看虚构区段", key="ai_demo_bogie_jump",
                                 vehicle_id=vehicle_id, batch_id=batch, threshold=threshold,
                                 timestamp=event["start_timestamp"], axis=event["type"], fictional=True,
-                                from_evidence=bool(scoped), anchor=replay_anchors.get(evidence_id))
+                                from_evidence=bool(scoped), anchor=replay_anchors.get(evidence_id),
+                                scope=playback_scope)
     with guide, st.container(border=True):
         st.subheader("如何解释证据")
         st.write("证据 ID 对应聚合指标或异常区段，可以回查计算口径和样本。")
         st.caption("超过阈值描述的是数据状态。即使 AI 引用了正确证据，可能原因也需要进一步验证。")
         if WORKBENCH_RETURN in st.session_state:
             render_workbench_return("ai_demo_return_analysis")
+            render_original_report_link("ai_demo_original_report")
         else:
             public = public_demo_enabled()
             st.button("返回分析工作台" if public else "返回演示中心", key="ai_demo_back", on_click=navigate,
@@ -283,13 +290,17 @@ def render():
         return_options = {ANALYSIS_MODE: "single", WORKBENCH_SOURCE: "history"} if kind == "single" else None
         if kind == "single" and WORKBENCH_RETURN in st.session_state:
             st.button("返回分析页面", on_click=return_to_workbench)
+            render_original_report_link("ai_center_original_report")
         else:
             st.button("返回分析页面", on_click=navigate, args=(destination,), kwargs=return_options)
         item = available[kind]
         payload, selection = item["payload"], item["selection"]
+        playback_scope = evidence_replay_scope(selection) if kind == "single" else None
         if kind == "single" and "row_span" in selection:
             first, last = selection["row_span"]
             st.caption(f"当前证据范围：批次第 {first:,}–{last:,} 条观测。")
+        elif playback_scope:
+            st.caption(f"当前分析范围：{selection['selected_start']} — {selection['selected_end']}")
         replay_anchors = item.get("replay_anchors", {})
         can_jump = kind == "single" and all(key in selection for key in ("vehicle_id", "batch_id", "threshold"))
         events = payload.get("anomaly_events", []) if can_jump else []
@@ -364,7 +375,7 @@ def render():
             else:
                 if can_jump:
                     _cited_event_links(saved["analysis"], events, selection, from_evidence=True,
-                                       replay_anchors=replay_anchors)
+                                       replay_anchors=replay_anchors, scope=playback_scope)
                 _render_save_history(payload, selection, saved)
         else:
             st.caption("尚未生成 AI 解读；可先在「数据与证据」核查本地计算结果。")
@@ -387,7 +398,10 @@ def render():
                 st.caption("离线结果说明：选择证据后查看 Python 已计算的值及口径，无需 API。")
                 event_ids = {event["evidence_id"] for event in events}
                 options = sorted(details, key=lambda item: item not in event_ids)
-                evidence_id = st.selectbox("核查证据", options, key=f"ai_center_evidence_{kind}")
+                evidence_key = f"ai_center_evidence_{kind}"
+                if st.session_state.get(evidence_key) not in options:
+                    st.session_state.pop(evidence_key, None)
+                evidence_id = st.selectbox("核查证据", options, key=evidence_key)
                 rows = details[evidence_id]
                 st.dataframe([{"指标": row["指标"], "值 / 单位": f"{row['值']} {row['单位']}".strip()}
                               for row in rows], hide_index=True, width="stretch",
@@ -397,7 +411,7 @@ def render():
                 event = next((event for event in events if event["evidence_id"] == evidence_id), None)
                 if event:
                     _event_button(event, selection, "ai_center_evidence_jump", "在三维回放中查看此区段",
-                                  from_evidence=True, anchor=replay_anchors.get(evidence_id))
+                                  from_evidence=True, anchor=replay_anchors.get(evidence_id), scope=playback_scope)
                     st.caption("跳转使用原始统计证据的时间和阈值。")
             else:
                 st.info("当前分析没有可展示的证据。")

@@ -33,7 +33,8 @@ from rail_vehicle.pages.sampling_quality import render_sampling_quality
 from rail_vehicle.pages.ai_link import render_center_link, restore_source_widgets
 from rail_vehicle.pages.bogie_link import batch_replay_button
 from rail_vehicle.pages.data_workflow import (
-    ANALYSIS_REPLAY_SCOPE, ANALYSIS_TARGET, BATCH_HANDOFF, DEMO_EVIDENCE_SCOPE, IMPORT_VEHICLE, REPORT_COMPARISON, WORKBENCH_SOURCE,
+    AI_REPLAY_SCOPE, ANALYSIS_REPLAY_SCOPE, ANALYSIS_TARGET, BATCH_HANDOFF, DEMO_EVIDENCE_SCOPE,
+    IMPORT_VEHICLE, REPORT_COMPARISON, WORKBENCH_SOURCE,
     analysis_button, import_button, remember_workbench_selection,
 )
 from rail_vehicle.ai.center_state import clear_context
@@ -66,6 +67,7 @@ def _safe_pdf_error_message(report_kind: str, _error: Exception) -> str:
 
 def _render_ai_interpretation(
     *, payload: dict, selection: dict, state_key: str, has_data: bool = True, replay_anchors=None,
+    evidence_id=None, replay_scope=None,
 ) -> None:
     """Register current facts for the shared AI center; no provider calls here."""
     kind = "single" if state_key == "ai_single_batch_result" else "batch"
@@ -73,7 +75,8 @@ def _render_ai_interpretation(
         clear_context(st.session_state, kind)
         clear_result(st.session_state, state_key)
         return
-    render_center_link(kind, payload, selection, replay_anchors=replay_anchors)
+    render_center_link(kind, payload, selection, replay_anchors=replay_anchors,
+                       evidence_id=evidence_id, replay_scope=replay_scope)
 
 
 def _batch_actions(batch_id, vehicles, *, scope):
@@ -363,9 +366,11 @@ def _analysis_timestamps(samples):
     return timestamps
 
 
-def _open_demo_evidence(payload, selection, replay_anchors):
+def _open_demo_evidence(payload, selection, replay_anchors, evidence_id=None, replay_scope=None):
     remember_workbench_selection()
-    navigate(AI, ai_center_demo=True, **{DEMO_EVIDENCE_SCOPE: (payload, selection, replay_anchors)})
+    navigate(AI, ai_center_demo=True, ai_demo_evidence=evidence_id,
+             **{DEMO_EVIDENCE_SCOPE: (payload, selection, replay_anchors),
+                AI_REPLAY_SCOPE: (selection, replay_scope) if replay_scope else None})
 
 
 def _open_teaching_model():
@@ -559,6 +564,12 @@ def _render_dynamics_analysis(*, demo: bool = False, view=ANALYSIS) -> None:
         st.info("所选时间范围内没有运行数据，请调整开始或结束时间。")
         return
 
+    playback_scope = replay_scope
+    if not playback_scope:
+        coordinates = (dict(first_row=projected.first_row - 1, batch_count=projected.batch_count) if projected else
+                       dict(first_row=sum(timestamp < selected_start for timestamp in timestamps), batch_count=len(samples)))
+        playback_scope = ReplayEvidenceScope.from_analysis_slice(filtered_samples, **coordinates)
+
     parameter_columns = st.columns([1, 2], vertical_alignment="bottom")
     st.session_state.setdefault(threshold_key, 1.0)
     threshold = parameter_columns[0].number_input(
@@ -644,10 +655,12 @@ def _render_dynamics_analysis(*, demo: bool = False, view=ANALYSIS) -> None:
         _render_run_curves(main_view, result, threshold=threshold, anomaly_result=anomaly_result,
                            replay_scope=replay_scope, by_row=replay_scope is not None and selected_start == selected_end)
 
+    selected_event = None
     if view == ANOMALIES:
         with main_view:
-            _render_anomaly_view(result, anomaly_result, threshold, vehicle_id, batch_id, selected_start,
-                                 selected_end, replay_rows, event_anchors, demo=demo)
+            selected_event = _render_anomaly_view(result, anomaly_result, threshold, vehicle_id, batch_id, selected_start,
+                                                  selected_end, replay_rows, event_anchors, demo=demo,
+                                                  playback_scope=playback_scope)
 
     selected_vehicle = next(vehicle for vehicle in vehicles if vehicle["id"] == vehicle_id)
     ai_payload = build_single_batch_payload(
@@ -661,27 +674,31 @@ def _render_dynamics_analysis(*, demo: bool = False, view=ANALYSIS) -> None:
     if replay_rows:
         ai_selection["row_span"] = replay_rows
     replay_anchors = anchors_by_evidence(ai_payload, event_anchors)
+    evidence_id = ai_payload["anomaly_events"][selected_event]["evidence_id"] if selected_event is not None else None
     record_analysis("单批次统计分析", {"selection": ai_selection, "facts": ai_payload},
                     result["sample_count"], fictional=demo)
     st.session_state[BATCH_HANDOFF] = {
         "target": {"vehicle_id": vehicle_id, "batch_id": batch_id, "threshold": threshold, "fictional": demo,
-                   **({"scope": replay_scope} if replay_scope else {})},
-        "demo_evidence": (ai_payload, ai_selection, replay_anchors) if demo else None,
+                   **({"scope": playback_scope} if playback_scope else {})},
+        "demo_evidence": (ai_payload, ai_selection, replay_anchors, evidence_id, playback_scope) if demo else None,
+        "evidence_selection": ai_selection,
+        "evidence_id": evidence_id,
     }
     with st.container(border=True):
         st.markdown("**继续处理当前批次**")
         replay, evidence, related = st.columns(3)
         with replay:
-            batch_replay_button(st, label="在三维中打开当前窗口 →" if replay_scope else "在三维中回放整个批次 →",
-                                key="analysis_replay_batch", scope=replay_scope, vehicle_id=vehicle_id,
+            batch_replay_button(st, label="在三维中打开当前窗口 →" if playback_scope else "在三维中回放整个批次 →",
+                                key="analysis_replay_batch", scope=playback_scope, vehicle_id=vehicle_id,
                                 batch_id=batch_id, threshold=threshold, fictional=demo, from_workbench=True)
         with evidence:
             if demo:
                 st.button("核查当前证据（离线） →", key="workbench_demo_evidence", on_click=_open_demo_evidence,
-                          args=(ai_payload, ai_selection, replay_anchors), width="stretch")
+                          args=st.session_state[BATCH_HANDOFF]["demo_evidence"], width="stretch")
             else:
                 _render_ai_interpretation(payload=ai_payload, selection=ai_selection, state_key=ai_state_key,
-                                          replay_anchors=replay_anchors)
+                                          replay_anchors=replay_anchors, evidence_id=evidence_id,
+                                          replay_scope=playback_scope)
         destinations = (ANALYSIS, REPORT) if view == ANOMALIES else (ANALYSIS, ANOMALIES) if view == REPORT else (ANOMALIES, REPORT)
         with related, st.container(horizontal=True):
             for destination in destinations:
@@ -833,7 +850,7 @@ def _render_run_curves(container, result, *, threshold, anomaly_result, replay_s
 
 
 def _render_anomaly_view(result, anomaly_result, threshold, vehicle_id, batch_id, selected_start,
-                         selected_end, replay_rows, event_anchors, *, demo):
+                         selected_end, replay_rows, event_anchors, *, demo, playback_scope):
     with st.container():
         st.subheader("数据异常检测")
         st.caption(
@@ -845,11 +862,11 @@ def _render_anomaly_view(result, anomaly_result, threshold, vehicle_id, batch_id
         anomaly_columns = st.columns(2)
         anomaly_columns[0].metric("数据异常点", len(anomaly_result["points"]), border=True)
         anomaly_columns[1].metric("统计异常区段", len(anomaly_result["events"]), border=True)
-        render_event_review(result["samples"], anomaly_result, {
+        event_index = render_event_review(result["samples"], anomaly_result, {
             "vehicle_id": vehicle_id, "batch_id": batch_id,
             "start": selected_start.isoformat(), "end": selected_end.isoformat(),
             **({"row_span": replay_rows} if replay_rows else {}),
-        }, allow_bogie=True, fictional=demo, anchors=event_anchors)
+        }, allow_bogie=True, fictional=demo, anchors=event_anchors, playback_scope=playback_scope)
         if anomaly_result["events"]:
             with st.expander("查看全部异常区段"):
                 st.dataframe(
@@ -868,6 +885,7 @@ def _render_anomaly_view(result, anomaly_result, threshold, vehicle_id, batch_id
                 )
         else:
             st.info("当前批次未发现超过所设阈值的数据异常点。")
+        return event_index
 
 def _render_report_view(vehicles, selected_vehicle, vehicle_id, batch_id, batches, selected_start,
                         selected_end, result, anomaly_result, sampling_review, replay_rows, comparison, threshold,

@@ -35,7 +35,8 @@ def event_chart(window, threshold):
     return figure
 
 
-def render_event_review(samples, anomalies, selection, *, allow_bogie=False, fictional=False, anchors=None):
+def render_event_review(samples, anomalies, selection, *, allow_bogie=False, fictional=False, anchors=None,
+                        playback_scope=None):
     if not anomalies["events"]:
         st.session_state.pop("anomaly_review_event", None)
         st.session_state.pop("anomaly_review_fingerprint", None)
@@ -59,7 +60,8 @@ def render_event_review(samples, anomalies, selection, *, allow_bogie=False, fic
                                 threshold=anomalies["threshold"], timestamp=event["start_timestamp"],
                                 axis="lateral" if event["field"] == "lateral_accel" else "vertical",
                                 fictional=fictional, row_span=selection.get("row_span"),
-                                anchor=None if anchors is None else anchors[index], from_workbench=True)
+                                anchor=None if anchors is None else anchors[index], from_workbench=True,
+                                scope=playback_scope)
             st.caption("三维页暂停在事件首条异常样本。可开启未超阈值对照，并返回本页继续分析。")
         st.table([{"类型": event["type"], "开始": event["start_timestamp"], "结束": event["end_timestamp"],
                    "异常样本数": event["sample_count"], "绝对峰值（m/s²）": event["maximum_absolute_value"]}])
@@ -70,3 +72,4 @@ def render_event_review(samples, anomalies, selection, *, allow_bogie=False, fic
                    "各图层最多绘制 2,000 点，按序抽样可能省略局部细节；不插值、不重新检测。")
         plot_chart(event_chart(window, anomalies["threshold"]), width="stretch", key="anomaly_review_chart")
         st.caption(EVENT_DURATION_NOTE + "此视图用于数据回查，不构成故障原因或安全结论。")
+    return index

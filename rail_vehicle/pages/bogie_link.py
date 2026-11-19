@@ -28,12 +28,14 @@ def batch_replay_button(container, *, label, key, vehicle_id, batch_id=None, thr
 
 
 def event_replay_button(*, label, key, vehicle_id, batch_id, threshold, timestamp, axis, fictional=False,
-                        row_span=None, anchor=None, from_workbench=False, from_evidence=False):
+                        row_span=None, anchor=None, from_workbench=False, from_evidence=False, scope=None):
     target = {"vehicle_id": vehicle_id, "batch_id": batch_id, "threshold": threshold,
               "timestamp": timestamp, "axis": axis, "fictional": fictional}
     if row_span is not None:
         target["row_span"] = row_span
     if anchor is not None:
         target["anchor"] = anchor
+    if scope is not None:
+        target["scope"] = scope
     st.button(label, key=key, on_click=_open_replay,
               args=("bogie_evidence_target", target, from_workbench, from_evidence))

@@ -84,7 +84,7 @@ class PortableArchiveTests(unittest.TestCase):
     def test_record_metadata_hashes_all_files_and_wont_overwrite(self):
         (self.bundle / "BUILD-METADATA.json").unlink()
         archive_tool.write_build_metadata(self.bundle, "a" * 40, True)
-        actual = json.loads((self.bundle / "BUILD-METADATA.json").read_text())
+        actual = json.loads((self.bundle / "BUILD-METADATA.json").read_text(encoding="utf-8"))
         self.assertEqual(actual, self.metadata)
         with self.assertRaises(FileExistsError):
             archive_tool.write_build_metadata(self.bundle, "a" * 40, True)

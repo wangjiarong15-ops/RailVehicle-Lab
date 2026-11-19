@@ -6,7 +6,7 @@ from datetime import date, datetime, time
 
 from rail_vehicle.ai.center_state import CONTEXTS, clear_context, register_context
 from rail_vehicle.ai.ui import clear_result
-from rail_vehicle.pages.data_workflow import remember_workbench_selection
+from rail_vehicle.pages.data_workflow import AI_REPLAY_SCOPE, remember_workbench_selection
 from rail_vehicle.ui import navigate
 
 
@@ -19,7 +19,7 @@ _WIDGET_PREFIXES = {
 }
 
 
-def _open_center(kind):
+def _open_center(kind, evidence_id=None, selection=None, replay_scope=None):
     if kind == "single":
         remember_workbench_selection()
     prefixes = _WIDGET_PREFIXES[kind]
@@ -29,8 +29,11 @@ def _open_center(kind):
     snapshots = dict(st.session_state.get("ai_center_source_widgets", {}))
     snapshots[kind] = snapshot
     st.session_state["ai_center_source_widgets"] = snapshots
+    settings = {AI_REPLAY_SCOPE: (selection, replay_scope) if kind == "single" and replay_scope else None}
+    if kind == "single":
+        settings["ai_center_evidence_single"] = evidence_id
     navigate("AI 智能分析中心", ai_center_requested_kind=kind, ai_center_demo=False,
-             ai_center_show_history=False)
+             ai_center_show_history=False, **settings)
 
 
 def restore_source_widgets(kind):
@@ -43,7 +46,8 @@ def restore_source_widgets(kind):
         st.session_state["ai_center_source_widgets"] = remaining
 
 
-def render_center_link(kind, payload, selection, *, guard_key=None, guard_fingerprint=None, replay_anchors=None):
+def render_center_link(kind, payload, selection, *, guard_key=None, guard_fingerprint=None, replay_anchors=None,
+                       evidence_id=None, replay_scope=None):
     try:
         register_context(st.session_state, kind, payload, selection,
                          guard_key=guard_key, guard_fingerprint=guard_fingerprint, replay_anchors=replay_anchors)
@@ -58,6 +62,6 @@ def render_center_link(kind, payload, selection, *, guard_key=None, guard_finger
         clear_result(st.session_state, CONTEXTS[kind][2])
         st.warning("AI 结果尚未完整验证，未展示。")
     st.caption("当前聚合结果已准备好，可在 AI 分析中心查看证据并主动生成解读。")
-    st.button("前往 AI 分析中心 →", key=f"ai_center_link_{kind}",
-              on_click=_open_center, args=(kind,))
+    st.button("核查所选事件证据 →" if evidence_id else "前往 AI 分析中心 →", key=f"ai_center_link_{kind}",
+              on_click=_open_center, args=(kind, evidence_id, selection, replay_scope))
     return payload, st.session_state.get(CONTEXTS[kind][2])

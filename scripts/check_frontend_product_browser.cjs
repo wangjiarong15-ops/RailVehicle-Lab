@@ -11,7 +11,7 @@ address.searchParams.set("embed_options", "dark_theme");
 const output = resolve(process.argv[3]);
 const heading = (page, name) => page.getByRole("heading", { name, exact: true });
 const sidebar = (page) => page.getByTestId("stSidebar");
-const button = (page, key) => page.locator(`[class~="st-key-${key}"] button`);
+const button = (page, key) => page.locator(`[class~="st-key-${key}"] button:visible`);
 const nav = (page, name) => sidebar(page).getByRole("button", { name: new RegExp(`${name}$`) });
 
 async function audit(browser, width, height) {
@@ -23,8 +23,12 @@ async function audit(browser, width, height) {
   const captures = [];
   page.on("pageerror", (error) => errors.push(error.message));
   const main = page.getByTestId("stMain");
-  async function save(name, resetScroll = true) {
+  async function waitForRender() {
     await page.getByRole("button", { name: "Stop", exact: true }).waitFor({ state: "hidden" });
+    await main.locator('[data-stale="true"]').first().waitFor({ state: "detached" });
+  }
+  async function save(name, resetScroll = true) {
+    await waitForRender();
     assert.equal(await page.getByTestId("stException").count(), 0, name);
     assert(await main.evaluate((node) => node.scrollWidth <= node.clientWidth + 1), `${name}: horizontal overflow`);
     if (resetScroll) await main.evaluate((node) => node.scrollTo(0, 0));
@@ -85,7 +89,8 @@ async function audit(browser, width, height) {
     await button(page, "bogie_play").click();
     await page.waitForFunction(() => document.querySelector(".st-key-bogie_pause button")?.disabled === false);
     await button(page, "bogie_pause").click();
-    await page.waitForFunction(() => document.querySelector(".st-key-bogie_pause button")?.disabled);
+    await page.waitForFunction(() => [...document.querySelectorAll(".st-key-bogie_pause button")]
+      .some((node) => node.getBoundingClientRect().width > 0 && node.disabled));
     await button(page, "bogie_reset").click();
     await button(page, "bogie_return_analysis").click();
     await heading(page, "异常检测").waitFor();
@@ -97,8 +102,46 @@ async function audit(browser, width, height) {
     await save("08-ai");
     await page.getByRole("button", { name: "返回分析页面", exact: true }).click();
     await heading(page, "异常检测").waitFor();
-    await open("分析报告", "分析报告");
+    await page.getByText("分析时间范围（UTC） · 调整筛选", { exact: true }).click();
+    const seconds = page.locator('[class*="st-key-analysis_end_time_"]')
+      .getByRole("spinbutton", { name: /second|秒/i });
+    await seconds.press("1");
+    await seconds.press("5");
+    await seconds.press("Tab");
+    await page.getByText(/分析样本数：.*76 条/).waitFor();
+    await waitForRender();
+    await page.getByText("分析时间范围（UTC） · 调整筛选", { exact: true }).click();
+    const eventWidget = page.locator(".st-key-anomaly_review_event");
+    await eventWidget.evaluate((node) => node.scrollIntoView({ block: "center" }));
+    const verticalOption = page.getByRole("option", { name: /2\.\s*垂向/ });
+    // The dropdown can dismiss while Streamlit finishes restoring scroll position.
+    // Reopen it once if that happened; the following assertion still requires selection.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (await verticalOption.isVisible()) break;
+      await eventWidget.getByRole("button", { name: "Open", exact: true }).click();
+      if (await verticalOption.waitFor({ timeout: 2000 }).then(() => true, () => false)) break;
+    }
+    await verticalOption.click();
+    await page.getByText("2026-10-09 09:31:10+00:00", { exact: true }).waitFor();
+    await waitForRender();
+    await button(page, "ai_center_link_single").click();
+    await heading(page, "AI 分析中心").waitFor();
+    const verticalEvidence = page.locator('.st-key-ai_center_evidence_single input[value="event.vertical.001"]');
+    await verticalEvidence.waitFor();
+    await save("08b-ai-selected");
+    await button(page, "ai_center_evidence_jump").click();
+    await heading(page, "三维诊断工作台").waitFor();
+    await readings.getByText(/09:31:10.*第 71\/120 条/).waitFor();
+    await page.getByText(/循环窗口：所选分析范围.*0–75 秒/).waitFor();
+    await viewer.waitFor({ timeout: 30000 });
+    await save("07b-bounded-replay");
+    await button(page, "bogie_return_evidence").click();
+    await heading(page, "AI 分析中心").waitFor();
+    await verticalEvidence.waitFor();
+    await button(page, "ai_center_original_report").click();
+    await heading(page, "分析报告").waitFor();
     await expectThreshold();
+    await page.getByText(/76 条观测.*2 个规则异常区段/).waitFor();
     await page.getByText("异常规则：加速度绝对值大于 1.1 m/s²。", { exact: true }).waitFor();
     await button(page, "generate_analysis_report").click();
     const [pdf] = await Promise.all([page.waitForEvent("download"),
@@ -117,6 +160,13 @@ async function audit(browser, width, height) {
     await nav(page, "运行分析").waitFor();
     assert.equal(await sidebar(page).getAttribute("aria-expanded"), "true");
     await expectThreshold();
+    const light = new URL(address);
+    light.searchParams.set("embed_options", "light_theme");
+    light.searchParams.set("rail_page", "运行分析");
+    await page.goto(light.href);
+    await heading(page, "运行分析").waitFor();
+    await page.getByTestId("stPlotlyChart").first().locator(".main-svg").first().waitFor();
+    await save("11-analysis-light");
     assert.deepEqual(errors, []);
     console.log(JSON.stringify({ width, height, screenshots: captures.length, glbParts: 54, pdf: true }));
   } catch (error) {

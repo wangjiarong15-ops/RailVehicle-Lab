@@ -482,7 +482,7 @@ def render():
     </style>""")
     target = st.session_state.pop("bogie_evidence_target", None)
     batch_target = st.session_state.pop("bogie_batch_target", None)
-    requested_scope = batch_target.get("scope") if batch_target and not target else None
+    requested_scope = (target or batch_target or {}).get("scope")
     if STATE_KEY not in st.session_state:
         _clear_loop()
     choices = [TEACH, *demo_source_options(HISTORY, DEMO)]
@@ -566,11 +566,20 @@ def render():
         row = None
         expected = ((DEMO, target["batch_id"]) if fictional else
                     (HISTORY, target["vehicle_id"], target["batch_id"]))
-        if track is not None and selection == expected:
+        scope_matches = (requested_scope is None or (track is not None
+                         and isinstance(requested_scope, ReplayEvidenceScope) and requested_scope.matches_track(track)))
+        if track is not None and selection == expected and scope_matches:
             try:
                 row = resolve_event_row(track, target["timestamp"], target["axis"], threshold,
                                         row_span=target.get("row_span"), anchor=target.get("anchor"))
             except (AttributeError, KeyError, OverflowError, TypeError, ValueError):
+                row = None
+        if row is not None and requested_scope is not None:
+            first, last = requested_scope.first_row, requested_scope.last_row
+            if first <= row <= last:
+                _open_window(track, threshold,
+                             EventLoop("所选分析范围", track.offsets[first], track.offsets[last], first, last))
+            else:
                 row = None
         if row is not None:
             _seek(track.offsets[row], row)
@@ -589,6 +598,7 @@ def render():
     with main:
         state = st.session_state.get(STATE_KEY, ReplayState())
         duration = track.duration if track is not None else ILLUSTRATION_PERIOD
+        transport = st.container()
         view_slot = st.container()
         if inspection.exploded and state.playing:
             state = _control_playback(state, "pause", monotonic(), track, window)
@@ -603,14 +613,15 @@ def render():
             exit_loop.button("退出逐帧核查" if static_window else "退出循环", key="bogie_exit_loop",
                              on_click=_clear_loop, kwargs={"pause": True})
             _window_evidence(track, window, selection, threshold)
-        with st.container(horizontal=True, vertical_alignment="bottom"):
+        with transport, st.container(horizontal=True, vertical_alignment="bottom"):
             action = None
             if st.button("播放", key="bogie_play", icon=":material/play_arrow:", type="primary",
                          disabled=static_window or inspection.exploded or state.playing or duration == 0):
                 action = "play"
             if st.button("暂停", key="bogie_pause", icon=":material/pause:", disabled=not state.playing):
                 action = "pause"
-            if st.button("重置", key="bogie_reset", icon=":material/restart_alt:"):
+            if st.button("重置", key="bogie_reset", icon=":material/restart_alt:",
+                         help="返回当前回放窗口的首条观测。" if window else "返回当前回放起点。"):
                 action = "reset"
             rate = st.selectbox("播放速度", [0.5, 1., 2., 4.], index=1, width=110, key="bogie_rate",
                                 disabled=static_window, format_func=lambda x: f"{x:g}×")

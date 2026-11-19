@@ -92,6 +92,16 @@ class ReplayEvidenceScope:
         return cls(first, last, len(track.samples), _utc(track.samples[first]["timestamp"]),
                    _utc(track.samples[last]["timestamp"]))
 
+    @classmethod
+    def from_analysis_slice(cls, samples, *, first_row, batch_count):
+        """Map a chronological slice to the replay track's zero-based rows."""
+        if not samples or len(samples) == batch_count:
+            return None
+        last_row = first_row + len(samples) - 1
+        if not 0 <= first_row <= last_row < batch_count:
+            raise ValueError("Analysis slice does not fit its batch")
+        return cls(first_row, last_row, batch_count, _utc(samples[0]["timestamp"]), _utc(samples[-1]["timestamp"]))
+
     @property
     def count(self):
         return self.last_row - self.first_row + 1
