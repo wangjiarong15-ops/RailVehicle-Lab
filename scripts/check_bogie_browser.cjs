@@ -570,8 +570,8 @@ async function audit(browser, width, height, complete = true) {
     await page.getByText("显示部件标注", {exact: true}).click();
     await page.getByText("视角与部件", {exact: true}).click();
 
-    const play = page.locator(".st-key-bogie_play button"), pause = page.locator(".st-key-bogie_pause button");
-    const reset = page.locator(".st-key-bogie_reset button");
+    const transport = key => page.locator(".st-key-bogie_" + key + " button:visible:not([data-stale=true] button)");
+    const play = transport("play"), pause = transport("pause"), reset = transport("reset");
     for (const [scenario, mode] of [
       ["正常运行", "正常运行"], ["横向振动", "横向振动"], ["垂向振动", "垂向振动"],
       ["蛇行运动示意", "蛇行运动示意"], ["一系悬挂异常示意", "垂向振动"],
@@ -619,6 +619,7 @@ async function audit(browser, width, height, complete = true) {
       const paused = await until(data, (d) => d.playing === "false", "Pause did not reach renderer");
       await new Promise((resolve) => setTimeout(resolve, 230));
       assert.equal((await data()).phase, paused.phase);
+      await until(() => reset.count(), n => n === 1, "Transport did not finish rerendering");
       await reset.click();
       await until(data, (d) => Number(d.phase) === 0, "Reset did not return to initial pose");
     }

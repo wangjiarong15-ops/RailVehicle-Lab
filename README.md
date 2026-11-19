@@ -516,6 +516,8 @@ python -m pytest -q
 
 ### 浏览器回归
 
+本阶段三维工作台、悬挂计算、振动频谱及实测曲线定位的入口和计算范围见 [Project Evolution · Phase 1](docs/project-evolution.md)。运行全部浏览器用例前，在项目虚拟环境执行 `python -m pip install -e ".[signal]"`。可单独运行 `python -m scripts.run_browser_checks --suite evolution` 验证这些交互。
+
 安装项目和 Node.js 后，在仓库目录执行：
 
 ```powershell
