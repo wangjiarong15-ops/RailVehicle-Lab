@@ -9,6 +9,7 @@ from rail_vehicle.ai.ui import selection_fingerprint
 from rail_vehicle.anomaly import EVENT_DURATION_NOTE
 from rail_vehicle.anomaly_review import event_window
 from rail_vehicle.pages.bogie_link import event_replay_button
+from rail_vehicle.workspace_resume import EVENT, prior_event
 
 
 def event_chart(window, threshold):
@@ -48,6 +49,13 @@ def render_event_review(samples, anomalies, selection, *, allow_bogie=False, fic
     if st.session_state.get("anomaly_review_fingerprint") != fingerprint:
         st.session_state.pop("anomaly_review_event", None)
         st.session_state["anomaly_review_fingerprint"] = fingerprint
+    restored = st.session_state.pop(EVENT, None)
+    if restored is None and "anomaly_review_event" not in st.session_state:
+        restored = prior_event()
+    if restored is not None:
+        index, identity = restored
+        if identity == fingerprint and index < len(events):
+            st.session_state["anomaly_review_event"] = index
     with st.expander("异常事件回查 · 定位局部运行变化", expanded=allow_bogie):
         index = st.selectbox("选择异常事件", range(len(events)), key="anomaly_review_event",
                              format_func=lambda i: f"{i + 1}. {events[i]['type']} · {events[i]['start_timestamp']}")

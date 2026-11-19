@@ -31,7 +31,8 @@ from rail_vehicle.event_anchor import anchors_by_evidence
 from rail_vehicle.pages.anomaly_review import render_event_review
 from rail_vehicle.pages.sampling_quality import render_sampling_quality
 from rail_vehicle.pages.ai_link import render_center_link, restore_source_widgets
-from rail_vehicle.pages.bogie_link import batch_replay_button
+from rail_vehicle.pages.bogie_link import batch_replay_button, event_replay_target
+from rail_vehicle.workspace_resume import INPUT
 from rail_vehicle.pages.data_workflow import (
     AI_REPLAY_SCOPE, ANALYSIS_REPLAY_SCOPE, ANALYSIS_TARGET, BATCH_HANDOFF, DEMO_EVIDENCE_SCOPE,
     IMPORT_VEHICLE, REPORT_COMPARISON, WORKBENCH_SOURCE,
@@ -330,16 +331,17 @@ def _utc_window(start_date, start_time, end_date, end_time):
 def _analysis_time_range(bounds, vehicle_id, batch_id):
     batch_start, batch_end = (bound.replace(tzinfo=None, microsecond=0) for bound in bounds)
     start_date_key, start_time_key, end_date_key, end_time_key = _time_widget_keys(vehicle_id, batch_id)
+    for key, default in zip((start_date_key, start_time_key, end_date_key, end_time_key),
+                            (batch_start.date(), batch_start.time(), batch_end.date(), batch_end.time())):
+        st.session_state.setdefault(key, default)
     with st.expander("分析时间范围（UTC） · 调整筛选", expanded=False):
         start_col, end_col = st.columns(2)
         with start_col:
-            start_date = st.date_input("开始日期", value=batch_start.date(), key=start_date_key)
-            start_time = st.time_input("开始时间", value=batch_start.time(), step=timedelta(seconds=1),
-                                       key=start_time_key)
+            start_date = st.date_input("开始日期", key=start_date_key)
+            start_time = st.time_input("开始时间", step=timedelta(seconds=1), key=start_time_key)
         with end_col:
-            end_date = st.date_input("结束日期", value=batch_end.date(), key=end_date_key)
-            end_time = st.time_input("结束时间", value=batch_end.time(), step=timedelta(seconds=1),
-                                     key=end_time_key)
+            end_date = st.date_input("结束日期", key=end_date_key)
+            end_time = st.time_input("结束时间", step=timedelta(seconds=1), key=end_time_key)
     return _utc_window(start_date, start_time, end_date, end_time)
 
 
@@ -387,6 +389,9 @@ def _render_teaching_link():
 
 def _render_dynamics_analysis(*, demo: bool = False, view=ANALYSIS) -> None:
     st.session_state.pop(BATCH_HANDOFF, None)
+    restored = st.session_state.pop(INPUT, None)
+    if restored and restored["demo"] != demo:
+        restored = None
     target = None
     if not demo:
         restore_source_widgets("single")
@@ -423,6 +428,9 @@ def _render_dynamics_analysis(*, demo: bool = False, view=ANALYSIS) -> None:
             st.session_state.pop("dynamics_batch_id", None)
             st.warning("入口指定的车辆已不可用，请手动选择车辆。")
             target = None
+    vehicle_key = "demo_dynamics_vehicle_id" if demo else "dynamics_vehicle_id"
+    if restored and restored["vehicle"] in vehicle_ids:
+        st.session_state[vehicle_key] = restored["vehicle"]
     selectors = st.columns(2)
     vehicle_id = selectors[0].selectbox(
         "选择车辆",
@@ -432,7 +440,7 @@ def _render_dynamics_analysis(*, demo: bool = False, view=ANALYSIS) -> None:
             for vehicle in vehicles
             if vehicle["id"] == selected_id
         ),
-        key="demo_dynamics_vehicle_id" if demo else "dynamics_vehicle_id",
+        key=vehicle_key,
     )
     try:
         batches = demo_batches if demo else list_vehicle_batches(vehicle_id)
@@ -459,6 +467,9 @@ def _render_dynamics_analysis(*, demo: bool = False, view=ANALYSIS) -> None:
                 st.warning("指定批次不属于这辆车或已不可用，请手动选择批次。")
     elif not demo and st.session_state.get("dynamics_batch_id") not in batch_ids:
         st.session_state.pop("dynamics_batch_id", None)
+    batch_key = "demo_dynamics_batch_id" if demo else "dynamics_batch_id"
+    if restored and restored["vehicle"] == vehicle_id and restored["batch"] in batch_ids:
+        st.session_state[batch_key] = restored["batch"]
     batch_id = selectors[1].selectbox(
         "选择虚构批次" if demo else "选择历史导入批次",
         options=batch_ids,
@@ -468,7 +479,7 @@ def _render_dynamics_analysis(*, demo: bool = False, view=ANALYSIS) -> None:
             for batch in batches
             if batch["id"] == selected_id
         ),
-        key="demo_dynamics_batch_id" if demo else "dynamics_batch_id",
+        key=batch_key,
     )
     batch_identity = (vehicle_id, batch_id)
     batch_row = next(batch for batch in batches if batch["id"] == batch_id)
@@ -516,6 +527,16 @@ def _render_dynamics_analysis(*, demo: bool = False, view=ANALYSIS) -> None:
         st.session_state[_HISTORY_BOUNDS_HINT] = (batch_identity, bounds)
 
     threshold_key = "demo_analysis_threshold" if demo else "analysis_threshold"
+    if restored and (restored["vehicle"], restored["batch"]) == batch_identity:
+        candidate = restored["scope"]
+        if candidate is None:
+            start, end = restored["start"], restored["end"]
+            times = (start.date(), start.time().replace(microsecond=0), end.date(), end.time().replace(microsecond=0))
+            st.session_state.update(dict(zip(_time_widget_keys(*batch_identity), times)))
+            st.session_state[threshold_key] = restored["threshold"]
+        elif candidate.matches(timestamps):
+            st.session_state[ANALYSIS_REPLAY_SCOPE] = (batch_identity, candidate)
+            st.session_state[threshold_key] = restored["threshold"]
     if target and (target["vehicle_id"], target["batch_id"]) == batch_identity:
         candidate = target.get("scope")
         if isinstance(candidate, ReplayEvidenceScope):
@@ -677,7 +698,16 @@ def _render_dynamics_analysis(*, demo: bool = False, view=ANALYSIS) -> None:
     evidence_id = ai_payload["anomaly_events"][selected_event]["evidence_id"] if selected_event is not None else None
     record_analysis("单批次统计分析", {"selection": ai_selection, "facts": ai_payload},
                     result["sample_count"], fictional=demo)
+    event_target = None
+    if selected_event is not None:
+        event = anomaly_result["events"][selected_event]
+        event_target = event_replay_target(
+            vehicle_id=vehicle_id, batch_id=batch_id, threshold=threshold, timestamp=event["start_timestamp"],
+            axis="lateral" if event["field"] == "lateral_accel" else "vertical", fictional=demo,
+            row_span=replay_rows, anchor=event_anchors[selected_event], scope=playback_scope,
+        )
     st.session_state[BATCH_HANDOFF] = {
+        "event_target": event_target,
         "target": {"vehicle_id": vehicle_id, "batch_id": batch_id, "threshold": threshold, "fictional": demo,
                    **({"scope": playback_scope} if playback_scope else {})},
         "demo_evidence": (ai_payload, ai_selection, replay_anchors, evidence_id, playback_scope) if demo else None,

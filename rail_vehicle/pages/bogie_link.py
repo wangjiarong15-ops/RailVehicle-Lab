@@ -4,6 +4,7 @@ import streamlit as st
 
 from rail_vehicle.pages.data_workflow import remember_evidence_selection, remember_workbench_selection
 from rail_vehicle.ui import BOGIE, navigate
+from rail_vehicle.workspace_resume import BOGIE_EVENT
 
 
 def _open_replay(target_key, target, from_workbench, from_evidence=False):
@@ -11,7 +12,7 @@ def _open_replay(target_key, target, from_workbench, from_evidence=False):
         remember_workbench_selection()
     if from_evidence:
         remember_evidence_selection(fictional=target["fictional"])
-    navigate(BOGIE, **{target_key: target})
+    navigate(BOGIE, **{target_key: target, BOGIE_EVENT: target if target_key == "bogie_evidence_target" else None})
 
 
 def batch_replay_button(container, *, label, key, vehicle_id, batch_id=None, threshold=None,
@@ -27,8 +28,8 @@ def batch_replay_button(container, *, label, key, vehicle_id, batch_id=None, thr
                      args=("bogie_batch_target", target, from_workbench))
 
 
-def event_replay_button(*, label, key, vehicle_id, batch_id, threshold, timestamp, axis, fictional=False,
-                        row_span=None, anchor=None, from_workbench=False, from_evidence=False, scope=None):
+def event_replay_target(*, vehicle_id, batch_id, threshold, timestamp, axis, fictional=False,
+                        row_span=None, anchor=None, scope=None):
     target = {"vehicle_id": vehicle_id, "batch_id": batch_id, "threshold": threshold,
               "timestamp": timestamp, "axis": axis, "fictional": fictional}
     if row_span is not None:
@@ -37,5 +38,10 @@ def event_replay_button(*, label, key, vehicle_id, batch_id, threshold, timestam
         target["anchor"] = anchor
     if scope is not None:
         target["scope"] = scope
+    return target
+
+
+def event_replay_button(*, label, key, from_workbench=False, from_evidence=False, **event):
+    target = event_replay_target(**event)
     st.button(label, key=key, on_click=_open_replay,
               args=("bogie_evidence_target", target, from_workbench, from_evidence))

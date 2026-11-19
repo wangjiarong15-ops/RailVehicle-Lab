@@ -15,6 +15,7 @@ from rail_vehicle.pages import home
 from rail_vehicle.pages import ai_center
 from rail_vehicle.pages import bogie
 from rail_vehicle.pages.data_workflow import clear_workbench_navigation, select_workspace_page
+from rail_vehicle.workspace_resume import finish_workspace, render_resume_notice, restore_workspace
 from rail_vehicle.ui import (
     ANALYSIS, ANOMALIES, COMPARISON, REPORT, apply_design, initialize_theme, page_title, render_navigation,
 )
@@ -32,7 +33,10 @@ def main() -> None:
         init_db()
 
     apply_design()
+    resume_slot = st.empty()
+    restore_workspace(resume_slot, public=public_demo)
     page = render_navigation(public_demo, on_select=select_workspace_page)
+    render_resume_notice()
     clear_workbench_navigation(page)
     if page != "动态运行驾驶舱":
         # Returning to the cockpit starts paused, never advances while hidden.
@@ -71,6 +75,7 @@ def main() -> None:
         run_analysis.render_statistics_demo()
     elif page == "演示中心":
         demo_center.render()
+    finish_workspace(resume_slot, page, public=public_demo)
     initialize_theme()
 
 

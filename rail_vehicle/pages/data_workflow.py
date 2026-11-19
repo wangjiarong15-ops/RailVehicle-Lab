@@ -60,7 +60,8 @@ def select_workspace_page(page):
         return
     if handoff and page == BOGIE:
         remember_workbench_selection()
-        navigate(page, bogie_batch_target=handoff["target"])
+        from rail_vehicle.pages.bogie_link import _open_replay
+        _open_replay("bogie_batch_target", handoff["target"], False)
         return
     if current == COMPARISON and page == AI:
         from rail_vehicle.ai.center_state import current_context

@@ -115,10 +115,13 @@ def initialize_theme():
     })();</script>""".replace("__THEME_TOKENS__", json.dumps(THEME_TOKENS)), unsafe_allow_javascript=True)
 
 
+RESUME_PARAM = "rail_resume"
+
+
 def theme_url(mode, page):
     if mode not in {"light", "dark"}:
         raise ValueError("Invalid presentation theme")
-    return "?" + urlencode({"embed_options": mode+"_theme", "rail_page": page})
+    return "?" + urlencode({"embed_options": mode+"_theme", "rail_page": page, RESUME_PARAM: "1"})
 
 
 def page_title(title, subtitle="", *, primary=False):
@@ -271,7 +274,7 @@ def render_navigation(public, on_select=navigate):
                     st.html('<div class="rv-themes">' + ''.join(
                         f'<a target="_self" href="{escape(theme_url(mode, selected), quote=True)}">{label}</a>'
                         for mode, label in (("dark", "◐ 深色"), ("light", "◑ 浅色"))) + '</div>')
-                    st.caption("切换外观会重载页面并结束当前会话，已保存的数据库数据不受影响。")
+                    st.caption("切换外观会重载页面。本标签页可恢复单批次筛选；未保存的 AI 解读和未下载的报告需要重新生成。")
                 with st.popover("关于", icon=":material/info:"):
                     st.markdown("**RailVehicle-Lab** · 轨道车辆异常分析与三维可视化")
                     st.caption("规则异常、三维结构示意和 AI 辅助解释不能作为故障确诊或运营安全结论。")
