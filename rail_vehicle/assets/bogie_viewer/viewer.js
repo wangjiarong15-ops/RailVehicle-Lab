@@ -5,6 +5,7 @@ import {createAssembly} from "./geometry.js";
 import {inspection} from "./interaction.js";
 import {materials, studio} from "./lighting.js";
 import {motionClock} from "./motion.js";
+import {responsePlayer} from "./response-player.js";
 import {loadDetailedModel} from "./model-loader.js";
 import {playbackBatches} from "./playback-batches.js";
 import {partBrowser} from "./part-browser.js";
@@ -61,8 +62,35 @@ export async function mount() {
   let args, serverArgs, localView, bookmarkDisplay, selection = null, appearance = "", angle = 0, width = 0, height = 0;
   let reviewSnapshot;
   let raf, frames = 0, dirty = true, alive = true, shadowPose = "", shadowDirty = true;
+  let spreadNow = 0, spreadStart = 0, spreadFrom = 0;
   let visibleComponents = 0;
+  let simulationPlaying = false;
   const invalidate = () => { dirty = true; };
+  const player = responsePlayer(invalidate);
+  const surfaceMode = document.querySelector("#surface-mode");
+  const fullScreen = document.querySelector("#full-screen");
+  fullScreen.hidden = !document.fullscreenEnabled;
+  fullScreen.onclick = async () => {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await workbench.requestFullscreen();
+    } catch { setExportStatus("浏览器未允许此视窗进入全屏。"); }
+  };
+  document.onfullscreenchange = () => { fullScreen.textContent = document.fullscreenElement ? "退出全屏" : "全屏"; };
+  const variants = new Map();
+  function inspectionSurface(original, mode) {
+    if (Array.isArray(original)) return original.map(item => inspectionSurface(item, mode));
+    let pair = variants.get(original);
+    if (!pair) { pair = {}; variants.set(original, pair); }
+    if (!pair[mode]) {
+      const mat = original.clone();
+      if (mode === "wire") mat.wireframe = true;
+      else { mat.transparent = true; mat.opacity = .23; mat.depthWrite = false; }
+      pair[mode] = mat;
+    }
+    return pair[mode];
+  }
+  surfaceMode.onchange = () => { if (args) { select(selection); shadowDirty = true; } };
   const rig = cameraRig(canvas, invalidate);
   const linkStatus = document.querySelector("#camera-link-status");
   const cameras = cameraLink(rig, (status) => {
@@ -82,7 +110,7 @@ export async function mount() {
     exportStatus.hidden = !text;
   }
   function updateExportButton() {
-    exportControl.disabled = !args || args.replayRunning || settling || exportPending || exporting;
+    exportControl.disabled = !args || Boolean(args.simulation) || args.replayRunning || settling || exportPending || exporting;
   }
   function requestExport() {
     if (exportControl.disabled) return;
@@ -131,7 +159,7 @@ export async function mount() {
     workbench.dataset.measurePoints = String(count);
     workbench.dataset.measureDistance = distance ?? "";
     measureControl.setAttribute("aria-pressed", String(measuring));
-    measureControl.disabled = !args || args.playing || Boolean(args.spread) || settling;
+    measureControl.disabled = !args || Boolean(args.simulation) || args.playing || Boolean(args.spread) || settling;
     clearMeasurementControl.disabled = count === 0;
     inspectionText.hidden = measuring;
     measurementPanel.hidden = !measuring;
@@ -146,7 +174,7 @@ export async function mount() {
     updateMeasurement();
   }
   function updateShadows() {
-    renderer.shadowMap.enabled = !section.enabled && !(batches && args?.playing);
+    renderer.shadowMap.enabled = !section.enabled && !(batches && (args?.playing || simulationPlaying));
     shadowDirty = true;
   }
   const section = sectionPlane(renderer, workbench, () => {
@@ -163,20 +191,36 @@ export async function mount() {
   const reset = () => { if (args) rig.reset(args.view, args); };
   function select(part) {
     selection = part;
-    assembly.appearance({...args, hidden, isolated}, part);
-    batches?.update(args.playing && !args.spread);
+    assembly.appearance({...args, drawSpread: spreadNow, hidden, isolated}, part);
+    const mode = surfaceMode.value;
+    if (mode !== "solid") for (const mesh of assembly.objects) {
+      if (mode === "wire" || mesh.userData.part === "构架") mesh.material = inspectionSurface(mesh.material, mode);
+    }
+    batches?.update((args.playing || simulationPlaying) && !args.spread && mode === "solid");
     const visible = assembly.objects.filter((mesh) => mesh.visible && mesh.parent.visible);
     visibleComponents = new Set(visible.map((mesh) => mesh.userData.id ?? mesh.userData.part)).size;
     const available = visible.some((mesh) => mesh.userData.id === part || mesh.userData.part === part);
     picker.select(part, available);
     browser?.update(part, hidden, isolated, args.visible, args.rails);
     workbench.dataset.selected = part ?? "";
+    showChannel();
     workbench.dataset.hidden = hidden.size;
     workbench.dataset.isolated = isolated ?? "";
     illumination.platform.visible = args.rails && !isolated;
     hideControl.disabled = !available || !assembly.partNodes.has(part);
     restoreControl.disabled = !hidden.size;
     invalidate();
+  }
+  function showChannel() {
+    const group = detailed?.parts.get(selection)?.spec.group ?? selection;
+    const sample = args.exportContext;
+    const hint = document.getElementById("channel-context");
+    if (!group || !sample?.sample_number) {hint.textContent = ""; return;}
+    const axes = ["构架", "轮对", "轴箱"].includes(group) ? ["横向", "垂向"] :
+      ["一系悬挂", "二系悬挂"].includes(group) ? ["垂向"] : [];
+    const value = axis => sample[axis === "横向" ? "lateral_accel" : "vertical_accel"];
+    hint.textContent = axes.length ? "批次第 " + sample.sample_number + " 行 · " +
+      axes.map(axis => axis + " " + value(axis).toFixed(3)).join(" / ") + " m/s² · 安装点未知" : "此批次无该部件专用通道";
   }
   const picker = inspection(canvas, data.parts, assembly, rig, select, reset, detailed?.parts, section, {
     active: () => measuring,
@@ -301,7 +345,22 @@ export async function mount() {
     if (!alive) return;
     raf = requestAnimationFrame(frame);
     if (!args || document.hidden) return;
-    const pose = clock.tick(now);
+    const pose = player.tick(now) ?? clock.tick(now);
+    if (simulationPlaying !== Boolean(args.simulation && pose.running)) {
+      simulationPlaying = Boolean(args.simulation && pose.running);
+      if (software) {
+        renderer.setPixelRatio(pixelRatio * (simulationPlaying ? .60 : 1));
+        updateShadows();
+        select(selection);
+      }
+      invalidate();
+    }
+    if (spreadNow !== args.spread) {
+      const t = Math.min(1, Math.max(0, (now-spreadStart)/360));
+      spreadNow = t === 1 ? args.spread : spreadFrom + (args.spread-spreadFrom)*t*t*(3-2*t);
+      assembly.setSpread(spreadNow);
+      dirty = shadowDirty = true;
+    }
     if (settling !== pose.settling) {
       settling = pose.settling;
       updateMeasurement();
@@ -328,7 +387,7 @@ export async function mount() {
       camera: rig.camera.position.toArray().map((x) => x.toFixed(3)).join(","),
       target: rig.controls.target.toArray().map((x) => x.toFixed(3)).join(","),
       triangles: renderer.info.render.triangles, mode: args.mode,
-      playing: String(args.playing),
+      playing: String(args.playing || simulationPlaying),
       parts: args.visible.length, highlighted: args.highlight.join("、"), calls: renderer.info.render.calls,
       spread: args.spread,
       visibleComponents,
@@ -354,6 +413,7 @@ export async function mount() {
     picker.dispose();
     browser?.dispose();
     bookmarks.dispose();
+    for (const pair of variants.values()) for (const mat of Object.values(pair)) mat.dispose();
     batches?.dispose();
     gauge.dispose();
     section.dispose();
@@ -401,10 +461,15 @@ export async function mount() {
       setExportStatus("");
     }
     updateExportButton();
+    showChannel();
     if (args.playing || args.spread) measuring = false;
     if (!previous || Boolean(previous.spread) !== Boolean(args.spread)) {
       illumination.fitShadows(Boolean(args.spread));
       shadowDirty = true;
+    }
+    if (previous?.spread !== args.spread) {
+      spreadStart = performance.now();
+      spreadFrom = spreadNow;
     }
     if (previous && (previous.phase !== args.phase || previous.mode !== args.mode ||
         previous.rails !== args.rails || previous.spread !== args.spread ||
@@ -477,6 +542,7 @@ export async function mount() {
           serverArgs.revision !== next.revision || serverArgs.rails !== next.rails)) bookmarkDisplay = null;
     }
     serverArgs = next;
+    player.load(next.simulation);
     clock.receive(next, performance.now());
     apply(next, entering || Boolean(leaving));
     if (restoreView) {

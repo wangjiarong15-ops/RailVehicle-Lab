@@ -3,7 +3,7 @@
 import csv
 import io
 import sqlite3
-from bisect import bisect_left
+from bisect import bisect_left, bisect_right
 from dataclasses import replace
 from datetime import timezone
 from time import monotonic
@@ -75,14 +75,19 @@ def _demo_track() -> ReplayTrack:
 
 
 def build_replay_chart(track: ReplayTrack, index: int, position: float, threshold: float,
-                       *, event_index=None, playhead=False, window=None):
-    """Show observed samples only, bounded to the latest 60 seconds / 1,000 rows."""
+                       *, event_index=None, playhead=False, window=None, seekable=False):
+    """Bounded observed samples: trailing while playing, either side when seeking."""
     by_row = window is not None and window.start == window.end
     # At a repeated timestamp, keep rows through the explicitly selected sample only.
     first = min(index, max(bisect_left(track.offsets, max(0, position - 60)), index - 999,
                            window.first_row if window else 0))
-    rows = track.samples[first:index + 1]
-    x_values = list(range(first + 1, index + 2)) if by_row else track.offsets[first:index + 1]
+    last = index
+    if seekable:
+        upper = window.last_row if window else len(track.samples)-1
+        first = max(first, index-499)
+        last = min(upper, index+500, bisect_right(track.offsets, position+60, lo=index)-1)
+    rows = track.samples[first:last + 1]
+    x_values = list(range(first + 1, last + 2)) if by_row else track.offsets[first:last + 1]
     figure = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.09)
     shapes = []
     channels = (
@@ -93,13 +98,15 @@ def build_replay_chart(track: ReplayTrack, index: int, position: float, threshol
     for row_index, (field, label, color) in enumerate(channels, start=1):
         values = [row[field] for row in rows]
         figure.add_trace(go.Scatter(x=x_values, y=values, name=label,
-                                   mode="markers", marker_size=4,
+                                   customdata=list(range(first, last+1)) if seekable else None,
+                                   mode="markers", marker_size=5 if seekable else 4,
                                    line_color=color), row=row_index, col=1)
         figure.update_yaxes(title_text=label, row=row_index, col=1)
         if row_index > 1:
             abnormal = [i for i, value in enumerate(values) if abs(value) > threshold]
             figure.add_trace(go.Scatter(
                 x=[x_values[i] for i in abnormal], y=[values[i] for i in abnormal],
+                customdata=[first+i for i in abnormal] if seekable else None,
                 mode="markers", marker={"color": "#dc2626", "size": 10, "symbol": "diamond"},
                 name=f"{label}超阈值",
             ), row=row_index, col=1)
@@ -112,7 +119,7 @@ def build_replay_chart(track: ReplayTrack, index: int, position: float, threshol
         spans = ((event["field"], _offset(track, event["start_timestamp"]), _offset(track, event["end_timestamp"]))
                  for event in detect_anomalies(rows, threshold)["events"][:CHART_EVENT_LIMIT])
     else:
-        spans = event_index.window(track.offsets, first, index, CHART_EVENT_LIMIT)
+        spans = event_index.window(track.offsets, first, last, CHART_EVENT_LIMIT)
     for field, start, end in spans:
         row_index = 2 if field == "lateral_accel" else 3
         location = dict(xref=f"x{row_index}", yref=f"y{row_index} domain", x0=start, x1=end, y0=0, y1=1)
@@ -131,11 +138,13 @@ def build_replay_chart(track: ReplayTrack, index: int, position: float, threshol
                             tickformat="d", tick0=window.first_row + 1, dtick=stride)
         axis_label = "批次样本序号（同一 UTC 时刻）"
     else:
-        x_range = [window.start, window.end] if window else [max(0, position - 60), max(10, position + 1)]
+        x_range = [window.start, window.end] if window else [max(0, position - 60), max(10, position + 1, track.offsets[last])]
         figure.update_xaxes(range=x_range)
         axis_label = "相对运行时间（秒）"
     figure.update_xaxes(title_text=axis_label, row=3, col=1)
     figure.update_layout(height=570, showlegend=False, margin=dict(l=20, r=20, t=15, b=20), shapes=shapes)
+    if seekable:
+        figure.update_layout(clickmode="event+select")
     return figure
 
 

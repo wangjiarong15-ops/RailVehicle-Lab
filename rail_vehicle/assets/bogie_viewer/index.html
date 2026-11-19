@@ -10,7 +10,9 @@
 <body>
   <main id="workbench" aria-label="三维转向架工作台">
     <header>
-      <div><strong>双轴转向架</strong><span id="model-status">通用工程示意</span></div>
+      <div><strong>RailVehicle 3D Studio</strong><span id="model-status">通用双轴转向架</span></div>
+      <select id="surface-mode" aria-label="表面显示"><option value="solid">实体</option><option value="ghost">构架透视</option><option value="wire">网格线框</option></select>
+      <button id="full-screen" type="button" hidden>全屏</button>
       <select id="view" aria-label="视窗视角" disabled>
         <option>整体视图</option><option>侧视图</option><option>正视图</option>
         <option>俯视图</option><option>底视图</option>
@@ -62,8 +64,20 @@
         </div>
       </aside>
     </div>
+    <section id="response" aria-label="计算响应时间轴" hidden>
+      <div class="response-bar"><button id="sim-play" type="button">播放</button><button id="sim-reset" type="button">重置</button>
+        <select id="sim-rate" aria-label="计算播放速度"><option value=".25">0.25×</option><option value=".5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select>
+        <input id="sim-time" type="range" min="0" step="1" aria-label="计算样本">
+        <output id="sim-values"></output></div>
+      <svg id="response-plot" viewBox="0 0 1000 64" preserveAspectRatio="none" aria-label="计算悬挂行程曲线，点击定位">
+        <path d="M0 32H1000" stroke="#51657a"/><path id="response-path" fill="none" stroke="#50d3c3" vector-effect="non-scaling-stroke"/>
+        <path id="nominal-path" fill="none" stroke="#a7b4c4" stroke-dasharray="4 3" vector-effect="non-scaling-stroke"/>
+        <line id="response-cursor" y1="0" y2="64" stroke="#ffbd69" stroke-width="2"/></svg>
+      <div class="response-axis"><span id="response-scale"></span><span>0 – 6 s</span></div>
+    </section>
     <footer>
       <span id="inspection" aria-live="polite">点击零件查看名称、作用和安装位置</span>
+      <span id="channel-context"></span>
       <div id="measurement-panel" hidden>
         <span id="measurement-status" role="status"></span>
         <button id="clear-measurement" type="button" disabled>清除测点</button>
@@ -78,6 +92,7 @@
     let args, startup, update;
     const error = () => {
       document.querySelector("#message").textContent =
+        args?.simulation ? "WebGL 不可用。可在下方「计算方法与数值样本」核对本次计算。" :
         "无法开启 WebGL 三维视图。请在左侧「渲染方式」选择 Plotly 兼容模式，运行曲线和回放仍可使用。";
       document.querySelector("#workbench").dataset.status = "unavailable";
     };
@@ -85,7 +100,7 @@
       if (!args) return;
       let viewport = screen.availHeight;
       try { viewport = parent.innerHeight; } catch {}
-      const fraction = viewport < 850 ? .61 : .67;
+      const fraction = args.simulation ? .80 : viewport < 850 ? .61 : .67;
       const height = Math.max(280, Math.min(args.height, Math.round(viewport * fraction)));
       const root = document.querySelector("#workbench");
       if (root.style.height !== height + "px") {

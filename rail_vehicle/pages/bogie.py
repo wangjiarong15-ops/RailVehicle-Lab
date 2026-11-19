@@ -15,6 +15,7 @@ from rail_vehicle.bogie_replay import (
     replay_event_catalog, replay_scene,
 )
 from rail_vehicle.bogie_viewer import render_webgl, webgl_available
+from rail_vehicle.pages.suspension_lab import render_lab
 from rail_vehicle.demo_data import DEMO_BATCH_IDS, analysis_demo_data
 from rail_vehicle.deployment import demo_source_options
 from rail_vehicle.event_anchor import resolve_event_row
@@ -275,6 +276,8 @@ def _load(source, target):
 
 def _display(track, duration, threshold, cutoff, teaching, inspection, event_index, show_signals,
              window, renderer, source, selection, camera_group, speed_tolerance):
+    if st.session_state.pop("bogie_curve_moved", False):
+        st.rerun(scope="app")
     state = st.session_state[STATE_KEY]
     now = monotonic()
     if window:
@@ -459,8 +462,25 @@ def _display(track, duration, threshold, cutoff, teaching, inspection, event_ind
             st.subheader("运行信号")
             st.caption("青色线为当前观测；红色菱形为超阈值样本。两次采样之间不补算数据。")
             chart = build_replay_chart(track, index, state.position, threshold, event_index=event_index,
-                                       playhead=True, window=window)
-            plot_chart(chart, width="stretch", key="bogie_curves")
+                                       playhead=True, window=window, seekable=not state.playing)
+            if state.playing:
+                plot_chart(chart, width="stretch", key="bogie_curves_live")
+            else:
+                st.caption("点击观测点定位三维和时间轴。")
+                def curve_seek():
+                    points = st.session_state["bogie_curves"]["selection"]["points"]
+                    row = points[-1].get("customdata") if points else None
+                    first, last = (window.first_row, window.last_row) if window else (0, len(track.samples)-1)
+                    if track is not st.session_state.get("bogie_track"):
+                        return
+                    try:
+                        cursor = track.observation_at(row, first=first, last=last)
+                    except ValueError:
+                        return
+                    _seek(cursor["relative_seconds"], cursor["row"])
+                    st.session_state["bogie_curve_moved"] = True
+                plot_chart(chart, width="stretch", key="bogie_curves",
+                           on_select=curve_seek, selection_mode="points")
 
 
 def _control_playback(state, action, now, track, window, *, rate=None):
@@ -485,7 +505,7 @@ def render():
     requested_scope = (target or batch_target or {}).get("scope")
     if STATE_KEY not in st.session_state:
         _clear_loop()
-    choices = [TEACH, *demo_source_options(HISTORY, DEMO)]
+    choices = [TEACH, *demo_source_options(HISTORY, DEMO), "简化动力学计算"]
     candidate = target or batch_target
     fictional = bool(candidate and candidate.get("fictional") is True)
     requested = candidate if fictional or HISTORY in choices else None
@@ -498,6 +518,13 @@ def render():
     with options:
         st.subheader("场景与结构")
         source = st.radio("数据来源", choices, key="bogie_source")
+        if source == "简化动力学计算":
+            if st.session_state.get("bogie_selection") != (source,):
+                _clear_loop()
+                _seek(0)
+                st.session_state.update(bogie_selection=(source,), bogie_track=None)
+            render_lab(main)
+            return
         teaching = st.selectbox("教学场景", list(TEACHING), key="bogie_teaching") if source == TEACH else next(iter(TEACHING))
         if source == DEMO:
             st.caption("虚构数据，非实际测量。")

@@ -22,6 +22,14 @@ class ReplayTrack:
     def index_at(self, position: float) -> int:
         return max(0, bisect_right(self.offsets, position) - 1)
 
+    def observation_at(self, row: int, *, first=0, last=None) -> dict:
+        """Resolve an absolute zero-based row within this track and the caller's window."""
+        upper = len(self.samples)-1 if last is None else last
+        if type(row) is not int or not 0 <= first <= row <= upper < len(self.samples):
+            raise ValueError("所选观测超出当前批次或窗口")
+        return dict(version=1, kind="observation", row=row, relative_seconds=self.offsets[row],
+                    **self.samples[row])
+
 
 @dataclass(frozen=True)
 class ReplayState:

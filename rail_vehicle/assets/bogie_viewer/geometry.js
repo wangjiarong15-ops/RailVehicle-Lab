@@ -151,19 +151,22 @@ export function createAssembly(scene, data, material, detailed) {
   }
 
   let visible = new Set(), highlight = new Set(), selected, spread = 0;
+  function setSpread(value) {
+    spread = value;
+    for (const parent of Object.values(parents)) {
+      for (const holder of parent.children) {
+        if (holder.userData.offset) holder.position.copy(holder.userData.offset).multiplyScalar(spread);
+      }
+    }
+  }
   return {
-    objects, frame, wheel, partNodes, layers: parents,
+    objects, frame, wheel, partNodes, layers: parents, setSpread,
     appearance(args, selection) {
+      setSpread(args.drawSpread ?? args.spread);
       visible = new Set(args.visible);
       if (args.rails) visible.add("轨道参照");
       highlight = new Set(args.highlight);
       selected = selection;
-      spread = args.spread;
-      for (const parent of Object.values(parents)) {
-        for (const holder of parent.children) {
-          if (holder.userData.offset) holder.position.copy(holder.userData.offset).multiplyScalar(spread);
-        }
-      }
       for (const mesh of objects) {
         const {part, tone, id, original} = mesh.userData;
         mesh.visible = visible.has(part) && !args.hidden?.has(id) && (!args.isolated || args.isolated === id);
@@ -172,7 +175,7 @@ export function createAssembly(scene, data, material, detailed) {
         mesh.material = surface;
       }
       for (const {node, part, id} of links) {
-        node.visible = (id || !spread) && visible.has(part) && !args.hidden?.has(id) &&
+        node.visible = (id || !args.spread) && visible.has(part) && !args.hidden?.has(id) &&
           (!args.isolated || args.isolated === id);
       }
     },

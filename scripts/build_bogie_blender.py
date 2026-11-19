@@ -22,7 +22,7 @@ DEFAULT_OUTPUT = ROOT / "rail_vehicle/assets/bogie_viewer/bogie.glb"
 # Linear RGB for Blender's Principled BSDF. Keep painted surfaces nearly
 # dielectric and reserve sharper reflections for bare machined steel.
 SURFACES = {
-    "paint": ((.025, .040, .057), .06, .49),
+    "paint": ((.022, .043, .068), .08, .45),
     "paint_edge": ((.043, .063, .086), .08, .44),
     "steel": ((.121, .132, .143), .87, .38),
     "polished": ((.32, .35, .38), .96, .22),
@@ -106,7 +106,8 @@ class Part:
 def side_beam(p):
     w = DIMENSIONS["side_beam_width"]
     half = DIMENSIONS["frame_length"]/2
-    p.outline(0, w, ((-half,-.033),(-1.57,-.122),(1.57,-.122),(half,-.033),
+    p.outline(0, w, ((-half,-.033),(-1.57,-.122),(-.85,-.122),(-.61,-.145),
+                     (.61,-.145),(.85,-.122),(1.57,-.122),(half,-.033),
                      (half,.070),(1.54,.144),(-1.54,.144),(-half,.070)), "paint", .023)
     p.box((0,0,.134), (1.50,.32,.064), "paint_edge", .013)
     for side in (-1, 1):
@@ -142,6 +143,11 @@ def cross_members(p):
         p.box((x,0,-.004),(.167,2.19,.148),"paint",.021)
     for y in (-.69,.69):
         p.box((0,y,-.032),(1.13,.17,.163),"paint_edge",.013)
+    # Gussets join the motor-bearing cross members to the side beam webs.
+    for x in (-.45,.45):
+        for y in (-1.03,1.03):
+            p.outline(y,.105,((x-.17,-.065),(x+.17,-.065),(x+.11,.078),(x-.11,.078)),
+                      "paint_edge", .004)
     p.box((0,0,-.038),(.33,1.40,.14),"paint",.016)
     p.box((0,0,.054),(.29,.43,.058),"paint_edge",.012)
     p.cylinder((0,0,.077),(0,0,.148),.103,"cast",32)
@@ -158,7 +164,7 @@ def wheel(p, side):
         (-.103,.391,"steel"),(-.105,.423,"steel"),(-.097,.449,"steel"),
         (-.085,flange,"steel"),(-.071,.447,"steel"),(TREAD_BAND[0],tread,"polished"),
         (TREAD_BAND[1],tread,"polished"),(.074,.413,"steel"),(.094,.402,"steel"),(.098,.381,"steel"),
-        (.077,.361,"cast"),(.062,.231,"cast"),(.077,.180,"steel"),
+        (.069,.361,"cast"),(.048,.231,"cast"),(.077,.180,"steel"),
         (.120,.133,"polished"),(.126,.113,"cast"),(.126,0,"cast"),
     ], sides=72)
     p.box((.263, side*.071,.010),(.066,.008,.012),"marker",.002)
@@ -168,7 +174,7 @@ def axle(p):
     points = [(-1.35,0),(-1.35,.067),(-1.18,.071),(-.97,.088),(-.76,.085),
               (-.56,.073),(-.50,.078),(.50,.078),(.56,.073),(.76,.085),
               (.97,.088),(1.18,.071),(1.35,.067),(1.35,0)]
-    p.profile((0,0,0),(0,1,0),[(y,r,"steel" if abs(y)>.7 else "cast") for y,r in points],40)
+    p.profile((0,0,0),(0,1,0),[(y,r,"steel" if abs(y)>.7 else "cast") for y,r in points],32)
 
 
 def axlebox(p, side):
@@ -194,7 +200,7 @@ def axlebox(p, side):
     for i in range(6):
         angle = i*tau/6
         x,z = .119*cos(angle),.119*sin(angle)
-        p.cylinder((x,side*.157,z),(x,side*.166,z),.014,"cast",10)
+        p.cylinder((x,side*.157,z),(x,side*.166,z),.014,"cast",8)
         p.cylinder((x,side*.164,z),(x,side*.178,z),.0105,"steel",6)
 
 
@@ -203,7 +209,7 @@ def air_spring(p):
               (.043,.195,"rubber"),(.053,.209,"rubber"),(.075,.224,"rubber"),(.103,.224,"rubber"),
               (.126,.200,"rubber"),(.150,.192,"rubber"),(.175,.217,"rubber"),(.207,.222,"rubber"),
               (.229,.204,"rubber"),(.247,.186,"steel"),(.248,.224,"steel"),(.273,.230,"steel"),
-              (.289,.226,"steel"),(.289,0,"steel")])
+              (.289,.226,"steel"),(.289,0,"steel")], sides=36)
     p.box((0,0,.297),(.34,.33,.033),"paint_edge",.015)
     for x in (-.134,.134):
         for y in (-.119,.119):
@@ -287,10 +293,12 @@ def gearbox(p):
 
 
 def disc(p):
-    p.profile((0,0,0),(0,1,0),[(-.052,0,"cast"),(-.052,.115,"cast"),(-.028,.126,"cast"),
-              (-.028,.156,"polished"),(-.028,.228,"steel"),(-.023,.241,"steel"),
-              (.023,.241,"steel"),(.028,.229,"polished"),(.028,.156,"cast"),
-              (.028,.127,"cast"),(.052,.115,"cast"),(.052,0,"cast")], 40)
+    # Recess the casting between the two swept friction faces at the rim.
+    p.profile((0,0,0),(0,1,0),[(-.052,0,"cast"),(-.052,.115,"cast"),(-.028,.132,"cast"),
+              (-.028,.156,"polished"),(-.028,.233,"polished"),(-.024,.241,"steel"),
+              (-.009,.241,"cast"),(-.008,.207,"cast"),(.008,.207,"cast"),(.009,.241,"cast"),
+              (.024,.241,"steel"),(.028,.233,"polished"),(.028,.156,"polished"),
+              (.028,.132,"cast"),(.052,.115,"cast"),(.052,0,"cast")], 32)
 
 
 def caliper(p):
@@ -303,6 +311,7 @@ def caliper(p):
     p.cylinder((0,outer*.089,.025),(0,outer*.109,.025),.038,"cast",20)
     p.cylinder((0,outer*.108,.025),(0,outer*.114,.025),.024,"steel",16)
     for x in (-.078,.078):
+        p.cylinder((x,-.092,.034),(x,.092,.034),.015,"steel",10)
         p.cylinder((x,0,.098),(x,0,.118),.017,"steel",6)
 
 
@@ -316,7 +325,11 @@ def track(p):
     for x in (-1.85,-1.25,-.65,0,.65,1.25,1.85):
         p.box((x,0,-.179),(.20,2.42,.077),"sleeper",.009)
         for y in (-WHEEL_Y,WHEEL_Y):
-            p.box((x,y,-.132),(.158,.205,.030),"cast",.004)
+            p.box((x,y,-.145),(.170,.266,.019),"cast",.004)
+            for side in (-1,1):
+                # Heel on the seat plate, toe overlaps the rail foot.
+                p.box((x,y+side*.090,-.123),(.074,.086,.024),"steel",0)
+                p.cylinder((x,y+side*.105,-.118),(x,y+side*.105,-.100),.017,"cast",6)
 
 
 def orient_link(node, anchors):

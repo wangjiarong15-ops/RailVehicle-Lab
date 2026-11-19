@@ -72,7 +72,9 @@ export function inspection(canvas, descriptions, assembly, rig, onSelect, reset,
       const spec = parts?.get(part)?.spec;
       const group = spec?.group ?? part;
       const title = spec?.label ? spec.label + " (" + part + ")" : part;
-      inspectionText.textContent = part ? [title, descriptions[group], available ? "" : "当前不可见"]
+      const origin = spec?.origin?.map(value => value.toFixed(2)).join(", ");
+      inspectionText.textContent = part ? [title, descriptions[group], origin ? "装配原点 XYZ (" + origin + ") m" : "",
+        spec?.spin ? "绕横向车轴转动" : "", available ? "" : "当前不可见"]
         .filter(Boolean).join(" · ") : "点击零件查看名称、作用和安装位置";
     },
     labels(args, width, height) {

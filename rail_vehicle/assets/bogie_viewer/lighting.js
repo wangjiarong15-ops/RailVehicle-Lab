@@ -41,7 +41,7 @@ export function studio(scene, renderer) {
   key.shadow.bias = -.00045;
   key.shadow.intensity = .82;
   key.shadow.radius = 2.8;
-  const fill = new THREE.DirectionalLight(0xb8d1f1, .63);
+  const fill = new THREE.DirectionalLight(0xb8d1f1, .50);
   fill.position.set(-3, 4, 3);
   const rim = new THREE.DirectionalLight(0xd9e5ff, 1.20);
   rim.position.set(-5, -2, 2);
@@ -67,8 +67,23 @@ export function studio(scene, renderer) {
     new THREE.MeshStandardMaterial({color: 0x172533, roughness: .52, metalness: .30}));
   plinth.position.z = -.351;
   platform.add(base, plinth);
+  // Fixed contact shading on the display base; one local texture and one draw call.
+  const stamp = document.createElement("canvas");
+  stamp.width = stamp.height = 64;
+  const ctx = stamp.getContext("2d");
+  const falloff = ctx.createRadialGradient(32,32,4,32,32,32);
+  falloff.addColorStop(0, "rgba(0,0,0,.48)");
+  falloff.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = falloff;
+  ctx.fillRect(0,0,64,64);
+  const contactMap = new THREE.CanvasTexture(stamp);
+  const contact = new THREE.Mesh(new THREE.PlaneGeometry(4.42,2.56),
+    new THREE.MeshBasicMaterial({map:contactMap,transparent:true,depthWrite:false}));
+  contact.position.z = -.215;
+  platform.add(contact);
   scene.add(platform);
   return {platform, fitShadows, dispose() {
+    contactMap.dispose();
     environment.dispose();
     key.shadow.dispose();
   }};

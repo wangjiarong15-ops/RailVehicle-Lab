@@ -8,11 +8,13 @@ export function partBrowser(parts, actions) {
   const isolate = document.querySelector("#isolate-part");
   const groups = new Map();
   const rows = [];
+  let lastSelected = null;
 
   for (const [id, {spec}] of parts) {
     if (!groups.has(spec.group)) {
-      const section = document.createElement("section");
-      const heading = document.createElement("h3");
+      const section = document.createElement("details");
+      section.open = true;
+      const heading = document.createElement("summary");
       heading.className = "part-group";
       heading.textContent = spec.group;
       section.append(heading);
@@ -43,7 +45,10 @@ export function partBrowser(parts, actions) {
       row.hidden = !search.includes(term);
       if (!row.hidden) matches++;
     }
-    for (const section of groups.values()) section.hidden = !section.querySelector(".part-row:not([hidden])");
+    for (const section of groups.values()) {
+      section.hidden = !section.querySelector(".part-row:not([hidden])");
+      if (term && !section.hidden) section.open = true;
+    }
     count.textContent = matches ? matches + " / " + rows.length + " 件" : "没有匹配的零件";
   }
   function open(value) {
@@ -69,6 +74,10 @@ export function partBrowser(parts, actions) {
   isolate.addEventListener("click", actions.isolate);
   return {
     update(selection, hidden, isolated, visible, rails) {
+      if (selection !== lastSelected && parts.has(selection)) {
+        groups.get(parts.get(selection).spec.group).open = true;
+      }
+      lastSelected = selection;
       const groupVisible = (group) => group === "轨道参照" ? rails : visible.includes(group);
       for (const {id, spec, row, status} of rows) {
         row.setAttribute("aria-pressed", String(selection === id));
