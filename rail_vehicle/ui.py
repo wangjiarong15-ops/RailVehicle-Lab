@@ -217,7 +217,7 @@ DEMO_DATA = "统计与异常演示"
 BATCH_VIEWS = (ANALYSIS, ANOMALIES, REPORT, DEMO_DATA)
 BOGIE = "三维转向架仿真"
 AI = "AI 智能分析中心"
-ADVANCED_PAGES = ("演示中心", "动态运行驾驶舱", "振动与平稳性分析", "多车辆运行对比", "机器学习异常检测")
+ADVANCED_PAGES = ("演示中心", "动态运行驾驶舱", "多车辆运行对比", "机器学习异常检测")
 ANALYSIS_MODE = "workbench_analysis_mode"
 
 
@@ -225,9 +225,9 @@ _WORKSPACE = ((HOME, "工作台", "dashboard"),
               (DATA_PAGES[0], "车辆管理", "train"), (DATA_PAGES[1], "数据管理", "database"))
 _CORE = ((ANALYSIS, "运行分析", "monitoring"), (ANOMALIES, "异常检测", "warning"),
          (COMPARISON, "批次对比", "compare_arrows"), (AI, "AI 智能分析", "psychology"))
-_ENGINEERING = ((BOGIE, "三维可视化", "view_in_ar"), (REPORT, "分析报告", "description"))
+_ENGINEERING = (("振动与平稳性分析", "振动与频谱", "waves"), (BOGIE, "三维可视化", "view_in_ar"), (REPORT, "分析报告", "description"))
 _SPECIALTY = ((DEMO_DATA, "虚构数据分析", "science"), *zip(ADVANCED_PAGES, ADVANCED_PAGES,
-              ("school", "speed", "waves", "compare", "model_training")))
+              ("school", "speed", "compare", "model_training")))
 
 
 def render_navigation(public, on_select=navigate):

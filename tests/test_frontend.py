@@ -20,8 +20,8 @@ from rail_vehicle.pages import home, vehicles, run_analysis
 from rail_vehicle.pages.data_workflow import ANALYSIS_TARGET, WORKBENCH_SOURCE
 
 
-MAIN_NAV = ("工作台", "车辆管理", "数据管理", "运行分析", "异常检测", "批次对比", "AI 智能分析", "三维可视化", "分析报告")
-ADVANCED_ROUTES = ("动态运行驾驶舱", "机器学习异常检测", "振动与平稳性分析", "多车辆运行对比", "演示中心")
+MAIN_NAV = ("工作台", "车辆管理", "数据管理", "运行分析", "异常检测", "批次对比", "AI 智能分析", "振动与频谱", "三维可视化", "分析报告")
+ADVANCED_ROUTES = ("动态运行驾驶舱", "机器学习异常检测", "多车辆运行对比", "演示中心")
 
 
 def home_app():
@@ -371,7 +371,7 @@ class FrontendTests(unittest.TestCase):
             self.assertFalse(app.exception)
             self.assertEqual(app.session_state["navigation_page"], "平台首页")
             self.assertEqual(len(app.sidebar.radio), 0)
-            self.assertEqual(tuple(button.label for button in app.sidebar.button[:9]), MAIN_NAV)
+            self.assertEqual(tuple(button.label for button in app.sidebar.button[:len(MAIN_NAV)]), MAIN_NAV)
             self.assertEqual(app.sidebar.button(key="nav_平台首页").proto.type, "primary")
             advanced = next(section for section in app.sidebar.expander if "专项工具" in section.label)
             self.assertTrue({f"nav_{label}" for label in ADVANCED_ROUTES} <= {button.key for button in advanced.button})

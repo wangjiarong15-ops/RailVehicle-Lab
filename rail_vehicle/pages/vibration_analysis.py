@@ -26,18 +26,44 @@ LABELS = dict(lateral_accel="横向", vertical_accel="垂向")
 COLORS = dict(lateral_accel="#2563eb", vertical_accel="#7c3aed")
 
 
-def vibration_chart(result, *, rolling=False):
+def vibration_chart(result, *, rolling=False, fft=False):
     figure = go.Figure()
     for field, label in LABELS.items():
         channel = result["channels"][field]
-        x = channel["rolling_end_seconds"] if rolling else channel["frequencies"]
-        y = channel["rolling_rms"] if rolling else channel["psd"]
+        x = channel["rolling_end_seconds"] if rolling else channel["fft_hz" if fft else "frequencies"]
+        y = channel["rolling_rms"] if rolling else channel["fft_amplitude" if fft else "psd"]
         figure.add_trace(go.Scatter(x=x, y=y, name=label, line_color=COLORS[field]))
     figure.update_layout(height=320, margin=dict(l=20, r=20, t=20, b=20),
                          legend=dict(orientation="h", y=1.12),
                          xaxis_title="窗口结束时刻（相对秒）" if rolling else "频率（Hz）",
-                         yaxis_title="去均值滑动 RMS（m/s²）" if rolling else "PSD（(m/s²)²/Hz）")
+                         yaxis_title="去均值滑动 RMS（m/s²）" if rolling else "峰值幅值（m/s²）" if fft else "PSD（(m/s²)²/Hz）")
     return figure
+
+
+def _batch_comparison(current, vehicle, batch, labels, lower, upper):
+    candidates = [key for key in labels if key != batch]
+    if not candidates or not st.toggle("与同车另一批次对照", key="vibration_compare"):
+        return
+    reference = st.selectbox("参照批次", candidates, format_func=labels.get, key=f"vibration_ref_{vehicle}_{batch}")
+    st.caption(f"两批次均按各自起点后的 {lower:g}–{upper:g} 秒取样，采用相同频带和窗口。采样率及频率分辨率按各自数据计算。")
+    try:
+        ref_track = prepare_replay(list_batch_samples(vehicle, reference))
+        rows = [row for t, row in zip(ref_track.offsets, ref_track.samples) if lower <= t <= upper]
+        ref = analyze_vibration(rows, band_low=current["band_low"], band_high=current["band_high"],
+                                window_seconds=current["window_seconds"])
+    except (OSError, sqlite3.Error, ValueError, TypeError, KeyError, VibrationUnavailableError):
+        st.warning("参照批次在此范围内没有可分析的数据。")
+        return
+    for issue in ref["issues"]:
+        st.caption(f"参照批次：{issue}")
+    table = []
+    for name, result in ((labels[batch], current), (labels[reference], ref)):
+        for field, axis in LABELS.items():
+            channel = result["channels"][field]
+            table.append(dict(批次=name, 方向=axis, 样本=result["sample_count"], 采样率_Hz=result["sampling_rate_hz"],
+                              动态RMS_ms2=channel["dynamic_rms"], 峭度=channel["kurtosis"],
+                              峰值因子=channel["crest_factor"], 频带RMS_ms2=channel["band_rms"]))
+    st.dataframe(table, hide_index=True, width="stretch")
 
 
 def render():
@@ -137,19 +163,35 @@ def render():
         channel = result["channels"][field]
         rows.append(dict(方向=label, 均值_ms2=channel["raw_mean"], 原始RMS_ms2=channel["raw_rms"],
                          去均值RMS_ms2=channel["dynamic_rms"], 去均值绝对峰值_ms2=channel["dynamic_peak"],
-                         峰值因子=channel["crest_factor"]))
+                         峰值因子=channel["crest_factor"], Pearson峭度=channel["kurtosis"]))
     st.dataframe(rows, hide_index=True, width="stretch")
+    correlation = result["axis_correlation"]
+    st.write("横向与垂向同一行观测的 Pearson 相关系数：" +
+             (f"{correlation:.4f}" if correlation is not None else "无法计算（需要至少三行、不同时间戳及两路变化信号）"))
+    st.caption("峭度采用四阶中心矩除以方差平方，正态总体参照值为 3。少于四行或通道恒定时留空。")
     st.caption("原始 RMS=√mean(a²)；去均值 RMS=√mean((a−mean(a))²)；峰值因子=去均值绝对峰值/去均值 RMS，零振动时不定义。均值去除不等同于标准频率加权或姿态/重力校正。")
     for issue in result["issues"]:
         st.warning(issue)
+    if selection["source"] == "history":
+        _batch_comparison(result, vehicle, batch, labels, lower if track.duration else 0.,
+                          upper if track.duration else 0.)
     if result["spectral_available"]:
+        spectrum = st.radio("频谱显示", ["Welch 功率谱密度", "单边 FFT 幅值谱"], horizontal=True, key="vibration_spectrum")
+        fft = spectrum == "单边 FFT 幅值谱"
         peaks = st.columns(2)
         for column, (field, label) in zip(peaks, LABELS.items()):
-            peak = result["channels"][field]["dominant_frequency_hz"]
+            channel = result["channels"][field]
+            peak = channel["dominant_frequency_hz"]
+            if fft:
+                amplitudes = channel["fft_amplitude"]
+                maximum = max(amplitudes, default=0.)
+                peak = channel["fft_hz"][amplitudes.index(maximum)] if maximum else None
             column.metric(f"{label}频带内主峰（Hz）", f"{peak:.3f}" if peak is not None else "无非零振动")
-        st.subheader("加速度功率谱（Welch）")
-        plot_chart(vibration_chart(result), width="stretch", key="vibration_psd")
-        st.caption(f"周期 Hann 窗、每段 {result['segment_samples']} 点、50% 重叠、每段去均值；共 {result['segment_count']} 段，频率间隔 {result['frequency_resolution_hz']:.4f} Hz。窗口按最低频率至少 5 个周期选择，不补零。主峰仅为当前频带内 PSD 最大频点，不用于推断故障部件。")
+        plot_chart(vibration_chart(result, fft=fft), width="stretch", key="vibration_fft" if fft else "vibration_psd")
+        if fft:
+            st.caption(f"整段去均值并校正周期 Hann 窗增益。FFT 频点间隔 {rate/result['sample_count']:.4f} Hz，纵轴为峰值幅值。")
+        else:
+            st.caption(f"Welch 采用周期 Hann 窗，每段 {result['segment_samples']} 点，50% 重叠，每段去均值。共 {result['segment_count']} 段，频点间隔 {result['frequency_resolution_hz']:.4f} Hz。")
         st.dataframe([dict(方向=label, 频带_Hz=f"{band_low:g}–{band_high:g}",
                            未加权频带RMS_ms2=result["channels"][field]["band_rms"]) for field, label in LABELS.items()],
                       hide_index=True, width="stretch")

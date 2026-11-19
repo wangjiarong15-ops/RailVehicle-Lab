@@ -2,6 +2,7 @@
 
 from contextlib import ExitStack
 import importlib.util
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -55,6 +56,26 @@ class VibrationPageTests(unittest.TestCase):
             self.assertAlmostEqual(float(app.metric[4].value), 1.5, delta=0.1)
             self.assertAlmostEqual(float(app.metric[5].value), 6, delta=0.1)
             self.assertEqual(len(app.get("plotly_chart")), 2)
+            app.radio(key="vibration_spectrum").set_value("单边 FFT 幅值谱").run()
+            self.assertFalse(app.exception)
+            spectrum = json.loads(app.get("plotly_chart")[0].proto.spec)
+            self.assertEqual(spectrum["layout"]["yaxis"]["title"]["text"], "峰值幅值（m/s²）")
+            self.assertEqual(len(app.get("plotly_chart")), 2)
+            analyze.assert_called_once()
+
+    def test_second_batch_uses_its_own_sampling_gate(self):
+        samples = vibration_demo_samples()
+        with patch.object(vibration_analysis, "list_vehicles", return_value=[dict(id=1, vehicle_code="DEMO")]), \
+             patch.object(vibration_analysis, "list_vehicle_batches", return_value=[
+                 dict(id=1, file_name="fast.csv", sample_count=len(samples)),
+                 dict(id=2, file_name="slow.csv", sample_count=len(samples[::100]))]), \
+             patch.object(vibration_analysis, "list_batch_samples", side_effect=lambda v,b: samples if b == 1 else samples[::100]):
+            app = AppTest.from_function(vibration_app).run()
+            app.button(key="vibration_calculate").click().run()
+            app.toggle(key="vibration_compare").set_value(True).run()
+            self.assertFalse(app.exception)
+            self.assertTrue(any("参照批次" in item.value and "64" in item.value for item in app.caption))
+            self.assertEqual(app.metric[3].value, "可计算")
 
     def test_changed_band_and_time_range_remove_old_results(self):
         app = self.demo()

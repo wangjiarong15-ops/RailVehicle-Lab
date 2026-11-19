@@ -107,20 +107,34 @@ def analyze_vibration(samples, *, band_low=0.5, band_high=20.0, window_seconds=1
         window_seconds=window_seconds, channels={},
         timestamps_utc=[instant.isoformat(sep=" ") for instant in timestamps], offsets=offsets,
     )
+    centered_channels = []
     for field in CHANNELS:
         values = np.asarray([float(row[field]) for row in ordered], dtype=float)
         raw = analysis[field]
         centered = values - raw["mean"] if np.ptp(values) else np.zeros_like(values)
-        dynamic_rms = float(np.sqrt(np.mean(centered * centered)))
         dynamic_peak = float(np.max(np.abs(centered)))
+        normalized = centered / dynamic_peak if dynamic_peak else centered
+        centered_channels.append(normalized)
+        rms_ratio = float(np.sqrt(np.mean(normalized * normalized)))
+        dynamic_rms = dynamic_peak * rms_ratio
         channel = dict(raw_mean=raw["mean"], raw_rms=raw["rms"], raw_peak=raw["peak_absolute"],
                        dynamic_rms=dynamic_rms, dynamic_peak=dynamic_peak,
                        crest_factor=dynamic_peak / dynamic_rms if dynamic_rms else None,
                        values=values.tolist(), dominant_frequency_hz=None, band_rms=None,
-                       frequencies=[], psd=[], rolling_rms=[], rolling_end_seconds=[])
+                       kurtosis=float(np.mean(normalized**4)/rms_ratio**4)
+                       if rms_ratio and len(values) >= 4 else None,
+                       frequencies=[], psd=[], fft_hz=[], fft_amplitude=[], rolling_rms=[], rolling_end_seconds=[])
         output["channels"][field] = channel
         if issues:
             continue
+        # Periodic Hann and coherent gain normalization for single-sided peak amplitude.
+        n = len(values)
+        taper = .5 - .5*np.cos(2*np.pi*np.arange(n)/n)
+        fft_hz = np.fft.rfftfreq(n, d=1/rate)
+        fft_mask = (fft_hz >= band_low) & (fft_hz <= band_high)
+        # The requested band excludes both DC and Nyquist.
+        channel["fft_hz"] = fft_hz[fft_mask].tolist()
+        channel["fft_amplitude"] = (2*np.abs(np.fft.rfft(centered*taper))[fft_mask]/taper.sum()).tolist()
         frequencies, density = welch(values, fs=rate, window="hann", nperseg=nperseg,
                                      noverlap=nperseg // 2, detrend="constant", scaling="density")
         mask = (frequencies >= band_low) & (frequencies <= band_high)
@@ -139,4 +153,8 @@ def analyze_vibration(samples, *, band_low=0.5, band_high=20.0, window_seconds=1
             powers = np.maximum((sums[window_size:] - sums[:-window_size]) / window_size, 0)
             channel["rolling_rms"] = np.sqrt(powers).tolist()
             channel["rolling_end_seconds"] = offsets[window_size - 1:]
+    x, y = centered_channels
+    # Same-row channel pairs only. Duplicate timestamps lack an unambiguous time association.
+    paired = len(x) >= 3 and not sampling["duplicate_timestamp_rows"] and np.ptp(x) and np.ptp(y)
+    output["axis_correlation"] = float(np.corrcoef(x, y)[0, 1]) if paired else None
     return output
