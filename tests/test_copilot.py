@@ -110,6 +110,19 @@ def test_actual_simulation_followup_and_material_scope(work):
     assert run(work, "刚度提高300%").status == "error"
 
 
+@pytest.mark.parametrize(("prompt", "action", "seconds"), [
+    ("暂停", "pause", None), ("继续播放", "play", None), ("重置", "reset", 0),
+    ("暂停在0秒", "pause", 0), ("从2秒播放", "play", 2),
+])
+def test_transport_distinguishes_current_position_from_explicit_seek(work, prompt, action, seconds):
+    work.previous_scene = {"motion": "蛇行运动示意"}
+    reply = run(work, prompt)
+    assert reply.status == "complete"
+    assert reply.results[0]["result"].scene == {
+        "motion": "蛇行运动示意", "transport": {"action": action, "seconds": seconds},
+    }
+
+
 def test_compare_report_read_and_isolate(work):
     assert len(run(work, "分析这两个数据批次的振动差异").results[0]["result"].rows) == 2
     assert len(run(work, "有哪些批次").results[0]["result"].rows) == len(work.data.batches)

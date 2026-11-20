@@ -233,7 +233,8 @@ def transport(w, action, seconds):
     if action == "reset":
         seconds = 0.0
     return Output(
-        f"三维时间轴定位到 {seconds:g} s。",
+        f"三维时间轴定位到 {seconds:g} s。" if seconds is not None else
+        ("已暂停在当前位置。" if action == "pause" else "已从当前位置播放。"),
         scene={**w.previous_scene, "transport": {"action": action, "seconds": seconds}},
     )
 
@@ -366,7 +367,11 @@ TOOLS = {
     ),
     "cases": Tool("查询计算工况", cases),
     "transport": Tool(
-        "控制上次三维演示", transport, {"action": enum(("play", "pause", "reset")), "seconds": number(0, 6)}
+        "控制上次三维演示", transport, {
+            "action": enum(("play", "pause", "reset")),
+            "seconds": {**number(0, 6), "type": ["number", "null"],
+                        "description": "用户指定的时间（秒）。未指定时间时传 null 以保留当前播放位置。"},
+        }
     ),
     "simulate": Tool(
         "计算悬挂响应对照",

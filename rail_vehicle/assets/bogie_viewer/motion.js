@@ -3,11 +3,24 @@ const snapshotTimeout = 800;
 
 export function motionClock() {
   let latest, received = 0, phase = 0, last = null, envelope = [0, 0, 0];
+  let localAnchor = 0;
+  function localPhase(now) {
+    return latest.playing && !latest.spread && !latest.hold
+      ? localAnchor + Math.max(0, now - received) / 1000 * turn / latest.period * latest.rate
+      : localAnchor;
+  }
   return {
     receive(args, now) {
       // A teaching cycle wraps naturally. A historical event loop jumps to another batch time.
       const rewind = latest && !args.periodic && args.phase < latest.phase;
-      if (!latest || !args.playing || !latest.playing || args.spread || args.hold || rewind ||
+      if (args.studioCommand) {
+        // Copilot sends discrete commands. Only an explicit seek replaces the live cursor.
+        const command = args.studioCommand;
+        const seek = command.seek?.id !== latest?.studioCommand?.seek?.id;
+        localAnchor = latest?.studioCommand && !seek ? localPhase(now) : args.phase;
+        phase = localAnchor;
+        last = now;
+      } else if (!latest || !args.playing || !latest.playing || args.spread || args.hold || rewind ||
           args.periodic !== latest.periodic || now - received >= snapshotTimeout) {
         phase = args.hold ? 0 : args.phase;
         last = now;
@@ -23,8 +36,10 @@ export function motionClock() {
       last = now;
       if (!latest) return null;
       const args = latest;
-      const running = args.playing && !args.spread && !args.hold && now - received < snapshotTimeout;
-      if (running) {
+      const running = args.playing && !args.spread && !args.hold &&
+        (Boolean(args.studioCommand) || now - received < snapshotTimeout);
+      if (args.studioCommand) phase = localPhase(now);
+      else if (running) {
         // Bridge server snapshots without driving statistics or changing the chosen sample.
         const velocity = turn / args.period * args.rate;
         const expected = args.phase + Math.max(0, now - received) / 1000 * velocity;

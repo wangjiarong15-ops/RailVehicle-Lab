@@ -28,6 +28,30 @@ async function audit(browser,width,height) {
     await capture("workspace");
     await ask("解释轮轨关系的原理");
     await page.getByText(/本地检索命中 [1-9]/).waitFor();
+    await ask("展示蛇行运动示意");
+    const teachingFrame = page.frameLocator("iframe[title*=bogie_viewer]").last();
+    const teaching = teachingFrame.locator("#workbench");
+    await teachingFrame.locator("#workbench[data-model=glb][data-playing=true]").waitFor();
+    await teaching.scrollIntoViewIfNeeded();
+    // Measure after the server-driven viewer's snapshot timeout has already elapsed.
+    await page.waitForTimeout(1400);
+    const teachingPhase = Number(await teaching.getAttribute("data-phase"));
+    const until = Date.now() + 6000;
+    while (Number(await teaching.getAttribute("data-phase")) <= teachingPhase && Date.now() < until) {
+      await page.waitForTimeout(100);
+    }
+    assert(Number(await teaching.getAttribute("data-phase")) > teachingPhase, "教学运动在首条指令后停住");
+    await ask("暂停");
+    await teachingFrame.locator("#workbench[data-playing=false]").waitFor();
+    const pausedPhase = Number(await teaching.getAttribute("data-phase"));
+    assert(pausedPhase >= teachingPhase && pausedPhase > 0);
+    await page.waitForTimeout(350);
+    assert.equal(Number(await teaching.getAttribute("data-phase")), pausedPhase);
+    await ask("继续播放");
+    await teachingFrame.locator("#workbench[data-playing=true]").waitFor();
+    assert(Number(await teaching.getAttribute("data-phase")) >= pausedPhase);
+    await ask("重置");
+    await teachingFrame.locator('#workbench[data-playing=false][data-phase="0.0000"]').waitFor();
     await page.getByRole("button",{name:"新建会话"}).click();
     await page.getByRole("button",{name:"使用虚构批次体验"}).click();
     await page.getByRole("button",{name:/横向异常与三维回查/}).waitFor();
@@ -61,6 +85,25 @@ async function audit(browser,width,height) {
     await page.getByText(/450 → 540 kN\/m/).first().waitFor();
     const model = page.frameLocator("iframe[title*=bogie_viewer]").last();
     await model.locator("#sim-time:visible").waitFor();
+    const slider = model.locator("#sim-time");
+    await slider.evaluate(n => { n.value = "183"; n.dispatchEvent(new Event("input")); });
+    await slider.press("ArrowRight");
+    await model.locator('#response[data-sample="184"]').waitFor();
+    await model.locator("#view").selectOption({label:"侧视图"});
+    await model.locator("#surface-mode").selectOption("ghost");
+    await ask("暂停");
+    await page.getByText("已暂停在当前位置。",{exact:true}).waitFor();
+    await model.locator('#response[data-sample="184"]').waitFor();
+    await page.waitForTimeout(350);
+    assert.equal(await slider.inputValue(),"184");
+    assert.equal(await model.locator("#view").inputValue(),"侧视图");
+    assert.equal(await model.locator("#surface-mode").inputValue(),"ghost");
+    await model.locator("#workbench").scrollIntoViewIfNeeded();
+    await capture("paused-cursor");
+    await ask("继续播放");
+    await page.getByText("已从当前位置播放。",{exact:true}).waitFor();
+    await model.locator("#sim-play").filter({hasText:"暂停"}).waitFor();
+    assert(Number(await slider.inputValue()) >= 184);
     await ask("暂停在2秒");
     await page.getByText("三维时间轴定位到 2 s。",{exact:true}).waitFor();
     await model.locator('#response[data-sample="200"]').waitFor();
@@ -86,6 +129,10 @@ async function audit(browser,width,height) {
       const uploader = page.getByTestId("stFileUploader").filter({hasText:"临时分析 CSV"});
       await uploader.waitFor();
       await page.locator('[data-stale="true"]').first().waitFor({state:"detached"});
+      const threshold = page.getByRole("spinbutton",{name:/加速度绝对值阈值/});
+      assert.equal(Number(await threshold.inputValue()),1);
+      await threshold.fill("1.2");
+      await threshold.press("Enter");
       const [chooser] = await Promise.all([page.waitForEvent("filechooser"),uploader.locator("button").click()]);
       await chooser.setFiles({
         name:"fictional-upload.csv",mimeType:"text/csv",buffer:Buffer.from(csv)
@@ -99,10 +146,13 @@ async function audit(browser,width,height) {
       await nav("工程 Copilot").click();
       await page.getByText(/会话 CSV 附件.*FICT-A.*fictional-upload.csv/).waitFor();
       await page.getByText(/峰值 1.8 m\/s²/).first().waitFor();
+      await page.getByRole("button",{name:"数据来源与附件"}).click();
+      assert.equal(Number(await threshold.inputValue()),1.2);
     }
     assert.equal(await page.getByTestId("stException").count(),0);
     assert.deepEqual(errors,[]);
-    console.log(JSON.stringify({width,height,workflowMs:latency,replay:true,simulationSample:200,pdf:true,scopeIsolated:true}));
+    console.log(JSON.stringify({width,height,workflowMs:latency,replay:true,teachingPhase,pausedPhase,
+      pausedSample:184,explicitSeekSample:200,pdf:true,scopeIsolated:true}));
   } catch(e) {await capture("failure");throw e;} finally {await page.close();}
 }
 (async()=>{

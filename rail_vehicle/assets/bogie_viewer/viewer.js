@@ -548,11 +548,15 @@ export async function mount() {
     }
     const command = next.studioCommand;
     const applyCommand = command && command.id !== serverArgs?.studioCommand?.id;
-    if (applyCommand && ["solid","ghost","wire"].includes(command.surface)) surfaceMode.value = command.surface;
+    const previousCommand = serverArgs?.studioCommand;
+    const seek = command?.seek;
+    const newSeek = seek && seek.id !== previousCommand?.seek?.id;
+    if (applyCommand && (!previousCommand || !command.transport?.action) &&
+        ["solid","ghost","wire"].includes(command.surface)) surfaceMode.value = command.surface;
     serverArgs = next;
     player.load(next.simulation);
     if (applyCommand && next.simulation && command.transport) {
-      player.command(command.transport.action, command.transport.seconds);
+      player.command(command.transport.action, newSeek ? seek.seconds : null);
     }
     clock.receive(next, performance.now());
     apply(next, entering || Boolean(leaving));

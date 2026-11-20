@@ -91,8 +91,10 @@ def _source(public):
             preferred_event=handoff.get("evidence_id"),
         ), None
     threshold = st.number_input(
-        "加速度绝对值阈值（m/s²）", min_value=0.0, value=1.0, step=0.1, key="cp_threshold"
+        "加速度绝对值阈值（m/s²）", min_value=0.0, value=s.get("cp_threshold", 1.0),
+        step=0.1, key="cp_threshold_input",
     )
+    s["cp_threshold"] = threshold
     if threshold is None:
         raise ValueError("请输入加速度阈值。")
     if source == "会话 CSV":
@@ -238,7 +240,7 @@ def _wave(output, data, key):
         )
 
 
-def _scene(scene, key):
+def _scene(scene, key, command_id, seek):
     if not webgl_available():
         st.info("三维资源不可用，计算与数值曲线仍可查看。")
         return
@@ -247,12 +249,11 @@ def _scene(scene, key):
     group, display = scene.get("group", "整架"), scene.get("display", "solid")
     visible = [group] if display == "isolate" else [p for p in PARTS if display != "hide" or p != group]
     t = scene.get("transport", {})
-    playing = (
-        t.get("action") == "play"
-        if t
-        else bool(not simulation and scene.get("motion", "正常运行") != "正常运行")
+    # The response player owns its own slider, clock and pause button.
+    playing = not simulation and (
+        t.get("action") == "play" if t else scene.get("motion", "正常运行") != "正常运行"
     )
-    secs = t.get("seconds", 0)
+    secs = seek["seconds"] if seek else 0
     st.caption(
         "简化动力学计算 · 输入为教学参数" if simulation else "教学结构与运动示意 · 高亮区域用于观察装配关系"
     )
@@ -275,12 +276,13 @@ def _scene(scene, key):
         key=key,
         simulation=simulation,
         studio_command=dict(
-            id=key, surface=display if display in ("ghost", "wire") else "solid", transport=t
+            id=command_id, surface=display if display in ("ghost", "wire") else "solid",
+            transport=t, seek=seek,
         ),
     )
 
 
-def _turn(turn, work, detail):
+def _turn(turn, work, detail, live_keys):
     with st.chat_message("user"):
         st.text(turn.prompt)
     with st.chat_message("assistant"):
@@ -312,9 +314,12 @@ def _turn(turn, work, detail):
                         st.text(c["title"] + " · " + c["id"])
                         st.text(c["text"])
                         st.text(c["source"])
-            if o.scene:
-                if not has_observations or st.toggle("查看独立教学演示", key=key + "_show_teaching"):
-                    _scene(o.scene, key + "_model")
+            if o.scene and key not in live_keys:
+                seconds = o.scene.get("transport", {}).get("seconds")
+                if r["tool"] != "transport" or seconds is not None:
+                    if not has_observations or st.toggle("查看独立教学演示", key=key + "_show_teaching"):
+                        seek = {"id": key, "seconds": seconds} if seconds is not None else None
+                        _scene(o.scene, key + "_model", key, seek)
             if o.pdf:
                 st.download_button(
                     "下载工程分析 PDF",
@@ -513,10 +518,31 @@ def render(public):
                            xlabel="采样时间", ylabel="m/s²"), "cp_preview")
             except (KeyError, TypeError, ValueError):
                 st.warning("无法绘制预览，请检查时间、速度与加速度列。")
-    for t in active.turns:
-        if t.status != "running":
+    # Keep the live iframe outside the changing transcript. A new scene gets a new
+    # instance; transport turns target the existing camera, animation and sample cursor.
+    origin = command = scene = seek = None
+    optional_teaching = False
+    completed = [t for t in active.turns if t.status != "running"]
+    for t in completed:
+        for i, result in enumerate(t.results):
+            if result["result"].scene:
+                command = f"cp_{t.id}_{i}"
+                if result["tool"] != "transport" or origin is None:
+                    origin = command
+                    seek = None
+                scene = result["result"].scene
+                seconds = scene.get("transport", {}).get("seconds")
+                if seconds is not None:
+                    seek = {"id": command, "seconds": seconds}
+                optional_teaching = any(r["result"].events for r in t.results)
+    with st.container(key="cp_transcript"):
+        for t in completed:
             detail = t is active.turns[-1] or st.toggle("展开此轮的图表与证据", key="cp_history_" + t.id)
-            _turn(t, work, detail)
+            _turn(t, work, detail, (origin, command))
+    if scene:
+        with st.container(key="cp_active_viewer"):
+            if not optional_teaching or st.toggle("查看独立教学演示", key=origin + "_active_teaching"):
+                _scene(scene, origin + "_active_model", command, seek)
     if running:
         _progress(running)
         return

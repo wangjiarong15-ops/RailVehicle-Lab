@@ -83,10 +83,11 @@ export function responsePlayer(invalidate) {
   get("rear-crest").onclick = () => seekCrest(true);
   return {
     command(action, seconds) {
-      if (!result || !Number.isFinite(seconds)) return;
-      pause();
-      seek(seconds*result.sample_hz);
-      if (action === "play") play.onclick();
+      if (!result || !["play", "pause", "reset"].includes(action)) return;
+      if (action !== "play" || Number.isFinite(seconds)) pause();
+      if (action === "reset") seek(0);
+      else if (Number.isFinite(seconds)) seek(seconds*result.sample_hz);
+      if (action === "play" && !running) play.onclick();
     },
     load(next) {
       if (!next) { pause(); result = null; panel.hidden = true; return; }

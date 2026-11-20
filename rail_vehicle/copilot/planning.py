@@ -61,7 +61,7 @@ def local_plan(prompt, previous=()):
                 call(
                     "transport",
                     action="reset" if "重置" in text else "play" if "播放" in text else "pause",
-                    seconds=float(time[1]) if time else 0,
+                    seconds=float(time[1]) if time else None,
                 )
             ]
         )
