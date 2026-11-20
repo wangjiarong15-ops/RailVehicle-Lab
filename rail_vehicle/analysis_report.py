@@ -497,7 +497,7 @@ def generate_analysis_report_pdf(report: dict[str, Any]) -> bytes:
             rightMargin=18 * mm,
             topMargin=19 * mm,
             bottomMargin=19 * mm,
-            title=REPORT_TITLE,
+            title=report.get("title", REPORT_TITLE),
             author="RailVehicle-Lab",
         )
         stylesheet = getSampleStyleSheet()
@@ -527,7 +527,7 @@ def generate_analysis_report_pdf(report: dict[str, Any]) -> bytes:
         )
         content_width = page_width - document.leftMargin - document.rightMargin
         story: list[Any] = [
-            _paragraph(REPORT_TITLE, title_style),
+            _paragraph(report.get("title", REPORT_TITLE), title_style),
             _paragraph(f"报告生成时间：{report['generated_at']}", body_style),
             Spacer(1, 4 * mm),
         ]
@@ -766,6 +766,12 @@ def generate_analysis_report_pdf(report: dict[str, Any]) -> bytes:
         if report.get("ai_section") is not None:
             _append_ai_section(story, report["ai_section"], heading_style, body_style,
                                small_style, header_style, content_width, "七")
+
+        if report.get("copilot_notes"):
+            story.append(_paragraph("八、本次会话的工具计算与资料", heading_style))
+            for label, lines in report["copilot_notes"]:
+                story.append(_paragraph(label, label_style))
+                story.extend(_paragraph(line, body_style) for line in lines)
 
         def footer(canvas: Any, doc: Any) -> None:
             canvas.saveState()
