@@ -95,7 +95,7 @@ class Job:
             checkpoint()
             if not 0 < len(prompt.strip()) <= 1200:
                 raise ValueError("请输入 1 至 1200 字的问题。")
-            task = resolve_event_reference(prompt, previous, work.data.preferred_event)
+            task = resolve_event_reference(prompt, previous, work.data.preferred_event if work.data else None)
             if config is not None:
                 if not authorized or public_demo_enabled():
                     raise ValueError("本轮没有在线调用授权。")
@@ -108,6 +108,7 @@ class Job:
                         checkpoint,
                         work.notes if share_notes else (),
                         provider=config.provider,
+                        has_batch=work.data is not None,
                     )
             else:
                 plan = local_plan(task, previous)

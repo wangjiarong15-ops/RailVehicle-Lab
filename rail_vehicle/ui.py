@@ -31,68 +31,39 @@ def plot_chart(figure, *, config=None, **kwargs):
 def apply_design():
     # Scope styling to our keyed components and a few stable native test IDs.
     st.html("""<style>
-    /* Presentation-only visual refresh: native Streamlit behavior unchanged. */
-    [data-testid="stMainBlockContainer"] {padding-top:3.45rem;padding-bottom:2.5rem;max-width:1680px;}
-    [data-testid="stSidebarUserContent"] {padding-top:.35rem;}
-    [data-testid="stHeading"] h1 {letter-spacing:-.035em;font-weight:700;padding-top:.2rem;padding-bottom:.6rem;}
-    [data-testid="stHeading"] h2 {letter-spacing:-.02em;}
-    .rv-eyebrow {font-size:.72rem;letter-spacing:.16em;font-weight:650;
-      color:var(--rv-accent,#65ADFF);margin-bottom:.2rem;}
-    .rv-legend {display:flex;flex-wrap:wrap;gap:.5rem 1.2rem;font-size:.76rem;
-      color:var(--rv-muted,#A8BAD0);padding:.35rem 0;}
-    .rv-legend span {display:inline-flex;align-items:center;gap:.4rem;}
-    .rv-legend b {color:#E76F80;font-weight:600;}
-    .rv-legend .rv-threshold {color:var(--rv-accent,#65ADFF);}
-    [data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] p {
-      color:var(--rv-muted,#B4C5DA);opacity:1;}
-    .rv-brand {display:flex;align-items:center;gap:.7rem;padding:.75rem .6rem;
-      margin-bottom:.4rem;}
-    .rv-brand-icon {width:42px;height:42px;min-width:42px;display:flex;align-items:center;justify-content:center;
-      border-radius:10px;background:#2463A5;
-      color:#FFFFFF;font-size:1.05rem;font-weight:750;letter-spacing:-.08em;
-      border-bottom:3px solid #54C4D4;}
-    .rv-brand-name {font-size:1.04rem;font-weight:750;letter-spacing:.01em;line-height:1.25;}
-    .rv-brand-subtitle {font-size:.73rem;color:var(--rv-muted,#B4C5DA);line-height:1.4;margin-top:.18rem;}
-    .rv-status {display:inline-flex;align-items:center;padding:.24rem .65rem;
-      border:1px solid var(--rv-accent,#4D9DFF);border-radius:999px;
-      color:inherit;font-size:.76rem;font-weight:600;}
-    .rv-themes {display:flex;gap:.5rem;flex-wrap:wrap;}
-    .rv-themes a {padding:.38rem .75rem;border:1px solid var(--rv-accent,#4D9DFF);
-      border-radius:10px;color:inherit;text-decoration:none;font-size:.83rem;
-      transition:background-color .18s ease;}
-    .rv-themes a:hover {background:rgba(80,146,220,.13);}
-    .rv-themes a:focus-visible {outline:2px solid var(--rv-accent,#4D9DFF);outline-offset:3px;}
-    [data-testid="stSidebarCollapseButton"] {visibility:visible;}
-    [class*="st-key-nav_"] button {border-radius:8px;text-align:left;min-height:2.15rem;
-      justify-content:flex-start;padding-inline:.9rem;gap:.65rem;
-      transition:background-color .16s ease,transform .16s ease;}
-    [data-testid="stSidebarUserContent"] [data-testid="stButton"] button > div {
-      width:100%;justify-content:flex-start;}
-    [class*="st-key-nav_"] button [data-testid="stIconMaterial"] {width:20px;min-width:20px;}
-    .rv-nav-label {font-size:.72rem;font-weight:650;letter-spacing:.08em;
-      padding:.48rem .65rem .12rem;color:var(--rv-muted,#B4C5DA);}
-    [class*="st-key-nav_"] button:focus-visible {outline:2px solid var(--rv-accent,#4D9DFF);outline-offset:2px;}
-    [class*="st-key-nav_"] button[data-testid="stBaseButton-primary"] {
-      background:rgba(72,129,196,.18);border:1px solid rgba(91,154,227,.28);
-      border-left:3px solid var(--rv-accent,#4D9DFF);color:inherit;}
-    [class*="st-key-nav_"] button[data-testid="stBaseButton-tertiary"] {color:var(--rv-muted,#B4C5DA);}
-    [class*="st-key-nav_"] button:hover {transform:translateX(2px);}
-    [class*="st-key-rv-kpi-"] {background:var(--rv-surface,#101F31);border-radius:10px;padding:.7rem 1rem;
-      border:1px solid var(--rv-line,#273B51);border-top:2px solid var(--rv-accent,#65ADFF);
-      transition:border-color .18s ease,box-shadow .18s ease;}
-    [class*="st-key-rv-kpi-"] [data-testid="stMetricValue"] {font-variant-numeric:tabular-nums;font-size:2rem;letter-spacing:-.04em;}
-    [class*="st-key-rv-kpi-"] [data-testid="stMetricLabel"] {color:var(--rv-muted,#A8BAD0);}
-    [class*="st-key-rv-kpi-"]:hover {border-color:rgba(88,154,238,.42);
-      box-shadow:0 6px 22px rgba(8,44,94,.12);}
-    [class*="st-key-rv-panel-"] {background:var(--rv-surface,#101F31);border-radius:12px;
-      border:1px solid var(--rv-line,#273B51);}
-    [class*="st-key-rv-panel-"] h3 {font-size:1.05rem;font-weight:650;letter-spacing:-.015em;}
-    [class*="st-key-rv-panel-"] [data-testid="stVerticalBlock"] {gap:.65rem;}
-    .st-key-rv-panel-actions {border-top:2px solid var(--rv-accent,#65ADFF);}
-    @media (max-width:960px) {.rv-brand {padding:.65rem;}}
-    @media (prefers-reduced-motion:reduce) {
-      .rv-themes a,[class*="st-key-nav_"] button,[class*="st-key-rv-kpi-"] {
-        transition:none!important;transform:none!important;}}
+    [data-testid="stMainBlockContainer"] {padding:3.35rem clamp(1rem,2.1vw,2.6rem) 2.25rem;max-width:1840px}
+    [data-testid="stSidebarUserContent"] {padding-top:0}
+    [data-testid="stHeading"] :is(h1,h2,h3) {letter-spacing:-.025em;line-height:1.28}
+    [data-testid="stHeading"] h3 {font-size:1.12rem}
+    [data-testid="stCaptionContainer"] p,.rv-legend {color:var(--rv-muted);opacity:1}
+    .rv-legend,.rv-themes {display:flex;align-items:center;gap:.9rem;flex-wrap:wrap;font-size:.83rem}
+    .rv-legend b {color:#ce5c64}
+    .rv-themes a,.rv-status {border:1px solid var(--rv-line);padding:.3rem .7rem;border-radius:5px;color:inherit}
+    .rv-brand {display:flex;align-items:center;gap:.72rem;padding:.2rem .45rem .85rem;border-bottom:1px solid var(--rv-line)}
+    .rv-brand-icon {display:flex;align-items:center;justify-content:center;gap:3px;background:#1c484c;
+      width:34px;height:36px;border-radius:7px;color:#86e2d4}
+    .rv-brand-icon i {width:3px;height:12px;border-radius:1px;background:currentColor;transform:skew(-13deg)}
+    .rv-brand-icon i:nth-child(2){height:22px}.rv-brand-icon i:last-child{height:16px}
+    .rv-brand-name {font-size:1.07rem;font-weight:730}.rv-brand-subtitle,.rv-nav-label {font-size:.75rem;color:var(--rv-muted)}
+    .rv-nav-label {font-weight:650;padding:.48rem .6rem 0;letter-spacing:.04em}
+    [data-testid="stSidebarCollapseButton"]{visibility:visible}
+    [class*="st-key-nav_"] button {border-radius:5px;min-height:1.92rem;justify-content:flex-start;padding:.1rem .65rem}
+    [data-testid="stSidebarUserContent"] [data-testid="stButton"] button > div{width:100%;justify-content:flex-start}
+    [class*="st-key-nav_"] button[data-testid="stBaseButton-primary"]{background:var(--rv-surface);
+      border:1px solid var(--rv-line);border-left:3px solid var(--rv-accent);color:inherit}
+    [class*="st-key-nav_"] button:focus-visible,.rv-themes a:focus-visible{outline:2px solid var(--rv-accent)}
+    [class*="st-key-rv-kpi-"] {border-left:2px solid var(--rv-line);padding:.2rem 1rem}
+    [data-testid="stMetricValue"] {font-variant-numeric:tabular-nums;letter-spacing:-.035em}
+    [class*="st-key-rv-panel-"] {border-top:1px solid var(--rv-line);padding-top:.65rem}
+    .st-key-rv-panel-actions {background:var(--rv-surface);border-radius:6px;padding:.65rem 1rem}
+    .st-key-cp_composer {padding:1.15rem clamp(.8rem,2vw,2rem);background:var(--rv-surface);
+      border-left:3px solid var(--rv-accent);border-radius:6px}
+    .st-key-cp_composer [data-testid="stChatInput"] {border:1px solid var(--rv-muted);
+      border-radius:6px;padding:.15rem .35rem}
+    .st-key-cp_composer [data-testid="stChatInput"]:focus-within {outline:2px solid var(--rv-accent);
+      outline-offset:1px}
+    [data-testid="stChatInput"] textarea {font-size:1.05rem}
+    @media(max-height:800px){.rv-nav-label{padding-top:.22rem}[class*="st-key-nav_"] button{min-height:1.7rem}}
     </style>""")
 
 
@@ -126,7 +97,6 @@ def theme_url(mode, page):
 
 def page_title(title, subtitle="", *, primary=False):
     with st.container(gap=None):
-        st.html('<div class="rv-eyebrow">RAILVEHICLE LAB / ENGINEERING WORKSPACE</div>')
         (st.title if primary else st.header)(title)
         if subtitle:
             st.caption(subtitle)
@@ -144,7 +114,7 @@ def workflow_caption(text):
 
 
 def kpi(column, label, value, detail):
-    with column.container(border=True, key="rv-kpi-"+label, gap=None):
+    with column.container(border=False, key="rv-kpi-"+label, gap=None):
         st.metric(label, value)
         st.caption(detail)
 
@@ -158,7 +128,7 @@ def empty_state(text):
 
 
 def chart_container(key=None):
-    return st.container(border=True, key=key)
+    return st.container(border=False, key=key)
 
 
 def data_table(rows, **kwargs):
@@ -222,19 +192,25 @@ ADVANCED_PAGES = ("演示中心", "动态运行驾驶舱", "多车辆运行对�
 ANALYSIS_MODE = "workbench_analysis_mode"
 
 
-_WORKSPACE = ((HOME, "工作台", "dashboard"),
+SIMULATION = "动力学仿真"
+LINKED = "联动分析"
+_WORKSPACE = ((HOME, "工作台", "space_dashboard"),
               (DATA_PAGES[0], "车辆管理", "train"), (DATA_PAGES[1], "数据管理", "database"))
-_CORE = ((ANALYSIS, "运行分析", "monitoring"), (ANOMALIES, "异常检测", "warning"),
-         (COMPARISON, "批次对比", "compare_arrows"), (AI, "AI 智能分析", "psychology"))
-_ENGINEERING = (("振动与平稳性分析", "振动与频谱", "waves"), (BOGIE, "三维可视化", "view_in_ar"), (REPORT, "分析报告", "description"))
+_ANALYSIS_ROWS = ((ANALYSIS, "运行分析", "monitoring"), (ANOMALIES, "异常检测", "warning"),
+                  (COMPARISON, "批次对比", "compare_arrows"), ("振动与平稳性分析", "振动与频谱", "waves"))
+_STUDIO_ROWS = ((BOGIE, "三维可视化", "view_in_ar"), (SIMULATION, SIMULATION, "experiment"),
+                (LINKED, LINKED, "timeline"))
+_DELIVERABLES = ((COPILOT, "工程 Copilot", "forum"), (AI, "AI 智能分析", "fact_check"),
+                 (REPORT, "分析报告", "description"))
 _SPECIALTY = ((DEMO_DATA, "虚构数据分析", "science"), *zip(ADVANCED_PAGES, ADVANCED_PAGES,
               ("school", "speed", "compare", "model_training")))
 
 
 def render_navigation(public, on_select=navigate):
-    core = ((DEMO_DATA, "虚构数据分析", "monitoring"), _CORE[1], _CORE[3]) if public else _CORE
-    groups = (("工作台", _WORKSPACE[:1] if public else _WORKSPACE),
-              ("工程分析", core + ((COPILOT, "工程 Copilot", "forum"),) + _ENGINEERING))
+    analysis = (((DEMO_DATA, "虚构数据分析", "monitoring"), _ANALYSIS_ROWS[1], _ANALYSIS_ROWS[3])
+                if public else _ANALYSIS_ROWS)
+    groups = (("工作空间", _WORKSPACE[:1] if public else _WORKSPACE),
+              ("数据分析", analysis), ("模型与仿真", _STUDIO_ROWS), ("解读与交付", _DELIVERABLES))
     specialty = _SPECIALTY[1:] if public else _SPECIALTY
     allowed = {route for _, rows in groups for route, _, _ in rows} | {row[0] for row in specialty}
     aliases = {label: route for _, rows in groups for route, label, _ in rows}
@@ -258,9 +234,9 @@ def render_navigation(public, on_select=navigate):
                       type="primary" if route == selected else "tertiary", on_click=on_select, args=(route,))
 
     with st.sidebar:
-        st.html('<div class="rv-brand"><div class="rv-brand-icon" aria-hidden="true">RV</div>'
+        st.html('<div class="rv-brand"><div class="rv-brand-icon" aria-hidden="true"><i></i><i></i><i></i></div>'
                 '<div><div class="rv-brand-name">RailVehicle-Lab</div>'
-                '<div class="rv-brand-subtitle">轨道车辆异常分析与三维可视化</div></div></div>')
+                '<div class="rv-brand-subtitle">车辆工程工作空间</div></div></div>')
         with st.container(gap="xxsmall"):
             for label, rows in groups:
                 st.html(f'<div class="rv-nav-label">{label}</div>')

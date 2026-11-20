@@ -313,9 +313,10 @@ def _display(track, duration, threshold, cutoff, teaching, inspection, event_ind
             threshold=threshold, scene=scene, teaching=teaching, fictional=source == DEMO,
             batch_id=selection[-1] if track is not None else None,
         )
-    model, panel = st.columns([5.2, 1.8], gap="small")
-    with model, st.container(border=True, key="bogie_model_card"):
-        st.caption("模型视窗　/　拖动旋转 · 滚轮缩放 · " + ("单击检查 · 双击聚焦" if renderer == WEBGL else "悬停查看名称"))
+    model, panel = st.columns([4.4, 1], gap="small")
+    with model, st.container(key="bogie_model_card"):
+        if renderer == COMPAT:
+            st.caption("滚轮缩放 · 悬停查看名称")
         if inspection.exploded:
             st.caption("分解示意 · 构件间距仅用于看清安装位置。")
         compare = inspection.comparison and bool(scene.parts) and not inspection.exploded
@@ -444,7 +445,7 @@ def _display(track, duration, threshold, cutoff, teaching, inspection, event_ind
         if inspection.focus and not reviewing:
             st.caption(f"部件说明 · {inspection.focus}：{PART_DESCRIPTIONS[inspection.focus]}")
             if inspection.focus not in inspection.visible:
-                st.caption("该部件已隐藏，可在左侧重新显示。")
+                st.caption("该部件已隐藏，可在「视角与部件」中重新显示。")
             elif inspection.focus not in scene.parts:
                 st.caption(("蓝色" if renderer == WEBGL else "青色") + "表示手动选择的部件。")
         if window and window.timed:
@@ -491,8 +492,8 @@ def _control_playback(state, action, now, track, window, *, rate=None):
     return control_replay(state, action, now, track.duration, rate=rate)
 
 
-def render():
-    page_title("三维诊断工作台", "通用双轴转向架 · 观测读值、规则超阈值与模型示意分别显示。")
+def render(*, linked=False):
+    page_title("联动分析" if linked else "三维诊断工作台", "通用双轴转向架 · 观测读值、规则超阈值与模型示意分别显示。")
     render_replay_return()
     st.html("""<style>
       .st-key-bogie_model_card {background:var(--rv-surface,#101f31);padding:.55rem;}
@@ -506,6 +507,8 @@ def render():
     if STATE_KEY not in st.session_state:
         _clear_loop()
     choices = [TEACH, *demo_source_options(HISTORY, DEMO), "简化动力学计算"]
+    if linked:
+        choices = demo_source_options(HISTORY, DEMO)
     candidate = target or batch_target
     fictional = bool(candidate and candidate.get("fictional") is True)
     requested = candidate if fictional or HISTORY in choices else None
@@ -514,17 +517,23 @@ def render():
         st.session_state["bogie_source"] = DEMO if fictional else HISTORY
     if requested and "threshold" in requested:
         st.session_state["bogie_threshold"] = requested["threshold"]
-    options, main = st.columns([1.18, 5.82], gap="small")
-    with options:
-        st.subheader("场景与结构")
-        source = st.radio("数据来源", choices, key="bogie_source")
-        if source == "简化动力学计算":
-            if st.session_state.get("bogie_selection") != (source,):
-                _clear_loop()
-                _seek(0)
-                st.session_state.update(bogie_selection=(source,), bogie_track=None)
-            render_lab(main)
-            return
+    toolbar = st.columns([1.4, 1, 1], gap="small", vertical_alignment="top")
+    main = st.container()
+    with toolbar[0]:
+        if linked and st.session_state.get("bogie_source") not in choices:
+            st.session_state["bogie_source"] = choices[0]
+        source = st.radio("数据来源", choices, key="bogie_source", horizontal=True)
+    if source == "简化动力学计算":
+        if st.session_state.get("bogie_selection") != (source,):
+            _clear_loop()
+            _seek(0)
+            st.session_state.update(bogie_selection=(source,), bogie_track=None)
+        with main:
+            parameters, model = st.columns([1, 4.5])
+            with parameters:
+                render_lab(model)
+        return
+    with toolbar[1]:
         teaching = st.selectbox("教学场景", list(TEACHING), key="bogie_teaching") if source == TEACH else next(iter(TEACHING))
         if source == DEMO:
             st.caption("虚构数据，非实际测量。")
@@ -545,10 +554,13 @@ def render():
         except (ValueError, TypeError, KeyError, OverflowError, sqlite3.Error, OSError):
             st.error("无法读取有效的运行数据，请检查批次后重试。")
             track = None
+    with toolbar[0]:
         if "bogie_threshold" not in st.session_state:
             st.session_state["bogie_threshold"] = 1.0
-        threshold = st.number_input("加速度绝对值阈值（m/s²）", min_value=0.0,
-                                    value=None, step=0.1, key="bogie_threshold", disabled=track is None)
+        threshold = st.session_state["bogie_threshold"]
+        if track is not None:
+            threshold = st.number_input("加速度绝对值阈值（m/s²）", min_value=0.0,
+                                        value=None, step=0.1, key="bogie_threshold")
         if threshold is None:
             threshold = 1.0
             st.caption("输入为空，使用默认阈值 1.0 m/s²。")
@@ -570,6 +582,7 @@ def render():
                           "ai_center_demo": True, "ai_demo_batch": selection[1],
                           "ai_demo_threshold": threshold,
                       })
+    with toolbar[2]:
         comparison = st.toggle("对照未超阈值样本" if source != TEACH else "对照正常运动",
                                key="bogie_compare", disabled=source != TEACH and track is None,
                                help="暂停在异常样本后，查找同一采样段内相距不超过 10 秒的未超阈值样本。")
@@ -625,7 +638,7 @@ def render():
     with main:
         state = st.session_state.get(STATE_KEY, ReplayState())
         duration = track.duration if track is not None else ILLUSTRATION_PERIOD
-        transport = st.container()
+        transport = st.container(key="bogie_transport", gap="small")
         view_slot = st.container()
         if inspection.exploded and state.playing:
             state = _control_playback(state, "pause", monotonic(), track, window)

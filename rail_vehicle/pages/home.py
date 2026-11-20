@@ -30,7 +30,7 @@ def render():
         st.warning("暂时无法读取工作空间数据，请检查数据库后刷新。")
     heading, controls = st.columns([4, 1], vertical_alignment="center")
     with heading:
-        page_title("工程工作台", "数据概览与最近批次 · 从导入到分析、回放和报告", primary=True)
+        page_title("工程工作台", primary=True)
         source_caption()
     with controls:
         with st.popover("预览设置", width="stretch"):
@@ -59,13 +59,13 @@ def render():
         except OverflowError:
             timezone_name = "UTC"
             st.warning("该批次时间超出北京时间可显示范围，暂按 UTC 显示。")
+    _render_next_step(data, preview, threshold)
     columns = st.columns(4)
     for column, title, key, detail in zip(columns[:3], ("登记车辆", "导入批次", "采样点总数"),
             ("vehicle_count", "batch_count", "sample_count"), ("数据库车辆档案", "已成功导入", "数据库完整计数")):
         value = f"{data[key]:,}{' 点' if key == 'sample_count' else ''}" if data else "—"
         kpi(column, title, value, detail if data else "无可用数据库统计")
     kpi(columns[3], "统计异常区段", len(anomalies["events"]) if anomalies else "—", f"最近车辆/批次 · 阈值 |a| > {threshold:g} m/s²")
-    _render_next_step(data, preview, threshold)
     left, right = st.columns([3, 1])
     with left:
         with chart_container("rv-panel-trend"):
@@ -108,14 +108,11 @@ def render():
             else:
                 st.caption("暂无导入记录，请先导入 CSV。")
     with right:
-        if preview:
-            with chart_container("rv-panel-summary"):
-                st.subheader("当前批次摘要")
-                st.caption(f"{preview['vehicle_code']} · 批次 #{preview['batch_id']}")
-                if analysis and anomalies:
-                    st.metric("平均速度（km/h）", f"{analysis['speed']['mean']:.2f}")
-                    st.metric("统计异常点", len(anomalies["points"]))
-                    st.caption(f"加速度绝对值 > {threshold:g} m/s²；按通道计数。")
+        with chart_container("rv-panel-demo"):
+            st.subheader("虚构数据演练")
+            st.caption("在波形上定位一次横向异常，再查看对应时刻的转向架。")
+            st.button("体验异常回放", icon=":material/timeline:", on_click=navigate,
+                      args=("联动分析",), kwargs={"bogie_source": "内置虚构演示"})
         with chart_container("rv-panel-recent"):
             st.subheader("最近分析")
             records = st.session_state.get("recent_analysis_records", [])
@@ -132,13 +129,21 @@ def render():
                         st.caption(f"{row['分析类型']} · {row['数据点数']:,} 样本 · {row['来源']} · {row['完成时间']}")
             if records:
                 st.caption("仅记录本会话实际计算，刷新新会话后不保留。")
+        if preview and analysis and anomalies:
+            with st.expander("批次统计详情"):
+                st.subheader("当前批次摘要")
+                st.caption(f"{preview['vehicle_code']} · 批次 #{preview['batch_id']}")
+                st.metric("平均速度（km/h）", f"{analysis['speed']['mean']:.2f}")
+                st.metric("统计异常点", len(anomalies["points"]))
+                st.caption(f"加速度绝对值 > {threshold:g} m/s²；按通道计数。")
+
 
 
 def _render_next_step(data, preview, threshold):
     if data is None:
         return
     with chart_container("rv-panel-actions"):
-        st.subheader("下一步")
+        st.subheader("继续最近批次" if preview else "开始工作")
         with st.container(horizontal=True, vertical_alignment="center"):
             if data["vehicle_count"] == 0:
                 st.caption("登记车辆 → 导入 CSV → 查看运行分析。")

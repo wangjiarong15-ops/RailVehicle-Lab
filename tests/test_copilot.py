@@ -39,6 +39,19 @@ def run(w, prompt, previous=(), **kwargs):
     return turn
 
 
+def test_unbound_chat_can_explain_and_simulate_without_batch_evidence():
+    work = Work(None)
+    answer = run(work, "解释轮轨关系的原理")
+    assert answer.status == "complete"
+    assert answer.results[0]["result"].citations
+    response = run(work, "将悬挂刚度提高20%，比较振动响应")
+    assert response.status == "complete"
+    assert response.results[0]["result"].scene["simulation"]["sample_hz"] == 100
+    missing = run(work, "找出所有横向加速度超阈值区段")
+    assert missing.status == "error" and not missing.results
+    assert "需要运行数据" in missing.message
+
+
 def test_complete_lateral_task_and_original_event_row(work):
     result = run(work, "帮我分析当前车辆的横向振动异常，并用三维模型演示可能的原因。")
     assert result.status == "complete", result.message

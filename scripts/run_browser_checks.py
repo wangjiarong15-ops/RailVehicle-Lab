@@ -27,6 +27,7 @@ SUITES = {
     "evolution": "check_evolution_browser.cjs",
     "resume": "check_workspace_resume_browser.cjs",
     "frontend": "check_frontend_product_browser.cjs",
+    "interface": "check_interface_browser.cjs",
 }
 
 

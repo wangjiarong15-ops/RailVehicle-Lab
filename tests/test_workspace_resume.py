@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pytest
 
-from rail_vehicle.ui import AI, ANALYSIS, ANOMALIES, BOGIE, DEMO_DATA, REPORT
+from rail_vehicle.ui import AI, ANALYSIS, ANOMALIES, BOGIE, DEMO_DATA, LINKED, REPORT
 from rail_vehicle.workspace_resume import (
     BATCH_HANDOFF, BOGIE_EVENT, WORKBENCH_RETURN, _capture, decode_checkpoint,
 )
@@ -65,6 +65,12 @@ def test_unrelated_ai_evidence_and_bogie_event_return_to_origin(checkpoint):
         assert _capture(BOGIE, checkpoint)["page"] == ANOMALIES
         state["bogie_selection"] = (HISTORY, 3, 5)
         assert _capture(BOGIE, checkpoint) is None
+
+
+def test_linked_workspace_preserves_scoped_event_checkpoint(checkpoint):
+    linked = dict(checkpoint, page=LINKED, event_jump=True)
+    assert decode_checkpoint(json.dumps(linked), public=False) == linked
+    assert decode_checkpoint(json.dumps(linked), public=True) is None
 
 
 def test_report_only_carries_prior_event_for_the_same_scope(checkpoint):

@@ -7,7 +7,7 @@ from rail_vehicle.ai.provider import AIProviderUnavailable, safe_provider_error
 from rail_vehicle.bogie import PARTS, VIEWS
 from rail_vehicle.bogie_replay import TEACHING
 from rail_vehicle.copilot.knowledge import search
-from rail_vehicle.copilot.tools import SCENARIOS, TOOLS, validate_plan
+from rail_vehicle.copilot.tools import SCENARIOS, TOOLS, UNBOUND_TOOLS, validate_plan
 
 
 def call(tool, **args):
@@ -175,7 +175,7 @@ def completion_budget(provider, limit):
     return {key: limit}
 
 
-def online_plan(client, model, prompt, previous, checkpoint, notes=(), *, provider="openai"):
+def online_plan(client, model, prompt, previous, checkpoint, notes=(), *, provider="openai", has_batch=True):
     """Only user-authorized question, catalog excerpts and bounded prior tool choices leave this boundary."""
     if not prompt.strip() or len(prompt) > 1200:
         raise ValueError("问题长度须在 1 至 1200 字之间。")
@@ -196,12 +196,15 @@ def online_plan(client, model, prompt, previous, checkpoint, notes=(), *, provid
             ),
         },
     ]
+    if not has_batch:
+        messages[0]["content"] = ("当前是未连接车辆数据的工程问答。用资料检索回答原理问题，"
+                                  "用结构和简化仿真工具演示。不得编造观测或诊断。仅调用提供的工具。")
     definitions = [
         {
             "type": "function",
             "function": {"name": name, "description": tool.label, "parameters": tool.schema},
         }
-        for name, tool in TOOLS.items()
+        for name, tool in TOOLS.items() if has_batch or name in UNBOUND_TOOLS
     ]
     calls, finished = {}, False
     try:

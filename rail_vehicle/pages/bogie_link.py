@@ -7,12 +7,12 @@ from rail_vehicle.ui import BOGIE, navigate
 from rail_vehicle.workspace_resume import BOGIE_EVENT
 
 
-def _open_replay(target_key, target, from_workbench, from_evidence=False):
+def _open_replay(target_key, target, from_workbench, from_evidence=False, *, page=BOGIE):
     if from_workbench:
         remember_workbench_selection()
     if from_evidence:
         remember_evidence_selection(fictional=target["fictional"])
-    navigate(BOGIE, **{target_key: target, BOGIE_EVENT: target if target_key == "bogie_evidence_target" else None})
+    navigate(page, **{target_key: target, BOGIE_EVENT: target if target_key == "bogie_evidence_target" else None})
 
 
 def batch_replay_button(container, *, label, key, vehicle_id, batch_id=None, threshold=None,

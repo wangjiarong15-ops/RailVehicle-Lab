@@ -58,7 +58,10 @@ def select_workspace_page(page):
     if current == page:
         return
     handoff = st.session_state.get(BATCH_HANDOFF) if current in BATCH_VIEWS else None
-    from rail_vehicle.ui import COPILOT
+    from rail_vehicle.ui import COPILOT, LINKED, SIMULATION
+    if page == BOGIE and current in (LINKED, SIMULATION):
+        navigate(BOGIE, bogie_source="独立教学动画")
+        return
     if handoff and page == COPILOT:
         open_copilot()
         return
@@ -74,7 +77,7 @@ def select_workspace_page(page):
                 navigate(COPILOT, cp_source="历史导入批次", cp_vehicle=vehicle,
                          **{"cp_batch_"+prefix:ids[0],"cp_other_"+prefix:ids[1]})
                 return
-    if page == COPILOT and current == BOGIE:
+    if page == COPILOT and current in (BOGIE, LINKED):
         selected = st.session_state.get("bogie_selection",())
         if selected and selected[0] in ("历史运行批次","内置虚构演示") and len(selected)>=2:
             demo = selected[0]=="内置虚构演示"
@@ -96,10 +99,11 @@ def select_workspace_page(page):
         else:
             _open_center("single", handoff["evidence_id"], handoff["evidence_selection"], handoff["target"].get("scope"))
         return
-    if handoff and page == BOGIE:
-        remember_workbench_selection()
+    if handoff and page in (BOGIE, LINKED):
         from rail_vehicle.pages.bogie_link import _open_replay
-        _open_replay("bogie_batch_target", handoff["target"], False)
+        event = handoff.get("event_target") if page == LINKED else None
+        _open_replay("bogie_evidence_target" if event else "bogie_batch_target",
+                     event or handoff["target"], True, page=page)
         return
     if current == COMPARISON and page == AI:
         from rail_vehicle.ai.center_state import current_context

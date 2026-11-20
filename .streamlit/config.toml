@@ -8,8 +8,8 @@ toolbarMode = "viewer"
 base = "dark"
 font = "sans-serif"
 baseFontSize = 14
-headingFontSizes = ["26px", "23px", "18px", "16px", "14px", "12px"]
-baseRadius = "medium"
+headingFontSizes = ["30px", "25px", "18px", "16px", "14px", "12px"]
+baseRadius = "0.4rem"
 
 [theme.dark]
 primaryColor = "#3B82F6"

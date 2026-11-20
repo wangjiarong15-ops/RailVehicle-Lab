@@ -149,9 +149,8 @@ def _render_import_history():
 
 
 def _render_import() -> None:
-    workflow_caption("① 上传 CSV　→　② 检查格式与采样　→　③ 确认导入并分析")
-    st.caption("上传 CSV 后先检查数据；只有整份文件通过校验后才能写入数据库。")
-    st.caption(f"单个 CSV 文件大小上限：{MAX_CSV_SIZE_MB} MB。")
+    upload_slot = st.container()
+    st.caption(f"先预览并校验整份文件，再确认保存。单文件上限 {MAX_CSV_SIZE_MB} MB。")
 
     from rail_vehicle.demo_data import DEMO_VEHICLE_CODE, demo_csv_content
     with st.expander("下载虚构演示 CSV", expanded=False):
@@ -196,12 +195,13 @@ def _render_import() -> None:
         st.warning("请先在“车辆参数”页面新增车辆，再导入对应的运行数据。")
         st.button("前往车辆登记 →", key="import_register_vehicle", on_click=navigate, args=("车辆参数",))
 
-    uploaded_file = st.file_uploader(
-        "选择运行数据 CSV 文件",
-        type=["csv"],
-        max_upload_size=MAX_CSV_SIZE_MB,
-        key=f"run_csv_upload_{st.session_state.get('import_upload_revision', 0)}",
-    )
+    with upload_slot:
+        uploaded_file = st.file_uploader(
+            "选择运行数据 CSV 文件",
+            type=["csv"],
+            max_upload_size=MAX_CSV_SIZE_MB,
+            key=f"run_csv_upload_{st.session_state.get('import_upload_revision', 0)}",
+        )
     if uploaded_file is not None:
         validation = validate_run_csv(uploaded_file.getvalue(), vehicles)
         if validation.preview:

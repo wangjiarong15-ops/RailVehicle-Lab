@@ -38,7 +38,7 @@ class Output:
 
 @dataclass
 class Work:
-    data: Dataset
+    data: Dataset | None
     other: Dataset | None = None
     notes: tuple = ()
     previous_scene: dict | None = None
@@ -403,8 +403,13 @@ def validate_plan(plan):
     return plan
 
 
+UNBOUND_TOOLS = frozenset({"knowledge", "inspect", "cases", "simulate", "transport"})
+
+
 def execute(w, plan, *, cancelled=lambda: False, deadline=None):
     validate_plan(plan)
+    if w.data is None and any(step["tool"] not in UNBOUND_TOOLS for step in plan):
+        raise ValueError("这项操作需要运行数据。请从「数据来源与附件」选择批次，或使用内置虚构批次体验。")
     for call in plan:
         if cancelled() or (deadline is not None and monotonic() >= deadline):
             raise TimeoutError("任务已停止或超过时间预算。")

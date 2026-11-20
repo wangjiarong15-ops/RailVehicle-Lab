@@ -63,15 +63,19 @@ def interrupt():
             turn.status, turn.message, turn.active = "stopped", "任务已停止。", ""
 
 
-def _source(public, attachment_panel):
+def _source(public):
     s = st.session_state
     handoff = s.get("cp_handoff")
-    options = ["内置虚构批次"] if public else ["内置虚构批次", "历史导入批次", "会话 CSV"]
+    options = ["自由问答", "内置虚构批次"]
+    if not public:
+        options.extend(["历史导入批次", "会话 CSV"])
     if handoff and (not public or handoff["target"]["fictional"]):
-        options.insert(0, "当前分析窗口")
+        options.insert(1, "当前分析窗口")
     if s.get("cp_source") not in options:
         s["cp_source"] = options[0]
     source = st.selectbox("数据来源", options, key="cp_source")
+    if source == "自由问答":
+        return None, None
     if source == "当前分析窗口":
         v, b, rows = handoff["copilot_data"]
         sel = handoff["evidence_selection"]
@@ -86,25 +90,19 @@ def _source(public, attachment_panel):
             handoff["target"].get("scope"),
             preferred_event=handoff.get("evidence_id"),
         ), None
-    s.setdefault("cp_threshold", 1.0)
     threshold = st.number_input(
-        "加速度绝对值阈值（m/s²）", min_value=0.0, value=None, step=0.1, key="cp_threshold"
+        "加速度绝对值阈值（m/s²）", min_value=0.0, value=1.0, step=0.1, key="cp_threshold"
     )
     if threshold is None:
         raise ValueError("请输入加速度阈值。")
     if source == "会话 CSV":
-        with attachment_panel.container(border=True):
-            file_column, vehicle_column = st.columns([2, 1])
-            with file_column:
-                upload = _attachment("临时分析 CSV", ["csv"], "cp_csv", 2_000_000)
-            if not upload:
-                vehicle_column.caption(
-                    "上传项目格式的 UTF-8 CSV，可按车辆分别分析。附件只在本次会话内使用。"
-                )
-                return None, None
-            sets = csv_datasets(upload[1], upload[0], threshold)
-            chosen = vehicle_column.selectbox("附件车辆", list(sets), key="cp_attachment_vehicle")
-            return sets[chosen], None
+        upload = _attachment("临时分析 CSV", ["csv"], "cp_csv", 2_000_000)
+        if not upload:
+            st.caption("上传 UTF-8 CSV 后可按车辆分别分析。附件仅在本次会话中使用。")
+            return None, None
+        sets = csv_datasets(upload[1], upload[0], threshold)
+        chosen = st.selectbox("附件车辆", list(sets), key="cp_attachment_vehicle")
+        return sets[chosen], None
     demo = source == "内置虚构批次"
     if demo:
         v, batches, rows = analysis_demo_data()
@@ -286,21 +284,8 @@ def _turn(turn, work, detail):
     with st.chat_message("user"):
         st.text(turn.prompt)
     with st.chat_message("assistant"):
-        st.caption(turn.mode + " · " + SOURCE_LABELS[work.data.source])
+        st.caption(turn.mode + " · " + (SOURCE_LABELS[work.data.source] if work.data else "自由问答"))
         has_observations = any(r["result"].events for r in turn.results)
-        if turn.results:
-            with st.expander(f"工具记录 · 已完成 {len(turn.results)} 步", expanded=False):
-                st.dataframe(
-                    [
-                        {
-                            "工具": TOOLS[r["tool"]].label,
-                            "参数": json.dumps(r["args"], ensure_ascii=False),
-                            "耗时（ms）": r["ms"],
-                        }
-                        for r in turn.results
-                    ],
-                    hide_index=True,
-                )
         for i, r in enumerate(turn.results):
             o = r["result"]
             st.text(o.text)
@@ -343,6 +328,19 @@ def _turn(turn, work, detail):
                 render_validated_result(turn.verified, work.anonymous_payload, st)
                 for p in turn.verified.get("knowledge_citations", []):
                     st.text(f"{p['id']} · {p['title']} · {p['source']}")
+        if turn.results:
+            with st.expander(f"工具记录 · 已完成 {len(turn.results)} 步", expanded=False):
+                st.dataframe(
+                    [
+                        {
+                            "工具": TOOLS[r["tool"]].label,
+                            "参数": json.dumps(r["args"], ensure_ascii=False),
+                            "耗时（ms）": r["ms"],
+                        }
+                        for r in turn.results
+                    ],
+                    hide_index=True,
+                )
         if turn.message:
             st.warning(turn.message)
 
@@ -369,17 +367,17 @@ def _progress(running):
 
 
 def render(public):
-    page_title("RailVehicle Copilot", "工程助手 / 数据证据、结构观察与计算试验")
+    page_title("RailVehicle Copilot")
     s = st.session_state
     for key, value in s.get("cp_saved_source_controls", {}).items():
         if key not in s:
             s[key] = value
-    bar = st.columns([1.25, 1, 1])
-    attachment_panel = st.empty()
+    bar = st.columns(4, gap="small")
+    other = None
     source_error = None
     with bar[0].popover("数据来源与附件", icon=":material/database:", width="stretch"):
         try:
-            data, other = _source(public, attachment_panel)
+            data, other = _source(public)
         except (ValueError, sqlite3.Error, OSError) as exc:
             source_error = str(exc) if isinstance(exc, ValueError) else "本机数据暂时无法读取。"
             data = None
@@ -404,15 +402,13 @@ def render(public):
         if k in ("cp_source", "cp_threshold", "cp_vehicle", "cp_attachment_vehicle")
         or k.startswith(("cp_batch_", "cp_other_"))
     }
+    if source_error:
+        st.warning(source_error)
     if data is None:
-        interrupt()
-        if source_error:
-            st.warning(source_error)
-        elif s.get("cp_source") != "会话 CSV":
-            st.info("请在「数据来源与附件」中选择可分析的数据。")
-        return
-    s["cp_bound_batch"] = (data.source, data.vehicle["id"], data.batch["id"], data.threshold)
-    scope = (data.identity, other.identity if other else "", tuple((p.id, p.title) for p in notes))
+        s.pop("cp_bound_batch", None)
+    else:
+        s["cp_bound_batch"] = (data.source, data.vehicle["id"], data.batch["id"], data.threshold)
+    scope = (data.identity if data else "unbound", other.identity if other else "", tuple((p.id, p.title) for p in notes))
     pool = s.setdefault("cp_threads", [])
     active = next((c for c in pool if c.id == s.get("cp_active") and c.scope == scope), None)
     if active is None:
@@ -421,15 +417,15 @@ def render(public):
         if active not in pool:
             pool.append(active)
         s["cp_active"] = active.id
+    if bar[3].button("新建会话", icon=":material/add:", width="stretch", key="cp_new"):
+        interrupt()
+        active = Conversation(scope)
+        pool.append(active)
+        s["cp_active"] = active.id
+        st.rerun()
     restore_prompt = None
     with bar[1].popover("会话记录", icon=":material/forum:", width="stretch"):
         st.caption("当前浏览器会话保留最近 10 个对话，每个对话最多 12 轮。可下载归档。")
-        if st.button("新建会话", key="cp_new"):
-            interrupt()
-            active = Conversation(scope)
-            pool.append(active)
-            s["cp_active"] = active.id
-            st.rerun()
         for c in reversed(pool):
             if c.scope == scope and st.button(
                 (c.turns[0].prompt[:28] if c.turns else "新会话"),
@@ -475,10 +471,9 @@ def render(public):
             )
         else:
             st.caption("工具在本机执行，使用规则规划，无需 API 密钥。")
-    st.text(
-        f"{SOURCE_LABELS[data.source]}　/　{data.vehicle['vehicle_code']}　/　{data.batch['file_name']}　·　"
-        f"{len(data.rows):,} 行　·　阈值 {data.threshold:g} m/s²"
-    )
+    if data:
+        st.caption(f"{SOURCE_LABELS[data.source]}　/　{data.vehicle['vehicle_code']}　/　{data.batch['file_name']}　·　"
+                   f"{len(data.rows):,} 行　·　阈值 {data.threshold:g} m/s²")
     work = Work(
         data,
         other,
@@ -492,37 +487,32 @@ def render(public):
         interrupt()
         running = None
     prompt = restore_prompt
+    typed = None
+    placeholder = "输入工程问题，或说明想检查的部件、数据和工况…"
     if not active.turns:
-        st.subheader("从当前批次开始")
-        for i, (label, instruction, icon) in enumerate(QUICK):
-            if i % 2 == 0:
-                cols = st.columns(2)
-            if cols[i % 2].button(
-                label,
-                icon=f":material/{icon}:",
-                width="stretch",
-                key=f"cp_quick_{i}",
-                type="primary" if i == 0 else "secondary",
-            ):
-                prompt = instruction
-        with st.container(border=True, key="cp_overview"):
-            st.markdown("**所选样本 · 加速度概览**")
+        with st.container(key="cp_composer"):
+            st.subheader("自由对话")
+            st.caption(f"{config.provider} · {config.model}" if config else
+                       "离线工具 · 可查工程资料、观察部件或试算悬挂响应。分析运行记录时再连接批次。")
+            typed = st.chat_input(placeholder, key="cp_input", max_chars=1200)
+        with st.container(horizontal=True, gap="xsmall"):
+            for i, (label, instruction, icon) in enumerate(QUICK):
+                if not data and i in (0, 3):
+                    continue
+                if st.button(label, icon=f":material/{icon}:", key=f"cp_quick_{i}"):
+                    prompt = instruction
+            if not data:
+                st.button("使用虚构批次体验", icon=":material/science:",
+                          on_click=lambda: s.update(cp_source="内置虚构批次"))
+        if data and st.toggle("预览所选样本的加速度", key="cp_show_preview"):
             try:
                 rows = work.stats["samples"]
-                _plot(
-                    dict(
-                        x=[r["timestamp"] for r in rows],
-                        columns={
-                            "横向": [r["lateral_accel"] for r in rows],
-                            "垂向": [r["vertical_accel"] for r in rows],
-                        },
-                        xlabel="采样时间",
-                        ylabel="m/s²",
-                    ),
-                    "cp_preview",
-                )
-            except (KeyError, ValueError, TypeError):
-                st.warning("无法绘制预览，请检查时间、速度和加速度列或选择其他批次。")
+                _plot(dict(x=[r["timestamp"] for r in rows],
+                           columns={"横向": [r["lateral_accel"] for r in rows],
+                                    "垂向": [r["vertical_accel"] for r in rows]},
+                           xlabel="采样时间", ylabel="m/s²"), "cp_preview")
+            except (KeyError, TypeError, ValueError):
+                st.warning("无法绘制预览，请检查时间、速度与加速度列。")
     for t in active.turns:
         if t.status != "running":
             detail = t is active.turns[-1] or st.toggle("展开此轮的图表与证据", key="cp_history_" + t.id)
@@ -549,13 +539,14 @@ def render(public):
     if active.turns and active.turns[-1].status in ("error", "stopped"):
         if st.button("重试上一轮", key="cp_retry"):
             prompt = active.turns[-1].prompt
-    typed = st.chat_input("询问当前批次，或输入三维、仿真与报告指令", key="cp_input", max_chars=1200)
+    if active.turns:
+        typed = st.chat_input(placeholder, key="cp_input", max_chars=1200)
     prompt = typed or prompt
     if prompt:
         if config is not None and (
             not consent or not config.enabled or not config.api_key or not config.model
         ):
-            st.warning("请检查本机模型配置并在输入框上方授权本轮调用，或选择离线工具。")
+            st.warning("请检查模型配置，并勾选本轮在线调用授权，或切换到离线工具。")
             return
         previous = prior_calls(active.turns)
         try:

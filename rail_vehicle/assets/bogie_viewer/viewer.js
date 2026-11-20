@@ -439,7 +439,7 @@ export async function mount() {
     dispose();
     workbench.dataset.status = "unavailable";
     message.hidden = false;
-    message.textContent = "三维绘图已中断。请重新打开本页或使用左侧 Plotly 兼容模式。";
+    message.textContent = "三维绘图已中断。请重新打开本页，或在「视角与部件」中选择 Plotly 兼容模式。";
   });
   message.hidden = true;
   workbench.dataset.status = "ready";

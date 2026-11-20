@@ -22,8 +22,15 @@ async function audit(browser,width,height) {
     await page.goto(url.href);
     await nav("工程 Copilot").click();
     await page.getByRole("heading",{name:"RailVehicle Copilot",exact:true}).waitFor();
-    await page.getByRole("button",{name:/横向异常与三维回查/}).waitFor();
+    const composer = page.getByTestId("stChatInputTextArea");
+    const box = await composer.boundingBox();
+    assert(box && box.y >= 0 && box.y + box.height < height);
     await capture("workspace");
+    await ask("解释轮轨关系的原理");
+    await page.getByText(/本地检索命中 [1-9]/).waitFor();
+    await page.getByRole("button",{name:"新建会话"}).click();
+    await page.getByRole("button",{name:"使用虚构批次体验"}).click();
+    await page.getByRole("button",{name:/横向异常与三维回查/}).waitFor();
     const begin = Date.now();
     await page.getByRole("button",{name:/横向异常与三维回查/}).click();
     const event = page.getByRole("button",{name:"在三维时间轴回放此区段"});

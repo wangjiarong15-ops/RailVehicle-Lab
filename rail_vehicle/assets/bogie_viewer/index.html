@@ -11,6 +11,7 @@
   <main id="workbench" aria-label="三维转向架工作台">
     <header>
       <div><strong>RailVehicle 3D Studio</strong><span id="model-status">通用双轴转向架</span></div>
+      <button id="browse-parts" type="button" aria-controls="part-panel" aria-expanded="false" hidden>零件清单</button>
       <select id="surface-mode" aria-label="表面显示"><option value="solid">实体</option><option value="ghost">构架透视</option><option value="wire">网格线框</option></select>
       <button id="full-screen" type="button" hidden>全屏</button>
       <select id="view" aria-label="视窗视角" disabled>
@@ -18,7 +19,6 @@
         <option>俯视图</option><option>底视图</option>
       </select>
       <button id="focus" disabled type="button">聚焦零件</button>
-      <button id="browse-parts" type="button" aria-controls="part-panel" aria-expanded="false" hidden>零件清单</button>
       <button id="hide" disabled type="button">隐藏零件</button>
       <button id="restore" disabled type="button">恢复隐藏</button>
       <button id="measure" type="button" aria-pressed="false" disabled>两点测距</button>
@@ -100,7 +100,7 @@
     const error = () => {
       document.querySelector("#message").textContent =
         args?.simulation ? "WebGL 不可用。可在下方「计算方法与数值样本」核对本次计算。" :
-        "无法开启 WebGL 三维视图。请在左侧「渲染方式」选择 Plotly 兼容模式，运行曲线和回放仍可使用。";
+        "无法开启 WebGL 三维视图。请在「视角与部件」的「渲染方式」选择 Plotly 兼容模式，运行曲线和回放仍可使用。";
       document.querySelector("#workbench").dataset.status = "unavailable";
     };
     function resize() {
@@ -122,6 +122,7 @@
     window.addEventListener("message", (event) => {
       if (event.source !== parent || event.data?.type !== "streamlit:render") return;
       args = event.data.args;
+      document.documentElement.dataset.theme = event.data.theme?.base === "light" ? "light" : "dark";
       resize();
       if (update) update(args);
       else startup ??= import("./viewer.js").then(({mount}) => mount()).then((apply) => {

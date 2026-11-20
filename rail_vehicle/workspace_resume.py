@@ -13,7 +13,7 @@ from rail_vehicle.pages.data_workflow import (
     BATCH_HANDOFF, WORKBENCH_RETURN, WORKBENCH_SOURCE, select_workspace_page,
 )
 from rail_vehicle.replay_evidence import ReplayEvidenceScope
-from rail_vehicle.ui import AI, ANOMALIES, BATCH_VIEWS, BOGIE, DEMO_DATA, RESUME_PARAM
+from rail_vehicle.ui import AI, ANOMALIES, BATCH_VIEWS, BOGIE, DEMO_DATA, LINKED, RESUME_PARAM
 
 INPUT = "workspace_resume_input"
 EVENT = "workspace_resume_event"
@@ -80,7 +80,7 @@ def decode_checkpoint(raw, *, public):
         if not isinstance(saved, dict) or type(saved.get("v")) is not int or saved["v"] != 1:
             return None
         origin, page, demo = saved["origin"], saved["page"], saved["demo"]
-        if (origin not in BATCH_VIEWS or page not in (*BATCH_VIEWS, AI, BOGIE)
+        if (origin not in BATCH_VIEWS or page not in (*BATCH_VIEWS, AI, BOGIE, LINKED)
                 or (page in BATCH_VIEWS and origin != page) or type(demo) is not bool
                 or ((public or origin == DEMO_DATA) and not demo)):
             return None
@@ -105,7 +105,7 @@ def decode_checkpoint(raw, *, public):
                     or re.fullmatch(r"[0-9a-f]{64}", identity) is None):
                 return None
             clean["event"] = [idx, identity]
-        if page == BOGIE and saved.get("event_jump") is True:
+        if page in (BOGIE, LINKED) and saved.get("event_jump") is True:
             if "event" not in clean:
                 return None
             clean["event_jump"] = True
@@ -185,12 +185,12 @@ def _capture(page, previous):
         elif page != ANOMALIES and same_context and "event" in previous:
             snapshot["event"] = previous["event"]
         return snapshot
-    if page in (AI, BOGIE) and previous and (origin := st.session_state.get(WORKBENCH_RETURN)):
+    if page in (AI, BOGIE, LINKED) and previous and (origin := st.session_state.get(WORKBENCH_RETURN)):
         if origin[0] != previous["origin"]:
             return None
         snapshot = {**previous, "page": page}
         snapshot.pop("event_jump", None)
-        if page == BOGIE:
+        if page in (BOGIE, LINKED):
             from rail_vehicle.pages.bogie import DEMO, HISTORY
             expected = ((DEMO, previous["batch"]) if previous["demo"] else
                         (HISTORY, previous["vehicle"], previous["batch"]))
@@ -231,12 +231,12 @@ def finish_workspace(slot, page, *, public):
         if matched:
             notice = "已恢复此标签页的分析筛选。统计与证据已按当前数据重新计算。"
             state[_CURRENT] = snapshot
-            if restored["page"] in (AI, BOGIE):
+            if restored["page"] in (AI, BOGIE, LINKED):
                 state[_NOTICE] = notice
                 handoff = state[BATCH_HANDOFF]
                 if restored.get("event_jump") and handoff.get("event_target"):
                     from rail_vehicle.pages.bogie_link import _open_replay
-                    _open_replay("bogie_evidence_target", handoff["event_target"], True)
+                    _open_replay("bogie_evidence_target", handoff["event_target"], True, page=restored["page"])
                 else:
                     select_workspace_page(restored["page"])
                 st.rerun()

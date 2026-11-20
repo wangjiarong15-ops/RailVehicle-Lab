@@ -171,7 +171,6 @@ def _vehicle_dialog(vehicle=None):
 
 def render() -> None:
     page_title("车辆参数")
-    st.caption("数据工作台 / 车辆档案 · 参数维护 · 运行分析")
     if message := st.session_state.pop("vehicle_flash", None):
         st.success(message)
     try:
@@ -193,9 +192,8 @@ def render() -> None:
         _vehicle_dialog(editor["vehicle"])
     matches = [vehicle for vehicle in vehicles if query in vehicle["vehicle_code"].casefold() or query in vehicle["vehicle_type"].casefold()]
     st.caption(f"登记车辆 {len(vehicles)} 辆 · 当前匹配 {len(matches)} 辆")
-    with st.container(border=True):
-        _render_vehicle_list(matches)
     if not matches:
+        _render_vehicle_list(matches)
         return
     by_id = {vehicle["id"]: vehicle for vehicle in matches}
     if st.session_state.get("vehicle_selected_id") not in by_id:
@@ -207,6 +205,7 @@ def render() -> None:
     import_button(import_data, label="导入数据 →", key="vehicle_import", vehicle_id=selected_id)
     analysis_button(analysis, label="进入分析 →", key="vehicle_analyze", vehicle_id=selected_id)
     batch_replay_button(replay, label="三维回放 →", key="vehicle_bogie", vehicle_id=selected_id)
+    _render_vehicle_list(matches)
     with st.expander("查看车辆详情", expanded=False):
         st.table([{ "参数": label, "值": str(selected.get(field, "")) } for field, label in VEHICLE_FIELDS.items() if field != "notes"])
         st.text(selected.get("notes", "") or "未填写备注")

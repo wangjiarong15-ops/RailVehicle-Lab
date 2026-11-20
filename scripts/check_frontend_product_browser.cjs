@@ -124,6 +124,12 @@ async function audit(browser, width, height) {
     await verticalOption.click();
     await page.getByText("2026-10-09 09:31:10+00:00", { exact: true }).waitFor();
     await waitForRender();
+    await open("联动分析", "联动分析");
+    await readings.getByText(/第 71\/120 条/).waitFor();
+    await viewer.waitFor();
+    await button(page, "bogie_return_analysis").click();
+    await heading(page, "异常检测").waitFor();
+    await expectThreshold();
     await button(page, "ai_center_link_single").click();
     await heading(page, "AI 分析中心").waitFor();
     const verticalEvidence = page.locator('.st-key-ai_center_evidence_single input[value="event.vertical.001"]');

@@ -85,3 +85,17 @@ footer { border-top: 1px solid #34485e; justify-content: space-between; color: #
 .legend i + i { background: #fca549; margin-left: 5px; }
 @media (max-width: 420px) { header span, .legend { display: none; } header, footer { padding-inline: 6px; } }
 @media (max-width: 470px) { header div { flex-basis: 100%; } }
+
+/* Keep inspection controls on a separate surface from the model. */
+header {gap:5px;padding:6px 8px}
+header strong {white-space:nowrap}
+header button,header select {padding:4px 6px}
+#browse-parts {border-color:#638e9f}
+#browse-parts[aria-expanded="true"] {background:#215255;color:#fff}
+button:focus-visible,select:focus-visible {outline:2px solid #69c9ba;outline-offset:1px}
+[data-theme="light"] :is(header,footer,#part-panel,#response) {background:#edf2f5;color:#203949;border-color:#bdcbd4}
+[data-theme="light"] :is(header span,#part-count,.part-group,#inspection,#export-status,#channel-context,.response-axis) {color:#405d70}
+[data-theme="light"] :is(button,select,#part-query,#bookmark-name) {background:#fff;border-color:#b4c3ce;color:#203949;color-scheme:light}
+[data-theme="light"] button:disabled {color:#637789}
+[data-theme="light"] button:hover:not(:disabled) {background:#d7e8ed}
+[data-theme="light"] button[aria-pressed="true"] {background:#c9e3e4;color:#153d42}
