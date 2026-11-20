@@ -20,7 +20,7 @@ from rail_vehicle.pages import home, vehicles, run_analysis
 from rail_vehicle.pages.data_workflow import ANALYSIS_TARGET, WORKBENCH_SOURCE
 
 
-MAIN_NAV = ("工作台", "车辆管理", "数据管理", "运行分析", "异常检测", "批次对比", "AI 智能分析", "振动与频谱", "三维可视化", "分析报告")
+MAIN_NAV = ("工作台", "车辆管理", "数据管理", "运行分析", "异常检测", "批次对比", "AI 智能分析", "工程 Copilot", "振动与频谱", "三维可视化", "分析报告")
 ADVANCED_ROUTES = ("动态运行驾驶舱", "机器学习异常检测", "多车辆运行对比", "演示中心")
 
 

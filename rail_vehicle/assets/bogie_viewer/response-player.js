@@ -82,6 +82,12 @@ export function responsePlayer(invalidate) {
   get("front-crest").onclick = () => seekCrest(false);
   get("rear-crest").onclick = () => seekCrest(true);
   return {
+    command(action, seconds) {
+      if (!result || !Number.isFinite(seconds)) return;
+      pause();
+      seek(seconds*result.sample_hz);
+      if (action === "play") play.onclick();
+    },
     load(next) {
       if (!next) { pause(); result = null; panel.hidden = true; return; }
       if (result && JSON.stringify(result.parameters) === JSON.stringify(next.parameters)) return;

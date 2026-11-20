@@ -43,12 +43,50 @@ def return_to_workbench(comparison=None, *, prepare_report=False):
     navigate(route, **{**inputs, ANALYSIS_MODE: "single"})
 
 
+def open_copilot():
+    from rail_vehicle.ui import COPILOT
+    handoff = st.session_state.get(BATCH_HANDOFF)
+    settings = {}
+    if handoff and handoff.get("copilot_data"):
+        settings = dict(cp_handoff=handoff, cp_source="当前分析窗口")
+    navigate(COPILOT, **settings)
+
+
 def select_workspace_page(page):
     """Carry only the result actually computed on the active batch view."""
     current = st.session_state.get("navigation_page")
     if current == page:
         return
     handoff = st.session_state.get(BATCH_HANDOFF) if current in BATCH_VIEWS else None
+    from rail_vehicle.ui import COPILOT
+    if handoff and page == COPILOT:
+        open_copilot()
+        return
+    if page == COPILOT and current == COMPARISON:
+        from rail_vehicle.ai.center_state import current_context
+        context = current_context(st.session_state,"batch")
+        if context:
+            sel = context["selection"]
+            ids = sel["batch_ids"]
+            if len(ids)>=2:
+                vehicle = sel["vehicle_id"]
+                prefix = "历史导入批次_"+str(vehicle)
+                navigate(COPILOT, cp_source="历史导入批次", cp_vehicle=vehicle,
+                         **{"cp_batch_"+prefix:ids[0],"cp_other_"+prefix:ids[1]})
+                return
+    if page == COPILOT and current == BOGIE:
+        selected = st.session_state.get("bogie_selection",())
+        if selected and selected[0] in ("历史运行批次","内置虚构演示") and len(selected)>=2:
+            demo = selected[0]=="内置虚构演示"
+            if demo or len(selected)==3:
+                vehicle,batch = (-1,selected[-1]) if demo else selected[1:]
+                source = "内置虚构批次" if demo else "历史导入批次"
+                threshold = st.session_state.get("bogie_threshold",1.)
+                if st.session_state.get("cp_bound_batch") != ("demo" if demo else "history",vehicle,batch,threshold):
+                    suffix = source+"_"+str(vehicle)
+                    navigate(COPILOT,cp_source=source,cp_vehicle=vehicle,cp_threshold=threshold,
+                             **{"cp_batch_"+suffix:batch,"cp_other_"+suffix:None})
+                    return
     if handoff and page == AI:
         # Local imports keep the link helpers reusable without an import cycle.
         from rail_vehicle.pages.ai_link import _open_center

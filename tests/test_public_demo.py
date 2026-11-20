@@ -10,7 +10,7 @@ from streamlit.testing.v1 import AppTest
 
 from rail_vehicle.deployment import demo_source_options, public_demo_enabled
 from rail_vehicle.ai.ui import request_ai_analysis
-from rail_vehicle.pages import cockpit, ml_detection, vibration_analysis, fleet_comparison
+from rail_vehicle.pages import cockpit, copilot, ml_detection, vibration_analysis, fleet_comparison
 from rail_vehicle.pages.experiment_ai import render_experiment_ai
 
 
@@ -26,16 +26,20 @@ class PublicDemoTests(unittest.TestCase):
         with ExitStack() as stack:
             stack.enter_context(patch.dict(os.environ, {"RAIL_PUBLIC_DEMO": "true"}))
             initialize = stack.enter_context(patch("rail_vehicle.db.init_db", side_effect=AssertionError("no database")))
-            for module in (cockpit, ml_detection, vibration_analysis, fleet_comparison):
+            for module in (cockpit, copilot, ml_detection, vibration_analysis, fleet_comparison):
                 for name in ("list_vehicles", "list_vehicle_batches", "list_batch_samples"):
                     stack.enter_context(patch.object(module, name, side_effect=AssertionError("no history")))
             app = AppTest.from_file(str(Path(__file__).resolve().parents[1]/"app.py")).run()
             self.assertFalse(app.exception)
             navigation = [button.key.removeprefix("nav_") for button in app.sidebar.button]
-            self.assertEqual(navigation[:7], ["平台首页", "统计与异常演示", "异常检测", "AI 智能分析中心", "振动与平稳性分析",
+            self.assertEqual(navigation[:8], ["平台首页", "统计与异常演示", "异常检测", "AI 智能分析中心", "RailVehicle Copilot", "振动与平稳性分析",
                                                "三维转向架仿真", "分析报告"])
             self.assertEqual(app.session_state["navigation_page"], "统计与异常演示")
             self.assertFalse(app.file_uploader)
+            app.sidebar.button(key="nav_RailVehicle Copilot").click().run()
+            self.assertFalse(app.exception)
+            self.assertFalse(app.file_uploader)
+            self.assertEqual(app.radio(key="cp_mode").options, ["离线工具"])
             self.assertFalse({"nav_车辆参数", "nav_运行分析", "nav_CSV 数据导入"} & {b.key for b in app.button})
             for private_route in ("车辆参数", "运行分析", "CSV 数据导入"):
                 with self.subTest(private_route=private_route):

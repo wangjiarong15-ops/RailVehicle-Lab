@@ -24,7 +24,7 @@ def webgl_available():
 
 def render_webgl(*, mode, phase, state, visible, highlight, view, focus, labels, rails,
                  exploded, spread, camera_revision, continuous, height, key, export_context=None, reference=False,
-                 periodic=False, related_review=(), camera_group=None, simulation=None):
+                 periodic=False, related_review=(), camera_group=None, simulation=None, studio_command=None):
     # Keep the same widget identity on replay ticks so the orbit camera and scene stay mounted.
     component = declare_component("bogie_viewer", path=str(ASSETS))
     component(
@@ -34,5 +34,5 @@ def render_webgl(*, mode, phase, state, visible, highlight, view, focus, labels,
         labels=labels, rails=rails, spread=spread if exploded else 0, revision=camera_revision,
         height=height, key=key, default=None,
         replayRunning=state.playing, exportContext=export_context, reference=reference, relatedReview=related_review,
-        cameraGroup=camera_group, simulation=simulation,
+        cameraGroup=camera_group, simulation=simulation, studioCommand=studio_command,
     )

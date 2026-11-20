@@ -546,8 +546,14 @@ export async function mount() {
       if (serverArgs && (serverArgs.visible.join() !== next.visible.join() ||
           serverArgs.revision !== next.revision || serverArgs.rails !== next.rails)) bookmarkDisplay = null;
     }
+    const command = next.studioCommand;
+    const applyCommand = command && command.id !== serverArgs?.studioCommand?.id;
+    if (applyCommand && ["solid","ghost","wire"].includes(command.surface)) surfaceMode.value = command.surface;
     serverArgs = next;
     player.load(next.simulation);
+    if (applyCommand && next.simulation && command.transport) {
+      player.command(command.transport.action, command.transport.seconds);
+    }
     clock.receive(next, performance.now());
     apply(next, entering || Boolean(leaving));
     if (restoreView) {

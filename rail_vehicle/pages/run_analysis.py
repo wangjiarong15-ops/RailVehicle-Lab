@@ -707,6 +707,7 @@ def _render_dynamics_analysis(*, demo: bool = False, view=ANALYSIS) -> None:
             row_span=replay_rows, anchor=event_anchors[selected_event], scope=playback_scope,
         )
     st.session_state[BATCH_HANDOFF] = {
+        "copilot_data": (selected_vehicle, batch_row, result["samples"]),
         "event_target": event_target,
         "target": {"vehicle_id": vehicle_id, "batch_id": batch_id, "threshold": threshold, "fictional": demo,
                    **({"scope": playback_scope} if playback_scope else {})},
@@ -731,6 +732,8 @@ def _render_dynamics_analysis(*, demo: bool = False, view=ANALYSIS) -> None:
                                           replay_scope=playback_scope)
         destinations = (ANALYSIS, REPORT) if view == ANOMALIES else (ANALYSIS, ANOMALIES) if view == REPORT else (ANOMALIES, REPORT)
         with related, st.container(horizontal=True):
+            from rail_vehicle.pages.data_workflow import open_copilot
+            st.button("在 Copilot 中分析", key="analysis_open_copilot", on_click=open_copilot)
             for destination in destinations:
                 st.button(destination, key=f"batch_continue_{destination}", on_click=navigate, args=(destination,),
                           kwargs={WORKBENCH_SOURCE: "demo" if demo else "history"})

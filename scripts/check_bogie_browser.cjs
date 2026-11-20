@@ -418,7 +418,17 @@ async function audit(browser, width, height, complete = true) {
     const frame = page.frameLocator("iframe[title*=bogie_viewer]").first();
     const root = frame.locator("#workbench");
     const canvas = frame.locator("canvas");
-    const data = () => root.evaluate((node) => ({...node.dataset}));
+    const data = async () => {
+      const read = () => root.evaluate(node => ({...node.dataset}));
+      try {
+        return await read();
+      } catch (error) {
+        // Changing an assembly preset may remount the iframe between lookup and evaluate.
+        if (!String(error).includes("Frame was detached")) throw error;
+        await frame.locator("#workbench[data-status=ready][data-frames]").waitFor();
+        return read();
+      }
+    };
     await frame.locator("#workbench[data-status=ready][data-frames]").waitFor();
     assert.equal((await data()).model, "glb");
     assert.equal((await data()).components, "54");

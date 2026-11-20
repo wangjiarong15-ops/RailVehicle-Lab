@@ -518,6 +518,8 @@ python -m pytest -q
 
 本阶段三维工作台、悬挂计算、振动频谱及实测曲线定位的入口和计算范围见 [Project Evolution · Phase 1](docs/project-evolution.md)。运行全部浏览器用例前，在项目虚拟环境执行 `python -m pip install -e ".[signal]"`。可单独运行 `python -m scripts.run_browser_checks --suite evolution` 验证这些交互。
 
+侧栏「工程 Copilot」可直接用虚构批次体验异常回查、波形与三维同步、悬挂刚度对照和 PDF 导出。默认在本地计算，无需模型密钥。安装 `knowledge` 可选依赖后可检索用户提供的文字型 PDF。操作示例、工具协议、在线授权范围和浏览器截图见 [RailVehicle Copilot · Phase 2](docs/project-evolution-copilot.md)。
+
 安装项目和 Node.js 后，在仓库目录执行：
 
 ```powershell

@@ -13,11 +13,12 @@ from rail_vehicle.pages import cockpit, ml_detection, run_analysis, vehicles, vi
 from rail_vehicle.pages import demo_center, fleet_comparison
 from rail_vehicle.pages import home
 from rail_vehicle.pages import ai_center
+from rail_vehicle.pages import copilot
 from rail_vehicle.pages import bogie
 from rail_vehicle.pages.data_workflow import clear_workbench_navigation, select_workspace_page
 from rail_vehicle.workspace_resume import finish_workspace, render_resume_notice, restore_workspace
 from rail_vehicle.ui import (
-    ANALYSIS, ANOMALIES, COMPARISON, REPORT, apply_design, initialize_theme, page_title, render_navigation,
+    ANALYSIS, ANOMALIES, COMPARISON, COPILOT, REPORT, apply_design, initialize_theme, page_title, render_navigation,
 )
 
 
@@ -36,6 +37,8 @@ def main() -> None:
     resume_slot = st.empty()
     restore_workspace(resume_slot, public=public_demo)
     page = render_navigation(public_demo, on_select=select_workspace_page)
+    if page != COPILOT:
+        copilot.interrupt()
     render_resume_notice()
     clear_workbench_navigation(page)
     if page != "动态运行驾驶舱":
@@ -71,6 +74,8 @@ def main() -> None:
         fleet_comparison.render()
     elif page == "AI 智能分析中心":
         ai_center.render()
+    elif page == COPILOT:
+        copilot.render(public_demo)
     elif page == "统计与异常演示":
         run_analysis.render_statistics_demo()
     elif page == "演示中心":

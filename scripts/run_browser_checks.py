@@ -1,7 +1,7 @@
 """Run the browser regression against an isolated, fictional RailVehicle-Lab instance."""
 
 from argparse import ArgumentParser
-from contextlib import closing
+from contextlib import closing, contextmanager
 import os
 from pathlib import Path
 import shutil
@@ -21,6 +21,8 @@ from rail_vehicle.vehicle_data import add_vehicle, list_vehicles
 
 ROOT = Path(__file__).resolve().parents[1]
 SUITES = {
+    "copilot": "check_copilot_browser.cjs",
+    "copilot-stream": "check_copilot_stream_browser.cjs",
     "model": "check_bogie_browser.cjs",
     "evolution": "check_evolution_browser.cjs",
     "resume": "check_workspace_resume_browser.cjs",
@@ -106,6 +108,23 @@ def run_suite(node: str, suite: str, address: str, output: Path, env: dict[str, 
     return result.returncode == 0
 
 
+@contextmanager
+def local_app(home, env, log_path):
+    port = free_port()
+    address = f"http://127.0.0.1:{port}"
+    with log_path.open("wb") as log, subprocess.Popen([
+        sys.executable, "-m", "streamlit", "run", str(ROOT / "app.py"),
+        "--server.address", "127.0.0.1", "--server.port", str(port),
+        "--server.headless", "true", "--server.fileWatcherType", "none",
+        "--browser.gatherUsageStats", "false",
+    ], cwd=home, env=env, stdout=log, stderr=subprocess.STDOUT) as server:
+        try:
+            wait_until_healthy(server, address)
+            yield address
+        finally:
+            stop_server(server)
+
+
 def main() -> int:
     parser = ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=ROOT / "tmp" / "browser-qa")
@@ -127,20 +146,20 @@ def main() -> int:
             theme = (ROOT / ".streamlit" / "config.toml").read_text(encoding="utf-8")
             config.write_text(theme + '\n[secrets]\nfiles = [".streamlit/secrets.toml"]\n', encoding="utf-8")
             env = isolated_env(home)
-            port = free_port()
-            address = f"http://127.0.0.1:{port}"
-            with (output / "streamlit.log").open("wb") as log, subprocess.Popen([
-                sys.executable, "-m", "streamlit", "run", str(ROOT / "app.py"),
-                "--server.address", "127.0.0.1", "--server.port", str(port),
-                "--server.headless", "true", "--server.fileWatcherType", "none",
-                "--browser.gatherUsageStats", "false",
-            ], cwd=home, env=env, stdout=log, stderr=subprocess.STDOUT) as server:
-                try:
-                    wait_until_healthy(server, address)
-                    names = SUITES if args.suite == "all" else (args.suite,)
-                    results = [run_suite(node, name, address, output, env) for name in names]
-                finally:
-                    stop_server(server)
+            names = SUITES if args.suite == "all" else (args.suite,)
+            results = []
+            offline = [name for name in names if name!="copilot-stream"]
+            if offline:
+                with local_app(home,env,output/"streamlit.log") as address:
+                    results.extend(run_suite(node,name,address,output,env) for name in offline)
+            if "copilot-stream" in names:
+                from scripts.copilot_mock_service import simulated_provider
+                with simulated_provider() as (url,requests):
+                    mock_env = dict(env,AI_ENABLED="true",AI_PROVIDER="deepseek",AI_MODEL="local-browser-fixture",
+                                    DEEPSEEK_BASE_URL=url,DEEPSEEK_API_KEY="local-test-only",NO_PROXY="127.0.0.1")
+                    with local_app(home,mock_env,output/"streamlit-mock.log") as address:
+                        results.append(run_suite(node,"copilot-stream",address,output,env))
+                    results.append(requests==["plan","plan","interpretation","plan","interpretation"])
             return 0 if all(results) else 1
     except (OSError, RuntimeError, ValueError) as exc:
         print(f"无法运行浏览器回归：{exc}（日志目录：{output}）", file=sys.stderr)

@@ -217,6 +217,7 @@ DEMO_DATA = "统计与异常演示"
 BATCH_VIEWS = (ANALYSIS, ANOMALIES, REPORT, DEMO_DATA)
 BOGIE = "三维转向架仿真"
 AI = "AI 智能分析中心"
+COPILOT = "RailVehicle Copilot"
 ADVANCED_PAGES = ("演示中心", "动态运行驾驶舱", "多车辆运行对比", "机器学习异常检测")
 ANALYSIS_MODE = "workbench_analysis_mode"
 
@@ -233,7 +234,7 @@ _SPECIALTY = ((DEMO_DATA, "虚构数据分析", "science"), *zip(ADVANCED_PAGES,
 def render_navigation(public, on_select=navigate):
     core = ((DEMO_DATA, "虚构数据分析", "monitoring"), _CORE[1], _CORE[3]) if public else _CORE
     groups = (("工作台", _WORKSPACE[:1] if public else _WORKSPACE),
-              ("工程分析", core + _ENGINEERING))
+              ("工程分析", core + ((COPILOT, "工程 Copilot", "forum"),) + _ENGINEERING))
     specialty = _SPECIALTY[1:] if public else _SPECIALTY
     allowed = {route for _, rows in groups for route, _, _ in rows} | {row[0] for row in specialty}
     aliases = {label: route for _, rows in groups for route, label, _ in rows}

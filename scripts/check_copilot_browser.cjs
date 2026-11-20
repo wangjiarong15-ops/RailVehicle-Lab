@@ -1,0 +1,107 @@
+// Local-only acceptance. The runner creates a separate, fictional SQLite database.
+const assert = require("node:assert/strict");
+const {mkdir,readFile} = require("node:fs/promises");
+const {resolve} = require("node:path");
+const {chromium} = require(process.env.RAIL_PLAYWRIGHT_MODULE || "playwright");
+const url = new URL(process.argv[2]), out = resolve(process.argv[3]);
+assert.equal(url.origin,"http://127.0.0.1:"+url.port);
+url.searchParams.set("embed_options","dark_theme");
+async function audit(browser,width,height) {
+  const page = await browser.newPage({viewport:{width,height},acceptDownloads:true});
+  const errors = [];
+  page.on("pageerror",e=>errors.push(e.message));
+  await page.route("**/*",r=>new URL(r.request().url()).origin===url.origin || /^(data:|blob:)/.test(r.request().url()) ? r.continue():r.abort());
+  const nav = label=>page.getByTestId("stSidebar").getByRole("button",{name:new RegExp(label+"$")});
+  const capture = name=>page.screenshot({path:resolve(out,width+"-"+name+".png")});
+  const ask = async text=>{
+    const input = page.getByTestId("stChatInputTextArea");
+    await input.fill(text);
+    await input.press("Enter");
+  };
+  try {
+    await page.goto(url.href);
+    await nav("工程 Copilot").click();
+    await page.getByRole("heading",{name:"RailVehicle Copilot",exact:true}).waitFor();
+    await page.getByRole("button",{name:/横向异常与三维回查/}).waitFor();
+    await capture("workspace");
+    const begin = Date.now();
+    await page.getByRole("button",{name:/横向异常与三维回查/}).click();
+    const event = page.getByRole("button",{name:"在三维时间轴回放此区段"});
+    await event.waitFor();
+    const latency = Date.now()-begin;
+    await page.getByText(/metric.accel.lateral.rms/).first().waitFor();
+    const linked = page.frameLocator("iframe[title*=bogie_viewer]").first();
+    await linked.locator("#workbench[data-model=glb][data-status=ready][data-highlighted*=构架]").waitFor();
+    const cursor = page.locator('[class*="_cursor"]').getByRole("slider");
+    await cursor.focus();
+    await cursor.press("ArrowLeft");
+    await linked.locator('#workbench[data-highlighted=""]').waitFor();
+    await cursor.press("ArrowRight");
+    await linked.locator("#workbench[data-highlighted*=构架]").waitFor();
+    await cursor.evaluate(n => {
+      n.scrollIntoView({block:"start"});
+      for (let p=n.parentElement;p;p=p.parentElement) {
+        if (p.scrollTop>0) { p.scrollBy(0,-150); break; }
+      }
+    });
+    await capture("evidence");
+    await event.click();
+    const meter=page.locator(".st-key-bogie_status_card");
+    await meter.getByText(/第 31\/120 条/).waitFor();
+    await meter.getByText("1.400",{exact:true}).waitFor();
+    await nav("工程 Copilot").click();
+    await ask("将悬挂刚度提高20%，比较振动响应");
+    await page.getByText(/450 → 540 kN\/m/).first().waitFor();
+    const model = page.frameLocator("iframe[title*=bogie_viewer]").last();
+    await model.locator("#sim-time:visible").waitFor();
+    await ask("暂停在2秒");
+    await page.getByText("三维时间轴定位到 2 s。",{exact:true}).waitFor();
+    await model.locator('#response[data-sample="200"]').waitFor();
+    await model.locator("#response").scrollIntoViewIfNeeded();
+    await capture("simulation");
+    await ask("根据本次分析生成完整报告");
+    const download = page.getByRole("button",{name:"下载工程分析 PDF"});
+    await download.waitFor();
+    const [pdf] = await Promise.all([page.waitForEvent("download"),download.click()]);
+    assert((await readFile(await pdf.path())).subarray(0,5).equals(Buffer.from("%PDF-")));
+    await nav("运行分析").click();
+    await page.getByRole("button",{name:"在 Copilot 中分析"}).click();
+    await page.getByText(/历史导入数据.*DEMO-001/).first().waitFor();
+    await page.getByRole("button",{name:/横向异常与三维回查/}).waitFor();
+    assert.equal(await page.getByText(/450 → 540 kN\/m/).count(),0);
+    if(width===1366){
+      await page.getByRole("button",{name:"数据来源与附件"}).click();
+      await page.locator(".st-key-cp_source").getByRole("combobox").click();
+      await page.getByRole("option",{name:"会话 CSV",exact:true}).click();
+      const csv="timestamp,vehicle_id,speed_kmh,lateral_accel,vertical_accel\n"+
+        "2026-01-01T00:00:00Z,FICT-A,12,0.1,0.2\n2026-01-01T00:00:01Z,FICT-A,12,1.8,0.2\n"+
+        "2026-01-01T00:00:00Z,FICT-B,8,0.3,0.2";
+      const uploader = page.getByTestId("stFileUploader").filter({hasText:"临时分析 CSV"});
+      await uploader.waitFor();
+      await page.locator('[data-stale="true"]').first().waitFor({state:"detached"});
+      const [chooser] = await Promise.all([page.waitForEvent("filechooser"),uploader.locator("button").click()]);
+      await chooser.setFiles({
+        name:"fictional-upload.csv",mimeType:"text/csv",buffer:Buffer.from(csv)
+      });
+      await page.locator(".st-key-cp_attachment_vehicle").waitFor();
+      await page.getByRole("heading",{name:"RailVehicle Copilot",exact:true}).click();
+      await ask("找出所有横向加速度超阈值区段");
+      await page.getByText(/峰值 1.8 m\/s²/).first().waitFor();
+      assert.equal(await event.count(),0);
+      await nav("工作台").click();
+      await nav("工程 Copilot").click();
+      await page.getByText(/会话 CSV 附件.*FICT-A.*fictional-upload.csv/).waitFor();
+      await page.getByText(/峰值 1.8 m\/s²/).first().waitFor();
+    }
+    assert.equal(await page.getByTestId("stException").count(),0);
+    assert.deepEqual(errors,[]);
+    console.log(JSON.stringify({width,height,workflowMs:latency,replay:true,simulationSample:200,pdf:true,scopeIsolated:true}));
+  } catch(e) {await capture("failure");throw e;} finally {await page.close();}
+}
+(async()=>{
+  await mkdir(out,{recursive:true});
+  const browser=await chromium.launch({executablePath:process.env.RAIL_BROWSER_PATH,headless:true,
+    args:["--use-angle=swiftshader","--enable-unsafe-swiftshader"]});
+  try { for (const [w,h] of [[1366,768],[1920,1080]]) await audit(browser,w,h); }
+  finally {await browser.close();}
+})().catch(e=>{console.error(e);process.exitCode=1;});
