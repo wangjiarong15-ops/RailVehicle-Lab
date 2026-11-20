@@ -6,6 +6,7 @@
 #sim-time {flex:1;min-width:75px;accent-color:#50d3c3;}
 #sim-values {font-variant-numeric:tabular-nums;}
 .response-axis {display:flex;justify-content:space-between;color:#bad1db;font-size:11px;}
+#axle-controls:not([hidden]) {display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:5px;}
 #response-plot {width:100%;height:51px;background:#101b2a;cursor:crosshair;touch-action:none;margin-top:4px;}
 #channel-context {color:#a8c9dc;font-size:11px;}
 body { margin: 0; font: 13px/1.45 "Segoe UI", "Microsoft YaHei", sans-serif; color: #e3edf9; }
@@ -28,7 +29,9 @@ button:disabled { opacity: .55; cursor: default; }
 #surface { width: 100%; height: 100%; }
 canvas { display: block; touch-action: none; cursor: grab; }
 canvas:active { cursor: grabbing; }
-#labels { position: absolute; inset: 0; pointer-events: none; }
+#labels, #axle-labels { position: absolute; inset: 0; pointer-events: none; }
+#axle-labels .front {border-color:#50d3c3;color:#8aeadd;}
+#axle-labels .rear {border-color:#eab879;color:#ffcf92;}
 .tag { position: absolute; transform: translate(-50%, -125%); padding: 1px 5px; white-space: nowrap;
   border: 1px solid #4b6681; border-radius: 4px; background: #142336; color: #edf5ff; font-size: 11px; }
 #axes { position: absolute; bottom: 8px; left: 10px; color: #b5c6d8; background: #111e2c;

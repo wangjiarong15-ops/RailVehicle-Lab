@@ -76,7 +76,11 @@ export async function mount() {
       else await workbench.requestFullscreen();
     } catch { setExportStatus("浏览器未允许此视窗进入全屏。"); }
   };
-  document.onfullscreenchange = () => { fullScreen.textContent = document.fullscreenElement ? "退出全屏" : "全屏"; };
+  document.onfullscreenchange = () => {
+    fullScreen.textContent = document.fullscreenElement ? "退出全屏" : "全屏";
+    size();
+    invalidate();
+  };
   const variants = new Map();
   function inspectionSurface(original, mode) {
     if (Array.isArray(original)) return original.map(item => inspectionSurface(item, mode));
@@ -222,7 +226,7 @@ export async function mount() {
     hint.textContent = axes.length ? "批次第 " + sample.sample_number + " 行 · " +
       axes.map(axis => axis + " " + value(axis).toFixed(3)).join(" / ") + " m/s² · 安装点未知" : "此批次无该部件专用通道";
   }
-  const picker = inspection(canvas, data.parts, assembly, rig, select, reset, detailed?.parts, section, {
+  const picker = inspection(canvas, data, assembly, rig, select, reset, detailed?.parts, section, {
     active: () => measuring,
     hit(point) {
       if (measureControl.disabled) return;
@@ -369,8 +373,8 @@ export async function mount() {
     rig.controls.update();
     if (!(dirty || pose.running || pose.settling)) return;
     angle = pose.angle;
-    assembly.pose(angle, pose.lateral, pose.vertical, pose.yaw);
-    const nextShadowPose = [pose.lateral, pose.vertical, pose.yaw].map((value) => value.toFixed(3)).join(",");
+    assembly.pose(angle, pose.lateral, pose.vertical, pose.yaw, pose.pitch);
+    const nextShadowPose = [pose.lateral, pose.vertical, pose.yaw, pose.pitch ?? 0].map((value) => value.toFixed(3)).join(",");
     // The rotating steel parts are axially symmetric. Reuse their shadow in normal running.
     if (shadowDirty || shadowPose !== nextShadowPose) {
       renderer.shadowMap.needsUpdate = true;
@@ -379,7 +383,7 @@ export async function mount() {
     }
     renderer.render(scene, rig.camera);
     if (exportPending && !args.replayRunning && !settling) saveInspection();
-    picker.labels(args, width, height);
+    picker.labels(args, width, height, isolated);
     dirty = false;
     // Lightweight diagnostics for checking interaction and renderer performance.
     Object.assign(workbench.dataset, {
@@ -392,6 +396,7 @@ export async function mount() {
       spread: args.spread,
       visibleComponents,
       axleAngle: assembly.partNodes.get("axle_a")?.parent.rotation.y.toFixed(4) ?? "",
+      framePitch: -assembly.frame.rotation.y,
       axleboxAngle: assembly.partNodes.get("axlebox_a_l")?.parent.rotation.y.toFixed(4) ?? "",
       discAngle: assembly.partNodes.get("disc_a_l")?.parent.rotation.y.toFixed(4) ?? "",
       pose: [pose.lateral, pose.vertical, pose.yaw].map((value) => value.toFixed(4)).join(","),

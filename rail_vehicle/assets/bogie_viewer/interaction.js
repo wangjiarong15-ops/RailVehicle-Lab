@@ -7,13 +7,15 @@ const anchors = {
   "制动装置": ["wheel", [1.30, -.64, .70]],
 };
 
-export function inspection(canvas, descriptions, assembly, rig, onSelect, reset, parts, section, measure) {
+export function inspection(canvas, data, assembly, rig, onSelect, reset, parts, section, measure) {
   const ray = new THREE.Raycaster(), cursor = new THREE.Vector2();
   ray.layers.enable(1); // Source meshes remain pickable during batched playback.
   const focus = document.querySelector("#focus");
   const resetButton = document.querySelector("#reset");
   const inspectionText = document.querySelector("#inspection");
   const labelLayer = document.querySelector("#labels");
+  const axleLayer = document.querySelector("#axle-labels");
+  const descriptions = data.parts;
   const tags = Object.keys(descriptions).map((part) => {
     const tag = document.createElement("span");
     tag.className = "tag";
@@ -77,7 +79,21 @@ export function inspection(canvas, descriptions, assembly, rig, onSelect, reset,
         spec?.spin ? "绕横向车轴转动" : "", available ? "" : "当前不可见"]
         .filter(Boolean).join(" · ") : "点击零件查看名称、作用和安装位置";
     },
-    labels(args, width, height) {
+    labels(args, width, height, isolated) {
+      axleLayer.hidden = !args.simulation?.channels.front_travel_m || Boolean(isolated || section.enabled || args.spread);
+      if (!axleLayer.hidden) {
+        const view = rig.camera.matrixWorld.elements;
+        const side = view[9] < 0 ? -1 : 1;
+        const nearer = view[8] > 0 ? 1 : 0;
+        const endOn = Math.abs(view[8]) > .995;
+        for (const [index, x] of data.axleX.entries()) {
+          const tag = axleLayer.children[index];
+          point.set(x, side*data.wheelY, data.axleZ*.45).applyMatrix4(assembly.wheel.matrixWorld).project(rig.camera);
+          tag.hidden = (endOn && index !== nearer) || Math.abs(point.x) > .95 || Math.abs(point.y) > .95;
+          tag.style.left = (point.x+1)*width/2 + "px";
+          tag.style.top = (1-point.y)*height/2 + "px";
+        }
+      }
       labelLayer.hidden = !args.labels;
       if (!args.labels) return;
       for (const [part, tag] of tags) {

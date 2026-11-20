@@ -33,6 +33,53 @@ def test_base_excitation_matches_steady_state_transfer_function():
     assert softer["channels"]["support_m"] == result["channels"]["support_m"]
 
 
+def test_axle_pass_delay_sign_and_zero_input():
+    case = SuspensionCase("axle_bump", speed_m_s=5)
+    result = simulate(case)
+    c = result["channels"]
+    assert result["axle_delay_s"] == pytest.approx(.52)
+    assert c["front_support_m"][60] == pytest.approx(.004)
+    assert c["rear_support_m"][112] == pytest.approx(.004)
+    assert c["front_support_m"][:-52] == pytest.approx(c["rear_support_m"][52:])
+    assert all(value == 0 for value in c["rear_support_m"][:102])
+    assert max(c["pitch_rad"][51:61]) > 0
+    for i, theta in enumerate(c["pitch_rad"]):
+        front = c["front_travel_m"][i] + c["front_support_m"][i]
+        rear = c["rear_travel_m"][i] + c["rear_support_m"][i]
+        assert (front-rear)/result["wheelbase_m"] == pytest.approx(theta)
+        assert (front+rear)/2 == pytest.approx(c["frame_m"][i])
+    zero = simulate(replace(case, amplitude_m=0))["channels"]
+    for name in ("front_travel_m", "rear_travel_m", "pitch_rad", "accel_m_s2"):
+        assert not any(zero[name])
+
+
+@pytest.mark.parametrize(("speed", "tolerance"), [(5, 1e-9), (6, 1e-7)])
+def test_axle_pass_matches_independent_end_force_integration(speed, tolerance):
+    from math import cos, sin
+    integrate = pytest.importorskip("scipy.integrate")
+    case = SuspensionCase("axle_bump", speed_m_s=speed)
+    result = simulate(case)
+    half = result["wheelbase_m"]/2
+    def derivatives(t, state):
+        z, v, theta, rate = state
+        forces = []
+        for x in (half, -half):
+            distance = case.speed_m_s*(t-.5) - (half-x)
+            h = dh = 0.
+            if 0 < distance < 1:
+                h = case.amplitude_m*(1-cos(tau*distance))/2
+                dh = case.amplitude_m*tau*case.speed_m_s*sin(tau*distance)/2
+            forces.append((case.stiffness_n_m*(h-z-x*theta) +
+                           case.damping_ns_m*(dh-v-x*rate))/2)
+        return v, sum(forces)/case.mass_kg, rate, half*(forces[0]-forces[1])/result["pitch_inertia_kg_m2"]
+    times = [i/OUTPUT_HZ for i in range(601)]
+    oracle = integrate.solve_ivp(derivatives, (0,6), (0,0,0,0), t_eval=times, method="DOP853",
+                                 max_step=.02, atol=1e-12, rtol=1e-9)
+    assert oracle.success
+    for values, channel in ((oracle.y[0], "frame_m"), (oracle.y[2], "pitch_rad")):
+        assert result["channels"][channel] == pytest.approx(values, abs=tolerance)
+
+
 @pytest.mark.parametrize("params", [dict(mass_kg=0), dict(amplitude_m=float("nan")), dict(scenario="bad")])
 def test_invalid_case(params):
     with pytest.raises(ValueError):

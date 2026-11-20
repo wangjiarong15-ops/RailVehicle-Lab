@@ -56,6 +56,7 @@ export function createAssembly(scene, data, material, detailed) {
   const frame = new THREE.Group(), wheel = new THREE.Group(), fixed = new THREE.Group();
   scene.add(frame, wheel, fixed);
   const parents = {frame, wheel, fixed};
+  const seatHeight = data.links.find(([,kind]) => kind === "coil")[3][2];
   const objects = [], spins = [], links = [], partNodes = new Map();
   function track(mesh, part, tone = null, id = null) {
     Object.assign(mesh.userData, {part, tone, id, original: mesh.material});
@@ -179,8 +180,10 @@ export function createAssembly(scene, data, material, detailed) {
           (!args.isolated || args.isolated === id);
       }
     },
-    pose(phase, lateral, vertical, yaw) {
-      frame.position.set(0, lateral, vertical);
+    pose(phase, lateral, vertical, yaw, pitch = 0) {
+      // Tilt about the midpoint of the upper seats, in the two-wheel support plane.
+      frame.position.set(seatHeight*Math.sin(pitch), lateral, vertical+seatHeight*(1-Math.cos(pitch)));
+      frame.rotation.y = -pitch;
       frame.rotation.z = yaw;
       // Wheelset stays at rail height. Brake discs rotate with axles; calipers and axleboxes do not.
       wheel.position.y = lateral * data.wheelPoseGain;

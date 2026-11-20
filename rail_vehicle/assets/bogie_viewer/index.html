@@ -50,6 +50,7 @@
       <div id="stage">
         <div id="surface"></div>
         <div id="labels" aria-hidden="true"></div>
+        <div id="axle-labels" aria-hidden="true" hidden><span class="tag rear">A 后轴</span><span class="tag front">B 前轴</span></div>
         <div id="axes" aria-hidden="true"><b>X</b> 纵向 <b>Y</b> 横向 <b>Z</b> 垂向</div>
         <p id="message" role="status">正在载入本地三维模型…</p>
       </div>
@@ -72,8 +73,14 @@
       <svg id="response-plot" viewBox="0 0 1000 64" preserveAspectRatio="none" aria-label="计算悬挂行程曲线，点击定位">
         <path d="M0 32H1000" stroke="#51657a"/><path id="response-path" fill="none" stroke="#50d3c3" vector-effect="non-scaling-stroke"/>
         <path id="nominal-path" fill="none" stroke="#a7b4c4" stroke-dasharray="4 3" vector-effect="non-scaling-stroke"/>
+        <path id="rear-path" fill="none" stroke="#eab879" stroke-dasharray="6 2" vector-effect="non-scaling-stroke"/>
         <line id="response-cursor" y1="0" y2="64" stroke="#ffbd69" stroke-width="2"/></svg>
       <div class="response-axis"><span id="response-scale"></span><span>0 – 6 s</span></div>
+      <div id="axle-controls" hidden>
+        <select id="axle-signal" aria-label="双轴曲线"><option value="travel">悬挂行程</option><option value="support">轨面输入</option></select>
+        <button type="button" id="front-crest">B 前轴到凸顶</button>
+        <button type="button" id="rear-crest">A 后轴到凸顶</button>
+      </div>
     </section>
     <footer>
       <span id="inspection" aria-live="polite">点击零件查看名称、作用和安装位置</span>

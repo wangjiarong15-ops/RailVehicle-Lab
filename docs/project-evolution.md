@@ -32,3 +32,24 @@
 Edge 在 1366×768、1920×1080 两种窗口尺寸通过播放、暂停、重置、选点、逐帧、全屏、三种表面显示和 FFT 切换。使用虚构批次点选第 16 条、滑至第 120 条，再用原有测试核对证据恢复到第 71 条。GLB 缺失与损坏回退、剖切、减振器装配、离线证据定位和 PDF 下载均通过。本机软件 WebGL 最后一次运行中，1920×1080 正常教学播放约 45 FPS，计算播放在两种尺寸分别约 23 和 34 FPS。短时采样受系统负载影响。
 
 [悬挂响应与三维视窗](screenshots/project-evolution/1920-simulation.png) · [轮轴局部](screenshots/project-evolution/wheel-detail.png) · [拆解](screenshots/project-evolution/exploded.png) · [批次曲线](screenshots/project-evolution/1366-observations.png) · [FFT 幅值谱](screenshots/project-evolution/1366-fft.png)
+
+## 双轴先后通过局部不平顺
+
+在「三维可视化 → 简化动力学计算」选择「双轴先后通过局部不平顺」。沿模型纵向 +X 运行时，B 轴先通过凸起，A 轴后通过。模型上的轴标随镜头移动，与曲线颜色一致。可切换轨面输入或悬挂行程，实线表示 B 轴，虚线表示 A 轴。两个「到凸顶」按钮会暂停并定位到最近的 10 ms 采样点。切换曲线保留当前时刻。
+
+试验在 0.50 s 开始给 B 轴施加 1 m 长、两端切线水平的余弦凸起。两轴接收同一空间轮廓，时间差为轴距除以速度。以 5 m/s 通过时，2.60 m 的轴距对应 0.52 s 的时间差，两端凸顶分别位于 0.60 s 和 1.12 s。
+
+下表采用 5 m/s、4 mm 凸起、1200 kg 质量、450 kN/m 总刚度和 10 kN·s/m 总阻尼。负行程表示上、下支座相对靠近。第二次到达凸顶时，构架仍带有第一次激励留下的运动。
+
+| 计算时刻 | B / A 轴输入 | B / A 端行程 | 构架点头角 |
+| --- | --- | --- | --- |
+| 0.60 s | 4.00 / 0.00 mm | −0.87 / −0.45 mm | +1.38 mrad |
+| 1.12 s | 0.00 / 4.00 mm | −0.67 / −1.14 mm | −1.35 mrad |
+
+构架按对称刚体处理，以中心浮沉位移 `z` 和 B 端抬升为正的点头角 `θ` 描述两个自由度。设半轴距为 `a`，前后支承输入为 `y_B`、`y_A`，两端行程为 `r_B = z + aθ − y_B`、`r_A = z − aθ − y_A`。每端承担总刚度和总阻尼的一半，端力为 `F = −(k r + c r')/2`。合力决定浮沉加速度，力矩 `a(F_B − F_A)` 决定点头角加速度。质量、刚度、阻尼及 1 m 回转半径均为教学假设。双支承升沉与点头的建模形式可参阅 [MathWorks 悬挂模型示例](https://www.mathworks.com/help/simulink/slref/automotive-suspension.html)。
+
+调用 `simulate(SuspensionCase("axle_bump", speed_m_s=5))` 得到版本 2 的计算结果。通道 `front_support_m`、`rear_support_m`、`front_travel_m`、`rear_travel_m` 与 `pitch_rad` 共用同一采样时钟。`frame_m` 表示中心浮沉，`support_m`、`travel_m` 表示两端平均值。数表与读数中的点头角相对水平面。三维以两轮座连线为参考，构架姿态体现两端悬挂的相对行程，弹簧与减振器跟随连接点。该工况把轨面形状直接作为给定的轮座输入，适用范围为小角度教学响应，不涉及轮轨接触、脱轨判据或实车故障判定。
+
+本次 Windows 全量回归通过 594 项测试及 317 个子测试。数值验证使用独立编写的前后端力方程与 SciPy DOP853 积分，对照 5 m/s 和 6 m/s 两种速度下的全部 601 个浮沉与点头样本。原有 7 个工况在默认参数下的 29,449 个通道数值与提交 `b846dfb` 逐值相同。三维验收还核对了上弹簧座的世界坐标、四个减振器的连接及两轴曲线切换后的采样位置。
+
+以下为 Edge 在 6 m/s、A 轴接近凸顶时的实际全屏截图。软件 WebGL 在半速播放的约一秒采样内分别渲染约 41 和 55 帧每秒。采样值受当时的系统负载影响。[1366×768 截图](screenshots/project-evolution/1366-axle-pass.png) · [1920×1080 截图](screenshots/project-evolution/1920-axle-pass.png)

@@ -223,11 +223,19 @@ async function checkDamperGeometry(root, format) {
     const neutral = dampers.map(({meshes, a, b}) => bounds(meshes, a, b));
     const poses = [[0, 0, 0, 0], [1.57, 0, -.065, 0], [4.71, .075, .065, 0], [0, 0, 0, -.049]];
     if (model) poses.push([0, 0, 0, 0, .8]);
-    for (const [phase, lateral, vertical, yaw, spread = 0] of poses) {
+    poses.push([0, 0, .001, 0, 0, .003], [0, 0, -.002, 0, 0, -.004]);
+    for (const [phase, lateral, vertical, yaw, spread = 0, pitch = 0] of poses) {
       assembly.appearance({...visible, spread});
       batches?.update(!spread);
-      assembly.pose(phase, lateral, vertical, yaw);
+      assembly.pose(phase, lateral, vertical, yaw, pitch);
       scene.updateMatrixWorld(true);
+      if (pitch && model) {
+        for (const [suffix, x] of [["a",data.axleX[0]],["b",data.axleX[1]]]) {
+          const seat = model.parts.get("spring_seat_upper_" + suffix + "_l");
+          const height = seat.node.getWorldPosition(new THREE.Vector3()).z;
+          compare(height-seat.spec.origin[2], vertical + x*Math.sin(pitch), "Wrong end travel at " + suffix);
+        }
+      }
       for (const [index, {a, b, meshes, node, offset}] of dampers.entries()) {
         const lower = a.clone().applyMatrix4(assembly.wheel.matrixWorld);
         const upper = b.clone().applyMatrix4(assembly.frame.matrixWorld);
