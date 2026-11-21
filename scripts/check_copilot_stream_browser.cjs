@@ -28,7 +28,7 @@ assert.equal(url.origin,"http://127.0.0.1:"+url.port);
   async function ask(text) { await input.fill(text); await input.press("Enter"); }
   try {
     await page.goto(url.href);
-    await page.getByTestId("stSidebar").getByRole("button",{name:/工程 Copilot$/}).click();
+    await page.getByTestId("stSidebar").getByRole("button",{name:/AI Copilot$/}).click();
     await page.getByRole("button",{name:"使用虚构批次体验"}).click();
     await authorize(true);
     await ask("分析横向振动");

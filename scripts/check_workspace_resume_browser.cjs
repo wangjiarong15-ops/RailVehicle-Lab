@@ -78,7 +78,7 @@ async function audit(browser, width, height) {
     await saved(page, "异常检测", 1);
     await capture("anomaly-light-restored");
 
-    await nav(page, "AI 智能分析").click();
+    await nav(page, "AI 证据解读").click();
     await heading(page, "AI 分析中心").waitFor();
     await page.locator('.st-key-ai_center_evidence_single input[value="event.vertical.001"]').waitFor();
     await saved(page, "AI 智能分析中心", 1);

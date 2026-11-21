@@ -20,7 +20,7 @@ async function audit(browser,width,height) {
   };
   try {
     await page.goto(url.href);
-    await nav("工程 Copilot").click();
+    await nav("AI Copilot").click();
     await page.getByRole("heading",{name:"RailVehicle Copilot",exact:true}).waitFor();
     const composer = page.getByTestId("stChatInputTextArea");
     const box = await composer.boundingBox();
@@ -80,7 +80,7 @@ async function audit(browser,width,height) {
     const meter=page.locator(".st-key-bogie_status_card");
     await meter.getByText(/第 31\/120 条/).waitFor();
     await meter.getByText("1.400",{exact:true}).waitFor();
-    await nav("工程 Copilot").click();
+    await nav("AI Copilot").click();
     await ask("将悬挂刚度提高20%，比较振动响应");
     await page.getByText(/450 → 540 kN\/m/).first().waitFor();
     const model = page.frameLocator("iframe[title*=bogie_viewer]").last();
@@ -142,8 +142,8 @@ async function audit(browser,width,height) {
       await ask("找出所有横向加速度超阈值区段");
       await page.getByText(/峰值 1.8 m\/s²/).first().waitFor();
       assert.equal(await event.count(),0);
-      await nav("工作台").click();
-      await nav("工程 Copilot").click();
+      await nav("工作台首页").click();
+      await nav("AI Copilot").click();
       await page.getByText(/会话 CSV 附件.*FICT-A.*fictional-upload.csv/).waitFor();
       await page.getByText(/峰值 1.8 m\/s²/).first().waitFor();
       await page.getByRole("button",{name:"数据来源与附件"}).click();

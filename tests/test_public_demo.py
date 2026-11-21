@@ -32,8 +32,9 @@ class PublicDemoTests(unittest.TestCase):
             app = AppTest.from_file(str(Path(__file__).resolve().parents[1]/"app.py")).run()
             self.assertFalse(app.exception)
             navigation = [button.key.removeprefix("nav_") for button in app.sidebar.button]
-            self.assertEqual(navigation[:10], ["平台首页", "统计与异常演示", "异常检测", "振动与平稳性分析",
-                                                "三维转向架仿真", "动力学仿真", "联动分析", "RailVehicle Copilot", "AI 智能分析中心", "分析报告"])
+            self.assertEqual(navigation[:10], ["平台首页", "统计与异常演示", "三维转向架仿真", "动力学仿真",
+                                                "RailVehicle Copilot", "分析报告", "异常检测", "联动分析",
+                                                "振动与平稳性分析", "AI 智能分析中心"])
             self.assertEqual(app.session_state["navigation_page"], "统计与异常演示")
             self.assertFalse(app.file_uploader)
             app.sidebar.button(key="nav_RailVehicle Copilot").click().run()

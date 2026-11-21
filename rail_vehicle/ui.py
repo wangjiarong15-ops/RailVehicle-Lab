@@ -194,30 +194,30 @@ ANALYSIS_MODE = "workbench_analysis_mode"
 
 SIMULATION = "动力学仿真"
 LINKED = "联动分析"
-_WORKSPACE = ((HOME, "工作台", "space_dashboard"),
-              (DATA_PAGES[0], "车辆管理", "train"), (DATA_PAGES[1], "数据管理", "database"))
-_ANALYSIS_ROWS = ((ANALYSIS, "运行分析", "monitoring"), (ANOMALIES, "异常检测", "warning"),
-                  (COMPARISON, "批次对比", "compare_arrows"), ("振动与平稳性分析", "振动与频谱", "waves"))
-_STUDIO_ROWS = ((BOGIE, "三维可视化", "view_in_ar"), (SIMULATION, SIMULATION, "experiment"),
-                (LINKED, LINKED, "timeline"))
-_DELIVERABLES = ((COPILOT, "工程 Copilot", "forum"), (AI, "AI 智能分析", "fact_check"),
-                 (REPORT, "分析报告", "description"))
+_WORKSPACE = ((HOME, "工作台首页", "space_dashboard"),
+              (DATA_PAGES[0], "车辆管理", "train"), (DATA_PAGES[1], "数据导入", "upload_file"))
+_ENGINEERING = ((BOGIE, "三维转向架", "view_in_ar"), (SIMULATION, SIMULATION, "experiment"),
+                (COPILOT, "AI Copilot", "forum"), (REPORT, REPORT, "description"))
+_REVIEW = ((ANOMALIES, ANOMALIES, "warning"), (LINKED, LINKED, "timeline"),
+           (COMPARISON, COMPARISON, "compare_arrows"), ("振动与平稳性分析", "振动与频谱", "waves"),
+           (AI, "AI 证据解读", "fact_check"))
 _SPECIALTY = ((DEMO_DATA, "虚构数据分析", "science"), *zip(ADVANCED_PAGES, ADVANCED_PAGES,
               ("school", "speed", "compare", "model_training")))
 
 
 def render_navigation(public, on_select=navigate):
-    analysis = (((DEMO_DATA, "虚构数据分析", "monitoring"), _ANALYSIS_ROWS[1], _ANALYSIS_ROWS[3])
-                if public else _ANALYSIS_ROWS)
+    analysis = (DEMO_DATA, "虚构数据分析", "monitoring") if public else (ANALYSIS, ANALYSIS, "monitoring")
     groups = (("工作空间", _WORKSPACE[:1] if public else _WORKSPACE),
-              ("数据分析", analysis), ("模型与仿真", _STUDIO_ROWS), ("解读与交付", _DELIVERABLES))
+              ("工程分析", (analysis, *_ENGINEERING)),
+              ("专项复核", tuple(row for row in _REVIEW if not public or row[0] != COMPARISON)))
     specialty = _SPECIALTY[1:] if public else _SPECIALTY
     allowed = {route for _, rows in groups for route, _, _ in rows} | {row[0] for row in specialty}
     aliases = {label: route for _, rows in groups for route, label, _ in rows}
     aliases.update({"分析工作台": DEMO_DATA if public else ANALYSIS, "高级工具": HOME,
                     "车辆与数据": DEMO_DATA if public else DATA_PAGES[0],
                     "综合工作台": HOME, "三维诊断工作台": BOGIE, "AI 分析中心": AI,
-                    "同车多批次对比": COMPARISON})
+                    "同车多批次对比": COMPARISON, "工作台": HOME, "数据管理": DATA_PAGES[1],
+                    "三维可视化": BOGIE, "工程 Copilot": COPILOT, "AI 智能分析": AI})
     requested = st.session_state.get("navigation_page")
     if requested is None:
         requested = st.query_params.get("rail_page")
@@ -246,7 +246,7 @@ def render_navigation(public, on_select=navigate):
                     render_rows(specialty)
             st.html('<div class="rv-nav-label">系统管理</div>')
             with st.container(horizontal=True, gap="xsmall"):
-                with st.popover("设置", icon=":material/settings:"):
+                with st.popover("系统设置", icon=":material/settings:"):
                     st.markdown("**系统设置 · 工作空间外观**")
                     st.html('<div class="rv-themes">' + ''.join(
                         f'<a target="_self" href="{escape(theme_url(mode, selected), quote=True)}">{label}</a>'

@@ -5,7 +5,7 @@ const {mkdir, readFile} = require("node:fs/promises");
 const {join} = require("node:path");
 const {chromium} = require(process.env.RAIL_PLAYWRIGHT_MODULE || "playwright");
 
-const WORKBENCH = "工作台";
+const WORKBENCH = "工作台首页";
 const BOGIE = "三维诊断工作台";
 const AI = "AI 分析中心";
 const output = process.argv[3];
@@ -39,8 +39,9 @@ async function fromTop(page) {
 }
 
 async function assertNav(page, publicDemo = false) {
-  const modules = publicDemo ? [WORKBENCH, "虚构数据分析", "异常检测", "AI 智能分析", "三维可视化", "分析报告"] :
-    [WORKBENCH, "车辆管理", "数据管理", "运行分析", "异常检测", "批次对比", "AI 智能分析", "三维可视化", "分析报告"];
+  const modules = [WORKBENCH, ...(publicDemo ? ["虚构数据分析"] : ["车辆管理", "数据导入", "运行分析"]),
+    "三维转向架", "动力学仿真", "AI Copilot", "分析报告", "异常检测", "联动分析",
+    ...(publicDemo ? [] : ["批次对比"]), "振动与频谱", "AI 证据解读"];
   for (const name of modules) await nav(page, name).waitFor();
   const sidebarActions = await sidebar(page).locator('[data-testid="stButton"] button:visible').all();
   assert.equal(sidebarActions.length, modules.length, "Unexpected primary sidebar action");
@@ -217,7 +218,7 @@ async function localAudit(page, address) {
   await dialog.getByRole("textbox", exact("车型 *")).fill("虚构验收车型二");
   await dialog.getByRole("button", exact("保存车辆")).click();
   await dialog.waitFor({state: "detached"});
-  await nav(page, "数据管理").click();
+  await nav(page, "数据导入").click();
   await page.getByTestId("stFileUploader").locator('input[type="file"]').setInputFiles({
     name: "fictional-product-multi.csv", mimeType: "text/csv",
     buffer: Buffer.from([

@@ -35,7 +35,7 @@ async function audit(browser, width, height) {
   const capture = name => page.screenshot({path: resolve(output, width+"-"+name+".png")});
   try {
     await page.goto(url.href);
-    await page.getByTestId("stSidebar").getByRole("button",{name:/三维可视化$/}).click();
+    await page.getByTestId("stSidebar").getByRole("button",{name:/三维转向架$/}).click();
     const source = page.locator(".st-key-bogie_source");
     await source.getByText("简化动力学计算",{exact:true}).click();
     const frame = page.frameLocator('iframe[title*=bogie_viewer]').first();

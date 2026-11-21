@@ -27,6 +27,8 @@ async function capture(browser,width,height,theme) {
       "三维转向架仿真":"三维可视化","RailVehicle Copilot":"工程 Copilot","AI 智能分析中心":"AI 智能分析",
       "统计与异常演示":"虚构数据分析","振动与平稳性分析":"振动与频谱"};
     const sidebar = page.getByTestId("stSidebar");
+    if (!baseline) Object.assign(names, {"平台首页":"工作台首页","CSV 数据导入":"数据导入",
+      "三维转向架仿真":"三维转向架","RailVehicle Copilot":"AI Copilot","AI 智能分析中心":"AI 证据解读"});
     for (const [name,route] of routes) {
       current=name;
       const oldMode = baseline && ["linked","simulation"].includes(name);
@@ -37,7 +39,7 @@ async function capture(browser,width,height,theme) {
         await sidebar.getByText("专项工具",{exact:true}).click();
       // Enter chat from the overview to compare the default, unbound entry.
       if (name === "copilot") {
-        await sidebar.getByRole("button",{name:/工作台$/}).first().click();
+        await sidebar.getByRole("button",{name:new RegExp(names["平台首页"]+"$")}).click();
         await main.getByRole("heading",{name:"工程工作台",exact:true}).waitFor();
       }
       await nav.click();

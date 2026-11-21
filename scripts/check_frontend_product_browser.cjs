@@ -45,7 +45,7 @@ async function audit(browser, width, height) {
   try {
     await page.goto(address.href);
     await heading(page, "工程工作台").waitFor();
-    for (const label of ["工作台", "车辆管理", "数据管理", "运行分析", "异常检测", "批次对比", "AI 智能分析", "三维可视化", "分析报告"])
+    for (const label of ["工作台首页", "车辆管理", "数据导入", "运行分析", "异常检测", "批次对比", "AI 证据解读", "三维转向架", "分析报告"])
       await nav(page, label).waitFor();
     await page.getByText("DEMO-001", { exact: false }).first().waitFor();
     await page.getByTestId("stMetricValue").first().waitFor();
@@ -55,7 +55,7 @@ async function audit(browser, width, height) {
     await open("车辆管理", "车辆参数");
     await button(page, "vehicle_edit_open").waitFor();
     await save("02-vehicles");
-    await open("数据管理", "CSV 数据导入");
+    await open("数据导入", "CSV 数据导入");
     await page.getByTestId("stFileUploader").waitFor();
     await save("03-data");
     await open("运行分析", "运行分析");
@@ -96,7 +96,7 @@ async function audit(browser, width, height) {
     await heading(page, "异常检测").waitFor();
     await expectThreshold();
 
-    await open("AI 智能分析", "AI 分析中心");
+    await open("AI 证据解读", "AI 分析中心");
     await page.getByText("核查证据", { exact: true }).waitFor();
     assert(await button(page, "ai_center_generate").isDisabled(), "AI must be disabled on the fixture server");
     await save("08-ai");

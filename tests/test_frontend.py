@@ -20,8 +20,8 @@ from rail_vehicle.pages import home, vehicles, run_analysis
 from rail_vehicle.pages.data_workflow import ANALYSIS_TARGET, WORKBENCH_SOURCE
 
 
-MAIN_NAV = ("工作台", "车辆管理", "数据管理", "运行分析", "异常检测", "批次对比", "振动与频谱",
-            "三维可视化", "动力学仿真", "联动分析", "工程 Copilot", "AI 智能分析", "分析报告")
+MAIN_NAV = ("工作台首页", "车辆管理", "数据导入", "运行分析", "三维转向架", "动力学仿真",
+            "AI Copilot", "分析报告", "异常检测", "联动分析", "批次对比", "振动与频谱", "AI 证据解读")
 ADVANCED_ROUTES = ("动态运行驾驶舱", "机器学习异常检测", "多车辆运行对比", "演示中心")
 
 
@@ -404,6 +404,9 @@ class FrontendTests(unittest.TestCase):
     def test_existing_deep_links_and_new_module_labels_resolve_to_internal_pages(self):
         for linked, route in (
             ("平台首页", "平台首页"), ("综合工作台", "平台首页"),
+            ("工作台", "平台首页"), ("工作台首页", "平台首页"), ("数据导入", "CSV 数据导入"),
+            ("AI Copilot", "RailVehicle Copilot"), ("工程 Copilot", "RailVehicle Copilot"),
+            ("三维转向架", "三维转向架仿真"), ("AI 智能分析", "AI 智能分析中心"),
             ("数据管理", "CSV 数据导入"), ("CSV 数据导入", "CSV 数据导入"),
             ("车辆与数据", "车辆参数"), ("运行分析", "运行分析"),
             ("异常检测", "异常检测"), ("批次对比", "批次对比"), ("分析报告", "分析报告"),
