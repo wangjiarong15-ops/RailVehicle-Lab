@@ -13,11 +13,27 @@ from rail_vehicle.bogie_geometry import connection_anchors
 import pytest
 
 
+@pytest.mark.parametrize(("missing", "available"), [
+    ({"assembly.json"}, True),
+    ({"assembly-layout.json", "bogie.glb"}, True),
+    ({"assembly.json", "model_contract.json"}, False),
+    ({"vendor/utils/BufferGeometryUtils.js"}, False),
+])
+def test_viewer_availability_accepts_each_complete_offline_model(monkeypatch, missing, available):
+    from pathlib import Path
+
+    is_file = Path.is_file
+    monkeypatch.setattr(Path, "is_file", lambda p: p not in {ASSETS / name for name in missing} and is_file(p))
+    assert webgl_available() is available
+
+
 def test_offline_mesh_is_current_and_assembled_around_two_axles():
     assert webgl_available()
     text = (ASSETS / "assembly.json").read_text(encoding="utf-8")
     assert text == serialized_mesh()
     model = json.loads(text)
+    layout = json.loads((ASSETS / "assembly-layout.json").read_text(encoding="utf-8"))
+    assert layout == {k: v for k, v in model.items() if k != "mesh"}
     wheels = {tuple(group): vertices for (part, group, parent, _), vertices, _, _ in model["mesh"]
               if part == "轮对" and parent == "wheel"}
     assert set(wheels) == {(x, side) for x in AXLE_X for side in (-1, 0, 1)}

@@ -152,6 +152,36 @@ export function createAssembly(scene, data, material, detailed) {
   }
 
   let visible = new Set(), highlight = new Set(), selected, spread = 0;
+  const shadowCasters = objects.filter(mesh => mesh.castShadow);
+  // Keep the imported steel, rubber and paint finishes readable during inspection.
+  const tinted = new Map();
+  function inspectionFinish(mesh, role) {
+    const {original, tone} = mesh.userData;
+    if (!detailed || !original.isMeshStandardMaterial)
+      return tone === null ? material[role] : material[role][tone];
+    let pair = tinted.get(original);
+    if (!pair) { pair = {}; tinted.set(original, pair); }
+    if (!pair[role]) {
+      const surface = original.clone();
+      const lightness = Math.max(original.color.r, original.color.g, original.color.b);
+      surface.color.copy(material[role][0].color).multiplyScalar(.65 + .55 * lightness);
+      pair[role] = surface;
+    }
+    return pair[role];
+  }
+  const suspensionLinks = new Map(links.filter(link => link.id && link.part === "一系悬挂")
+    .map(link => [link.id, link]));
+  function endpoints(link, from, to) {
+    from.copy(link.a);
+    to.copy(link.b);
+    if (spread && link.offset) {
+      from.addScaledVector(link.offset, spread);
+      to.addScaledVector(link.offset, spread);
+    } else {
+      from.applyMatrix4(wheel.matrixWorld);
+      to.applyMatrix4(frame.matrixWorld);
+    }
+  }
   function setSpread(value) {
     spread = value;
     for (const parent of Object.values(parents)) {
@@ -162,18 +192,32 @@ export function createAssembly(scene, data, material, detailed) {
   }
   return {
     objects, frame, wheel, partNodes, layers: parents, setSpread,
+    dispose() {
+      for (const mesh of objects) mesh.material = mesh.userData.original;
+      for (const pair of tinted.values()) for (const surface of Object.values(pair)) surface.dispose();
+      tinted.clear();
+    },
+    // World-space mounting centres in metres; rest distance uses the assembled contract.
+    suspensionMounts(id, from, to) {
+      const link = suspensionLinks.get(id);
+      if (!link?.node.visible) return null;
+      endpoints(link, from, to);
+      return link.length;
+    },
     appearance(args, selection) {
       setSpread(args.drawSpread ?? args.spread);
+      // Transparent frame and wire inspection should not cast solid silhouettes over the mechanism.
+      for (const mesh of shadowCasters)
+        mesh.castShadow = args.surfaceMode !== "wire" && !(args.surfaceMode === "ghost" && mesh.userData.part === "构架");
       visible = new Set(args.visible);
       if (args.rails) visible.add("轨道参照");
       highlight = new Set(args.highlight);
       selected = selection;
       for (const mesh of objects) {
-        const {part, tone, id, original} = mesh.userData;
+        const {part, id, original} = mesh.userData;
         mesh.visible = visible.has(part) && !args.hidden?.has(id) && (!args.isolated || args.isolated === id);
         const finish = highlight.has(part) ? "alert" : part === selected || id && id === selected ? "focus" : null;
-        const surface = !finish ? original : tone === null ? material[finish] : material[finish][tone];
-        mesh.material = surface;
+        mesh.material = finish ? inspectionFinish(mesh, finish) : original;
       }
       for (const {node, part, id} of links) {
         node.visible = (id || !args.spread) && visible.has(part) && !args.hidden?.has(id) &&
@@ -189,19 +233,13 @@ export function createAssembly(scene, data, material, detailed) {
       wheel.position.y = lateral * data.wheelPoseGain;
       wheel.rotation.z = yaw * data.wheelPoseGain;
       for (const axle of spins) axle.rotation.y = phase;
-      frame.updateMatrixWorld(true);
-      wheel.updateMatrixWorld(true);
-      for (const {node, a, b, segments, length: restLength, offset, slide} of links) {
+      // Only the two support transforms are needed here. The renderer updates descendants.
+      frame.updateWorldMatrix(true, false);
+      wheel.updateWorldMatrix(true, false);
+      for (const link of links) {
+        const {node, segments, length: restLength, slide} = link;
         if (!node.visible) continue;
-        if (spread && offset) {
-          orient(node, a, b);
-          node.position.addScaledVector(offset, spread);
-          node.scale.y = 1;
-          slide?.(restLength);
-          continue;
-        }
-        lower.copy(a).applyMatrix4(wheel.matrixWorld);
-        upper.copy(b).applyMatrix4(frame.matrixWorld);
+        endpoints(link, lower, upper);
         const length = orient(node, lower, upper);
         if (slide || restLength) {
           if (slide) slide(length);

@@ -10,6 +10,7 @@ import streamlit as st
 from rail_vehicle.ai.config import AIConfig
 from rail_vehicle.ai.ui import render_validated_result
 from rail_vehicle.bogie import PARTS
+from rail_vehicle.bogie_inspection_context import inspection_context
 from rail_vehicle.bogie_replay import TEACHING, illustration_phase, scene_for_sample
 from rail_vehicle.bogie_viewer import render_webgl, webgl_available
 from rail_vehicle.copilot.archive import export_chat, read_chat
@@ -218,6 +219,11 @@ def _wave(output, data, key):
                 camera_revision=0,
                 height=330,
                 key=key + "_observed",
+                export_context=inspection_context(
+                    sample=sample, index=cursor, total=len(track.samples), threshold=data.threshold,
+                    scene=rule, teaching="", fictional=data.source == "demo", batch_id=data.batch["id"],
+                    attachment=data.source == "upload", scoped=True,
+                ),
             )
         else:
             st.info("本机三维资源不可用，仍可按样本核查波形。")

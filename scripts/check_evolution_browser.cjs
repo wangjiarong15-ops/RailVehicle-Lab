@@ -35,9 +35,14 @@ async function audit(browser, width, height) {
   const capture = name => page.screenshot({path: resolve(output, width+"-"+name+".png")});
   try {
     await page.goto(url.href);
-    await page.getByTestId("stSidebar").getByRole("button",{name:/三维转向架$/}).click();
+    const sidebar = page.getByTestId("stSidebar");
+    await sidebar.getByRole("button",{name:/三维转向架$/}).click();
     const source = page.locator(".st-key-bogie_source");
-    await source.getByText("简化动力学计算",{exact:true}).click();
+    await source.waitFor();
+    assert.equal(await source.getByText("简化动力学计算",{exact:true}).count(),0);
+    const simulationNav = sidebar.getByRole("button",{name:/动力学仿真$/});
+    await simulationNav.click();
+    await simulationNav.and(page.getByTestId("stBaseButton-primary")).waitFor();
     const frame = page.frameLocator('iframe[title*=bogie_viewer]').first();
     await frame.locator('#workbench[data-status=ready][data-model=glb]').waitFor();
     await frame.locator("#response:not([hidden])").waitFor();
@@ -80,18 +85,36 @@ async function audit(browser, width, height) {
     await frame.locator('#workbench[data-selected="damper_a_l"]').waitFor();
     await frame.locator("#isolate-part").click();
     await frame.locator('#workbench[data-isolated="damper_a_l"]').waitFor();
+    const mounts = frame.locator("#mount-readout");
+    await mounts.waitFor();
+    assert.match(await mounts.innerText(), /模型安装距.*mm.*装配参考.*mm/);
+    await frame.locator("#section-toggle").click();
+    await frame.locator("#section-flip").click(); // The A axle lies on the negative X side.
+    await mounts.waitFor({state:"hidden"});
+    await frame.locator("#section-toggle").click();
+    await mounts.waitFor();
+    await frame.locator("#mount-overlay .wheel-mount").waitFor();
+    await frame.locator("#mount-overlay .frame-mount").waitFor();
+    await frame.locator("#workbench").scrollIntoViewIfNeeded();
+    await capture("damper-mounts");
     await frame.locator("#isolate-part").click();
     await frame.locator("#browse-parts").click();
     await frame.locator("#reset").click();
     await capture("simulation");
     await frame.locator("#sim-reset").click();
     assert.equal(await seek.inputValue(),"0");
-    await page.locator(".st-key-sim_case input").click();
-    await page.getByRole("option",{name:"悬挂刚度降低",exact:true}).click();
+    const caseSelect = page.locator(".st-key-sim_case").getByRole("combobox");
+    // The searchable combobox retains the last condition as its input value.
+    // Wait for the previous calculation to settle and filter by the desired case.
+    const chooseCase = async name => {
+      await page.locator('[data-testid="stApp"][data-test-script-state="notRunning"]').waitFor();
+      await caseSelect.fill(name);
+      await page.getByRole("option",{name,exact:true}).click();
+    };
+    await chooseCase("悬挂刚度降低");
     await frame.getByText(/虚线：名义刚度/).waitFor();
     assert((await frame.locator("#nominal-path").getAttribute("d")).startsWith("M"));
-    await page.locator(".st-key-sim_case input").click();
-    await page.getByRole("option",{name:"双轴先后通过局部不平顺",exact:true}).click();
+    await chooseCase("双轴先后通过局部不平顺");
     await frame.locator("#axle-controls").waitFor();
     const signal = frame.locator("#axle-signal");
     const values = frame.locator("#sim-values");
@@ -144,6 +167,7 @@ async function audit(browser, width, height) {
     assert.equal(await seek.inputValue(),axlePaused);
     await frame.locator("#sim-reset").click();
     assert.equal(await seek.inputValue(),"0");
+    await sidebar.getByRole("button",{name:/联动分析$/}).click();
     await source.getByText("内置虚构演示",{exact:true}).click();
     await frame.locator("#axle-labels").waitFor({state:"hidden"});
     const plot = page.locator(".st-key-bogie_curves .js-plotly-plot");

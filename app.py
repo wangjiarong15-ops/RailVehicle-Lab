@@ -15,6 +15,7 @@ from rail_vehicle.pages import home
 from rail_vehicle.pages import ai_center
 from rail_vehicle.pages import copilot
 from rail_vehicle.pages import bogie
+from rail_vehicle.pages.suspension_lab import render_lab
 from rail_vehicle.pages.data_workflow import clear_workbench_navigation, select_workspace_page
 from rail_vehicle.workspace_resume import finish_workspace, render_resume_notice, restore_workspace
 from rail_vehicle.ui import (
@@ -70,7 +71,7 @@ def main() -> None:
         page_title("动力学仿真", "给定轨道激励，比较构架与悬挂的计算响应。")
         parameters, model = st.columns([1, 4.5])
         with parameters:
-            bogie.render_lab(model)
+            render_lab(model)
     elif page == "机器学习异常检测":
         ml_detection.render()
     elif page == "振动与平稳性分析":

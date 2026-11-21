@@ -14,11 +14,30 @@ import {sectionPlane} from "./section-plane.js";
 import {exportInspectionPng} from "./inspection-export.js";
 import {viewBookmarks} from "./view-bookmarks.js";
 
-export async function mount() {
-  const [response, detailed] = await Promise.all([fetch("./assembly.json"), loadDetailedModel()]);
-  if (!response.ok) throw new Error("Missing bogie assembly");
+async function readAssembly(path) {
+  const response = await fetch(path);
+  if (!response.ok) throw new Error("Missing bogie assembly: " + path);
   const data = await response.json();
-  if (data.format !== 1) throw new Error("Unsupported bogie assembly");
+  if (data.format !== 1 || !data.links?.length || !data.parts || data.axleX?.length !== 2 ||
+      ![data.axleZ, data.wheelY, data.wheelPoseGain].every(Number.isFinite))
+    throw new Error("Unsupported bogie assembly");
+  return data;
+}
+
+export async function mount() {
+  const [layout, detailed] = await Promise.all([
+    readAssembly("./assembly-layout.json").catch(() => null), loadDetailedModel(),
+  ]);
+  // Older bundles carry the same layout in the full procedural mesh document.
+  let data = layout;
+  if (!detailed || !data) {
+    try {
+      data = await readAssembly("./assembly.json");
+      if (!detailed && !data.mesh?.length) throw new Error("Missing fallback geometry");
+    } catch (cause) {
+      throw new Error("assembly-unavailable", {cause});
+    }
+  }
   const workbench = document.querySelector("#workbench");
   const surface = document.querySelector("#surface");
   const message = document.querySelector("#message");
@@ -195,8 +214,8 @@ export async function mount() {
   const reset = () => { if (args) rig.reset(args.view, args); };
   function select(part) {
     selection = part;
-    assembly.appearance({...args, drawSpread: spreadNow, hidden, isolated}, part);
     const mode = surfaceMode.value;
+    assembly.appearance({...args, drawSpread: spreadNow, hidden, isolated, surfaceMode: mode}, part);
     if (mode !== "solid") for (const mesh of assembly.objects) {
       if (mode === "wire" || mesh.userData.part === "构架") mesh.material = inspectionSurface(mesh.material, mode);
     }
@@ -220,11 +239,11 @@ export async function mount() {
     const sample = args.exportContext;
     const hint = document.getElementById("channel-context");
     if (!group || !sample?.sample_number) {hint.textContent = ""; return;}
-    const axes = ["构架", "轮对", "轴箱"].includes(group) ? ["横向", "垂向"] :
-      ["一系悬挂", "二系悬挂"].includes(group) ? ["垂向"] : [];
-    const value = axis => sample[axis === "横向" ? "lateral_accel" : "vertical_accel"];
-    hint.textContent = axes.length ? "批次第 " + sample.sample_number + " 行 · " +
-      axes.map(axis => axis + " " + value(axis).toFixed(3)).join(" / ") + " m/s² · 安装点未知" : "此批次无该部件专用通道";
+    const channels = Object.entries(args.reviewChannels ?? {}).filter(([, spec]) => spec.groups.includes(group));
+    hint.textContent = channels.length ? sample.source + " · " + sample.sample_kind + " · " +
+      (sample.row_scope ?? "批次") + "第 " + sample.sample_number + " 行 · " +
+      channels.map(([field, spec]) => spec.label + " " + sample[field].toFixed(3)).join(" / ") +
+      " m/s² · 安装点未知" : "此批次无该部件专用通道";
   }
   const picker = inspection(canvas, data, assembly, rig, select, reset, detailed?.parts, section, {
     active: () => measuring,
@@ -420,6 +439,7 @@ export async function mount() {
     bookmarks.dispose();
     for (const pair of variants.values()) for (const mat of Object.values(pair)) mat.dispose();
     batches?.dispose();
+    assembly.dispose();
     gauge.dispose();
     section.dispose();
     const disposable = new Set(Object.values(finishes).flat());

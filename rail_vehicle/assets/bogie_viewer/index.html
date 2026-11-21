@@ -50,6 +50,12 @@
       <div id="stage">
         <div id="surface"></div>
         <div id="labels" aria-hidden="true"></div>
+        <svg id="mount-overlay" aria-hidden="true" style="display:none">
+          <line stroke-dasharray="4 3"/>
+          <g class="wheel-mount"><circle r="4"/><text x="8" y="12">轮侧</text></g>
+          <g class="frame-mount"><circle r="4"/><text x="8" y="-5">构架侧</text></g>
+        </svg>
+        <div id="mount-readout" hidden><strong>模型安装距</strong> <span></span></div>
         <div id="axle-labels" aria-hidden="true" hidden><span class="tag rear">A 后轴</span><span class="tag front">B 前轴</span></div>
         <div id="axes" aria-hidden="true"><b>X</b> 纵向 <b>Y</b> 横向 <b>Z</b> 垂向</div>
         <p id="message" role="status">正在载入本地三维模型…</p>
@@ -97,8 +103,9 @@
   <script type="module">
     const send = (type, data = {}) => parent.postMessage({isStreamlitMessage: true, type, ...data}, "*");
     let args, startup, update;
-    const error = () => {
+    const error = (cause) => {
       document.querySelector("#message").textContent =
+        cause?.message === "assembly-unavailable" ? "本地装配资源缺失或损坏。请检查模型资源；其他分析页面仍可使用。" :
         args?.simulation ? "WebGL 不可用。可在下方「计算方法与数值样本」核对本次计算。" :
         "无法开启 WebGL 三维视图。请在「视角与部件」的「渲染方式」选择 Plotly 兼容模式，运行曲线和回放仍可使用。";
       document.querySelector("#workbench").dataset.status = "unavailable";

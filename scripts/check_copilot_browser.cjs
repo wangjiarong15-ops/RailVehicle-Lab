@@ -61,12 +61,25 @@ async function audit(browser,width,height) {
     await event.waitFor();
     const latency = Date.now()-begin;
     await page.getByText(/metric.accel.lateral.rms/).first().waitFor();
-    const linked = page.frameLocator("iframe[title*=bogie_viewer]").first();
+    const observedModel = page.locator("iframe[title*=bogie_viewer]").first();
+    const linked = observedModel.contentFrame();
     await linked.locator("#workbench[data-model=glb][data-status=ready][data-highlighted*=构架]").waitFor();
+    // Chat opens at the latest answer. Bring the whole embedded viewer into
+    // the viewport before picking a part so the sticky composer stays clear.
+    await observedModel.evaluate(node => node.scrollIntoView({block:"center",behavior:"instant"}));
+    await linked.locator("#browse-parts").click();
+    await linked.locator("#part-query").fill("coil_a_l");
+    const coil = linked.locator('[data-part="coil_a_l"]');
+    await coil.press("Enter");
+    await linked.locator('#workbench[data-selected="coil_a_l"]').waitFor();
+    const channelHint = linked.locator("#channel-context");
+    await channelHint.filter({hasText:/内置虚构.*当前分析范围第 31 行.*横向.*垂向.*安装点未知/}).waitFor();
+    await linked.locator("#browse-parts").click();
     const cursor = page.locator('[class*="_cursor"]').getByRole("slider");
     await cursor.focus();
     await cursor.press("ArrowLeft");
     await linked.locator('#workbench[data-highlighted=""]').waitFor();
+    await channelHint.filter({hasText:/当前分析范围第 30 行/}).waitFor();
     await cursor.press("ArrowRight");
     await linked.locator("#workbench[data-highlighted*=构架]").waitFor();
     await cursor.evaluate(n => {

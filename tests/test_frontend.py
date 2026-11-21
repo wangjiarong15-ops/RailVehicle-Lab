@@ -401,6 +401,17 @@ class FrontendTests(unittest.TestCase):
             self.assertEqual(app.sidebar.button(key="nav_CSV 数据导入").proto.type, "primary")
             self.assertEqual(len(app.file_uploader), 1)
 
+    def test_previous_embedded_solver_selection_opens_the_canonical_simulation_page(self):
+        app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"), default_timeout=15)
+        app.session_state["navigation_page"] = "三维转向架仿真"
+        app.session_state["bogie_source"] = "简化动力学计算"
+        with patch("rail_vehicle.db.init_db"):
+            app.run()
+        self.assertFalse(app.exception)
+        self.assertEqual(app.session_state["navigation_page"], "动力学仿真")
+        self.assertEqual(app.sidebar.button(key="nav_动力学仿真").proto.type, "primary")
+        self.assertTrue(app.selectbox(key="sim_case"))
+
     def test_existing_deep_links_and_new_module_labels_resolve_to_internal_pages(self):
         for linked, route in (
             ("平台首页", "平台首页"), ("综合工作台", "平台首页"),

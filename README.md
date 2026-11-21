@@ -77,7 +77,7 @@ DEEPSEEK_API_KEY = "在此填写自己的密钥"
 
 ## 工业分析工作台界面
 
-完整版默认进入「工作台」，查看数据库中的车辆、导入批次、采样点总数和最近批次趋势。从左侧可直接进入「车辆管理」「数据管理」「运行分析」「异常检测」「批次对比」「AI 智能分析」「三维可视化」和「分析报告」。运行、异常与报告页面共用当前批次和分析条件；异常事件可以定位到对应三维观测。「专项工具」保留驾驶舱、振动、多车辆对比、机器学习与演示中心。公开模式只提供内置虚构数据与离线证据核查。详见[前端产品工作台](docs/frontend-product-workspace.md)。
+完整版从「工作台首页」查看车辆、导入批次、采样点总数和最近批次趋势。左侧依次提供车辆管理、数据导入、运行分析、三维转向架、动力学仿真、AI Copilot 和分析报告。「专项复核」直接进入异常检测、联动分析、批次对比、振动与频谱或 AI 证据解读。「系统设置」切换外观。「专项工具」保留驾驶舱、多车辆对比、机器学习和虚构演示。公开模式使用内置虚构数据。见[工程工作流及三维安装点](docs/project-evolution.md)。
 
 首页车辆、批次和样本总量来自 SQLite 只读查询。趋势与异常区段仅预览最近批次中的一辆车，明确标注车辆、批次、样本数和阈值，不作为全平台异常总量；超过 20,000 点时引导进入完整分析，不用截断样本冒充整批结果。无数据或读取失败时显示空状态。最近分析记录来自本次会话实际完成的分析，至多保留八条，不是持久化历史；公开演示首页不读取本地数据库。
 
@@ -427,7 +427,7 @@ python -m streamlit run app.py
 
 ## 运行数据 CSV
 
-在「数据管理」上传不超过 50 MB 的 UTF-8 CSV（支持 BOM）。表头必须包含以下字段，字段顺序不限；允许附带额外列：
+在「数据导入」上传不超过 50 MB 的 UTF-8 CSV（支持 BOM）。表头必须包含以下字段，字段顺序不限；允许附带额外列：
 
 ```csv
 timestamp,vehicle_id,speed_kmh,lateral_accel,vertical_accel
@@ -518,7 +518,7 @@ python -m pytest -q
 
 本阶段三维工作台、悬挂计算、振动频谱及实测曲线定位的入口和计算范围见 [Project Evolution · Phase 1](docs/project-evolution.md)。运行全部浏览器用例前，在项目虚拟环境执行 `python -m pip install -e ".[signal]"`。可单独运行 `python -m scripts.run_browser_checks --suite evolution` 验证这些交互。
 
-侧栏「工程 Copilot」可直接用虚构批次体验异常回查、波形与三维同步、悬挂刚度对照和 PDF 导出。默认在本地计算，无需模型密钥。安装 `knowledge` 可选依赖后可检索用户提供的文字型 PDF。操作示例、工具协议、在线授权范围和浏览器截图见 [RailVehicle Copilot · Phase 2](docs/project-evolution-copilot.md)。
+侧栏「AI Copilot」可直接用虚构批次体验异常回查、波形与三维同步、悬挂刚度对照和 PDF 导出。默认在本地计算，无需模型密钥。安装 `knowledge` 可选依赖后可检索用户提供的文字型 PDF。操作示例、工具协议、在线授权范围和浏览器截图见 [RailVehicle Copilot · Phase 2](docs/project-evolution-copilot.md)。
 
 安装项目和 Node.js 后，在仓库目录执行：
 

@@ -15,7 +15,6 @@ from rail_vehicle.bogie_replay import (
     replay_event_catalog, replay_scene,
 )
 from rail_vehicle.bogie_viewer import render_webgl, webgl_available
-from rail_vehicle.pages.suspension_lab import render_lab
 from rail_vehicle.demo_data import DEMO_BATCH_IDS, analysis_demo_data
 from rail_vehicle.deployment import demo_source_options
 from rail_vehicle.event_anchor import resolve_event_row
@@ -26,7 +25,7 @@ from rail_vehicle.replay_evidence import (
     MAX_WINDOW_EXPORT_ROWS, ReplayEvidenceScope, ReportComparison, comparison_evidence_csv, replay_evidence_csv,
 )
 from rail_vehicle.run_data import list_batch_samples, list_vehicle_batches
-from rail_vehicle.ui import navigate, page_title, plot_chart
+from rail_vehicle.ui import SIMULATION, navigate, page_title, plot_chart
 from rail_vehicle.vehicle_data import list_vehicles
 
 STATE_KEY = "bogie_playback"
@@ -506,12 +505,17 @@ def render(*, linked=False):
     requested_scope = (target or batch_target or {}).get("scope")
     if STATE_KEY not in st.session_state:
         _clear_loop()
-    choices = [TEACH, *demo_source_options(HISTORY, DEMO), "简化动力学计算"]
+    choices = [TEACH, *demo_source_options(HISTORY, DEMO)]
     if linked:
         choices = demo_source_options(HISTORY, DEMO)
     candidate = target or batch_target
     fictional = bool(candidate and candidate.get("fictional") is True)
     requested = candidate if fictional or HISTORY in choices else None
+    if not linked and not requested and st.session_state.get("bogie_source") == "简化动力学计算":
+        # Sessions from the old embedded solver should reopen the same experiment.
+        st.session_state.pop("bogie_source")
+        navigate(SIMULATION)
+        st.rerun()
     if requested:
         _clear_loop(pause=True)
         st.session_state["bogie_source"] = DEMO if fictional else HISTORY
@@ -523,16 +527,6 @@ def render(*, linked=False):
         if linked and st.session_state.get("bogie_source") not in choices:
             st.session_state["bogie_source"] = choices[0]
         source = st.radio("数据来源", choices, key="bogie_source", horizontal=True)
-    if source == "简化动力学计算":
-        if st.session_state.get("bogie_selection") != (source,):
-            _clear_loop()
-            _seek(0)
-            st.session_state.update(bogie_selection=(source,), bogie_track=None)
-        with main:
-            parameters, model = st.columns([1, 4.5])
-            with parameters:
-                render_lab(model)
-        return
     with toolbar[1]:
         teaching = st.selectbox("教学场景", list(TEACHING), key="bogie_teaching") if source == TEACH else next(iter(TEACHING))
         if source == DEMO:

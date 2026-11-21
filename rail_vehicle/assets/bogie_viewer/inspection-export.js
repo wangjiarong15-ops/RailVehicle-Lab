@@ -8,7 +8,7 @@ function observationFields(metadata) {
   if (!source.sample_number) return [...rows, ["场景", source.scene_label]];
   return [
     ...rows,
-    ["观测", `${source.sample_kind} · 第 ${source.sample_number}/${source.sample_count} 条 · ${source.timestamp}`],
+    ["观测", `${source.sample_kind} · ${source.row_scope ?? ""}第 ${source.sample_number}/${source.sample_count} 条 · ${source.timestamp}`],
     ["速度", `${source.speed_kmh.toFixed(1)} km/h`],
     ["加速度", `横向 ${source.lateral_accel.toFixed(3)} m/s² · 垂向 ${source.vertical_accel.toFixed(3)} m/s²`],
     ["阈值状态", `${source.scene_label} · 加速度绝对值阈值 ${source.threshold} m/s²`],

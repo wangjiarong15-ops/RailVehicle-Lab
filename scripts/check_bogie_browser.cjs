@@ -185,6 +185,25 @@ async function checkDamperGeometry(root, format) {
     const scene = new THREE.Scene();
     const assembly = createAssembly(scene, data, materials(), model);
     const visible = {visible: Object.keys(data.parts), rails: true, highlight: [], spread: 0};
+    const beam = assembly.objects.find(m => m.userData.part === "构架");
+    const brake = assembly.objects.find(m => m.userData.part === "制动装置");
+    assembly.appearance({...visible,surfaceMode:"ghost"});
+    if (beam.castShadow || !brake.castShadow) throw Error("Ghost frame should reveal the brake lighting");
+    assembly.appearance({...visible,surfaceMode:"wire"});
+    if (assembly.objects.some(mesh => mesh.castShadow)) throw Error("Wireframe casts a solid shadow");
+    assembly.appearance(visible);
+    if (!beam.castShadow || !brake.castShadow) throw Error("Solid shadow masks were not restored");
+    if (model) {
+      const mesh = model.parts.get("damper_a_l").meshes[0];
+      const original = mesh.material;
+      assembly.appearance(visible, "damper_a_l");
+      if (mesh.material.color.equals(original.color) || mesh.material.roughness !== original.roughness ||
+          mesh.material.metalness !== original.metalness) throw Error("Inspection must preserve the imported PBR finish");
+      assembly.appearance({...visible,highlight:["一系悬挂"]});
+      if (mesh.material.color.r <= mesh.material.color.b) throw Error("Missing amber association color");
+      assembly.appearance(visible);
+      if (mesh.material !== original) throw Error("Original finish was not restored");
+    }
     assembly.appearance(visible);
     assembly.pose(0, 0, 0, 0);
     scene.updateMatrixWorld(true);
@@ -199,7 +218,7 @@ async function checkDamperGeometry(root, format) {
       const node = imported ? imported.node.parent : scene.children.find((candidate) =>
         candidate.position.distanceTo(vector(a)) < 1e-6 && candidate.children.filter((mesh) => mesh.isMesh).length === 2);
       if (!node) throw new Error(`Damper missing at link ${index}`);
-      return [{a: vector(a), b: vector(b), node, offset: imported && vector(imported.spec.offset),
+      return [{a: vector(a), b: vector(b), node, id: imported?.node.name, offset: imported && vector(imported.spec.offset),
         meshes: imported?.meshes ?? node.children.filter((mesh) => mesh.isMesh)}];
     });
     const compare = (actual, expected, message) => {
@@ -236,10 +255,16 @@ async function checkDamperGeometry(root, format) {
           compare(height-seat.spec.origin[2], vertical + x*Math.sin(pitch), "Wrong end travel at " + suffix);
         }
       }
-      for (const [index, {a, b, meshes, node, offset}] of dampers.entries()) {
+      for (const [index, {a, b, meshes, node, offset, id}] of dampers.entries()) {
         const lower = a.clone().applyMatrix4(assembly.wheel.matrixWorld);
         const upper = b.clone().applyMatrix4(assembly.frame.matrixWorld);
         if (spread) for (const joint of [lower, upper]) joint.addScaledVector(offset, spread);
+        if (model) {
+          const from = new THREE.Vector3(), to = new THREE.Vector3();
+          compare(assembly.suspensionMounts(id, from, to), a.distanceTo(b), "Wrong reference mounting distance");
+          compare(from.distanceTo(lower), 0, "Wheel-side mount left its joint");
+          compare(to.distanceTo(upper), 0, "Frame-side mount left its joint");
+        }
         const [body, rod] = bounds(meshes, lower, upper);
         const [restBody, restRod] = neutral[index];
         compare(body.min, 0, "The cylinder left its lower joint");
@@ -407,6 +432,8 @@ async function audit(browser, width, height, complete = true) {
   const page = await browser.newPage({viewport: {width, height}, screen: {width, height}});
   page.setDefaultTimeout(20000);
   const errors = [];
+  const assets = new Set();
+  page.on("request", request => assets.add(new URL(request.url()).pathname.split("/").pop()));
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route("**/*", (route) =>
     new URL(route.request().url()).hostname === url.hostname ? route.continue() : route.abort());
@@ -432,6 +459,8 @@ async function audit(browser, width, height, complete = true) {
     await frame.locator("#workbench[data-status=ready][data-frames]").waitFor();
     assert.equal((await data()).model, "glb");
     assert.equal((await data()).components, "54");
+    assert(assets.has("assembly-layout.json") && !assets.has("assembly.json"),
+      "Detailed startup should load only the kinematic layout and GLB");
     const box = await canvas.boundingBox();
     assert(box.width >= 390 && box.height >= 320, "Canvas should occupy the work area");
     assert(box.x >= 0 && box.x + box.width <= width && box.y + box.height < height, "Canvas should fit");
@@ -687,6 +716,7 @@ async function checkFallback(browser, response, checkDampers = false) {
   const page = await browser.newPage({viewport: {width: 1366, height: 768}});
   page.setDefaultTimeout(20000);
   try {
+    const fallbackMesh = page.waitForResponse(r => r.url().endsWith("/assembly.json") && r.ok());
     await page.route("**/bogie.glb", (route) => route.fulfill(response));
     const address = new URL(url);
     address.searchParams.set("rail_page", "三维转向架仿真");
@@ -694,6 +724,7 @@ async function checkFallback(browser, response, checkDampers = false) {
     const frame = page.frameLocator("iframe[title*=bogie_viewer]").first();
     const root = frame.locator("#workbench[data-status=ready][data-model=procedural][data-frames]");
     await root.waitFor();
+    await fallbackMesh;
     if (checkDampers) await checkDamperGeometry(root, "procedural");
     assert.equal(await root.getAttribute("data-parts"), "7");
     assert.equal(await frame.locator("#browse-parts").isVisible(), false);
@@ -712,6 +743,24 @@ async function checkFallback(browser, response, checkDampers = false) {
   } finally {
     await page.close();
   }
+}
+
+async function checkLayoutRecovery(browser) {
+  const page = await browser.newPage();
+  try {
+    const address = new URL(url);
+    address.searchParams.set("rail_page", "三维转向架仿真");
+    await page.route("**/assembly-layout.json", route => route.fulfill({json:{format:1}}));
+    const fullLayout = page.waitForResponse(r => r.url().endsWith("/assembly.json") && r.ok());
+    await page.goto(address.href);
+    const frame = page.frameLocator("iframe[title*=bogie_viewer]").first();
+    await frame.locator("#workbench[data-model=glb][data-frames]").waitFor();
+    await fullLayout;
+    await page.route("**/assembly.json", route => route.fulfill({status:404, body:"Missing"}));
+    await page.reload();
+    await frame.locator("#workbench[data-status=unavailable] #message").filter({hasText:"装配资源"}).waitFor();
+    assert.equal(await page.getByTestId("stException").count(),0);
+  } finally { await page.close(); }
 }
 
 async function checkLegacyModel(browser, path) {
@@ -865,6 +914,7 @@ async function checkBookmarks(browser) {
     await audit(browser, 1920, 1080);
     await audit(browser, 1366, 768, false);
     await checkBookmarks(browser);
+    await checkLayoutRecovery(browser);
     await checkFallback(browser, {status: 404, body: "Missing"}, true);
     await checkFallback(browser, {status: 200, contentType: "model/gltf-binary", body: "Corrupt GLB"});
     console.log("Rigid damper joints, lengths, software batches, and one-part inspection passed");

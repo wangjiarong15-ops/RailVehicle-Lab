@@ -1,5 +1,37 @@
 import * as THREE from "three";
 
+function mountInspection(assembly, camera, section) {
+  const overlay = document.querySelector("#mount-overlay");
+  const [line, wheelTag, frameTag] = overlay.children;
+  const readout = document.querySelector("#mount-readout");
+  const distance = readout.querySelector("span");
+  const wheel = new THREE.Vector3(), frame = new THREE.Vector3();
+  function project(point, tag, width, height) {
+    point.project(camera);
+    const x = (point.x + 1) * width / 2, y = (1 - point.y) * height / 2;
+    tag.setAttribute("transform", `translate(${x} ${y})`);
+    return [x, y];
+  }
+  return (id, width, height) => {
+    const rest = assembly.suspensionMounts(id, wheel, frame);
+    const hidden = rest === null || !section.contains(wheel) || !section.contains(frame);
+    if (hidden !== readout.hidden) {
+      overlay.style.display = hidden ? "none" : "block";
+      readout.hidden = hidden;
+    }
+    if (hidden) return;
+    const mm = wheel.distanceTo(frame) * 1000;
+    const caption = `${mm.toFixed(1)} mm · 装配参考 ${(rest * 1000).toFixed(1)} mm`;
+    if (distance.textContent !== caption) distance.textContent = caption;
+    const [x1, y1] = project(wheel, wheelTag, width, height);
+    const [x2, y2] = project(frame, frameTag, width, height);
+    line.setAttribute("x1", x1);
+    line.setAttribute("y1", y1);
+    line.setAttribute("x2", x2);
+    line.setAttribute("y2", y2);
+  };
+}
+
 const anchors = {
   "构架": ["frame", [-.55, -1.16, 1.17]], "轮对": ["wheel", [1.53, -.99, .37]],
   "一系悬挂": ["wheel", [1.30, -1.20, .74]], "二系悬挂": ["frame", [0, -1.16, 1.49]],
@@ -16,6 +48,7 @@ export function inspection(canvas, data, assembly, rig, onSelect, reset, parts, 
   const labelLayer = document.querySelector("#labels");
   const axleLayer = document.querySelector("#axle-labels");
   const descriptions = data.parts;
+  const showMounts = mountInspection(assembly, rig.camera, section);
   const tags = Object.keys(descriptions).map((part) => {
     const tag = document.createElement("span");
     tag.className = "tag";
@@ -80,6 +113,7 @@ export function inspection(canvas, data, assembly, rig, onSelect, reset, parts, 
         .filter(Boolean).join(" · ") : "点击零件查看名称、作用和安装位置";
     },
     labels(args, width, height, isolated) {
+      showMounts(measure.active() ? null : selection, width, height);
       axleLayer.hidden = !args.simulation?.channels.front_travel_m || Boolean(isolated || section.enabled || args.spread);
       if (!axleLayer.hidden) {
         const view = rig.camera.matrixWorld.elements;

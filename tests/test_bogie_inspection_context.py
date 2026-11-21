@@ -2,7 +2,7 @@
 
 import json
 
-from rail_vehicle.bogie_inspection_context import inspection_context
+from rail_vehicle.bogie_inspection_context import REVIEW_CHANNELS, inspection_context
 from rail_vehicle.bogie_replay import GAP, LATERAL, gap_cutoff, replay_scene
 from rail_vehicle.replay import prepare_replay
 
@@ -65,3 +65,15 @@ def test_gap_context_keeps_actual_prior_observation_and_does_not_claim_a_current
     assert context["timestamp"] == "2026-11-13 07:00:02+00:00"
     assert context["sample_number"] == 3
     assert context["lateral_accel"] == 2.0
+
+
+def test_attachment_rows_are_relative_to_the_selected_range_and_have_no_database_batch():
+    sample = dict(timestamp="2026-11-21T00:00:00Z", speed_kmh=40, lateral_accel=-1.5, vertical_accel=.2)
+    context = inspection_context(sample=sample, index=0, total=3, threshold=1,
+                                 scene=LATERAL, teaching="", fictional=False, batch_id=42,
+                                 scoped=True, attachment=True)
+    assert context["source"] == "会话 CSV 附件"
+    assert context["row_scope"] == "当前分析范围" and context["sample_number"] == 1
+    assert "batch_label" not in context and context["lateral_accel"] == -1.5
+    assert set(LATERAL.parts) <= set(REVIEW_CHANNELS["lateral_accel"]["groups"])
+    assert all("电机与传动" not in channel["groups"] for channel in REVIEW_CHANNELS.values())
