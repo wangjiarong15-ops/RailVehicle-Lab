@@ -7,6 +7,7 @@ from rail_vehicle.ui import AI, ANALYSIS, ANOMALIES, BOGIE, DEMO_DATA, LINKED, R
 from rail_vehicle.workspace_resume import (
     BATCH_HANDOFF, BOGIE_EVENT, WORKBENCH_RETURN, _capture, decode_checkpoint,
 )
+from rail_vehicle import workspace_resume
 
 
 @pytest.fixture
@@ -82,3 +83,20 @@ def test_report_only_carries_prior_event_for_the_same_scope(checkpoint):
         assert _capture(REPORT, checkpoint)["event"] == checkpoint["event"]
         target["threshold"] = 2.0
         assert "event" not in _capture(REPORT, checkpoint)
+
+
+def test_stale_warning_survives_reruns_on_the_origin_page(checkpoint):
+    state = {workspace_resume._FORWARD: checkpoint}
+    current = dict(checkpoint, page=ANOMALIES, event=[1, "e" * 64])
+    with (patch.object(workspace_resume.st, "session_state", state),
+          patch.object(workspace_resume.st, "info") as info,
+          patch.object(workspace_resume, "_capture", return_value=current),
+          patch.object(workspace_resume, "_mount"),
+          patch.object(workspace_resume, "select_workspace_page") as forward):
+        workspace_resume.finish_workspace(None, ANOMALIES, public=False)
+        forward.assert_not_called()
+        workspace_resume.render_resume_notice(ANOMALIES)
+        assert info.call_count == 2
+        workspace_resume.render_resume_notice(REPORT)
+        workspace_resume.render_resume_notice(ANOMALIES)
+        assert info.call_count == 2

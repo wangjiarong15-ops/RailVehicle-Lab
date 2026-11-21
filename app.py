@@ -40,7 +40,7 @@ def main() -> None:
     page = render_navigation(public_demo, on_select=select_workspace_page)
     if page != COPILOT:
         copilot.interrupt()
-    render_resume_notice()
+    render_resume_notice(page)
     clear_workbench_navigation("三维转向架仿真" if page == LINKED else page)
     if page != "动态运行驾驶舱":
         # Returning to the cockpit starts paused, never advances while hidden.

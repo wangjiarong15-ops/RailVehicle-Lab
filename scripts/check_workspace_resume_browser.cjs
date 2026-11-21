@@ -68,7 +68,7 @@ async function audit(browser, width, height) {
       await heading(page, "异常检测").waitFor();
       await page.getByText("2026-10-09 09:31:10+00:00", { exact: true }).waitFor();
       await page.getByText(/分析样本数：.*76 条/).waitFor();
-      assert.equal(Number(await threshold.inputValue()), 1.1);
+      await page.waitForFunction(() => Number(document.querySelector(".st-key-analysis_threshold input")?.value) === 1.1);
     };
     await page.reload();
     await sameEvent();

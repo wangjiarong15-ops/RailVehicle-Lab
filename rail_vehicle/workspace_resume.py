@@ -21,7 +21,9 @@ BOGIE_EVENT = "workspace_resume_bogie_event"
 _CURRENT = "workspace_resume_checkpoint"
 _FORWARD = "workspace_resume_destination"
 _NOTICE = "workspace_resume_notice"
+_STALE_NOTICE_PAGE = "workspace_resume_stale_notice_page"
 _READY = "workspace_resume_ready"
+_STALE_NOTICE = "上次的批次、范围或事件已变化，未继续打开旧证据。请核对当前筛选。"
 _BROWSER_JS = """
 export default function ({data, setStateValue}) {
   const {storageKey, loading, snapshot, queryKey} = data;
@@ -214,9 +216,13 @@ def _capture(page, previous):
     return None
 
 
-def render_resume_notice():
+def render_resume_notice(page):
     if notice := st.session_state.pop(_NOTICE, None):
         st.info(notice)
+    if st.session_state.get(_STALE_NOTICE_PAGE) == page:
+        st.info(_STALE_NOTICE)
+    else:
+        st.session_state.pop(_STALE_NOTICE_PAGE, None)
 
 
 def finish_workspace(slot, page, *, public):
@@ -242,6 +248,7 @@ def finish_workspace(slot, page, *, public):
                 st.rerun()
             st.caption(notice)
         else:
-            st.info("上次的批次、范围或事件已变化，未继续打开旧证据；请核对当前筛选。")
+            state[_STALE_NOTICE_PAGE] = page
+            st.info(_STALE_NOTICE)
     state[_CURRENT] = snapshot
     _mount(slot, public=public, snapshot=snapshot)
