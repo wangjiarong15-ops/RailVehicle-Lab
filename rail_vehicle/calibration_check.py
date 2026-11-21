@@ -22,6 +22,25 @@ REFERENCE_STATUS = {
     "outside_limits": "至少一个配对点超出设定误差",
     "insufficient_excitation": "参考数据的双向激励不足",
 }
+UNCERTAINTY_STATUS = {
+    "not_provided": "未提供参考扩展不确定度",
+    "within": "参考覆盖区间在筛查限内",
+    "outside": "参考覆盖区间整体超限",
+    "overlap": "参考覆盖区间跨越筛查限，判定不确定",
+    "insufficient_excitation": "双向激励不足",
+}
+
+
+def _uncertainty_status(residual, limit, expanded, *, has_excitation):
+    if expanded is None:
+        return "not_provided"
+    if not has_excitation:
+        return "insufficient_excitation"
+    if residual <= limit - expanded:
+        return "within"
+    if residual - expanded > limit:
+        return "outside"
+    return "overlap"
 
 
 def reference_scope(snapshot, channel, binding, samples):
@@ -119,7 +138,8 @@ def _compare_points(samples, points, channel, metadata, direction):
 
 
 def check_reference(snapshot, channel, samples, content, *, reference_record, acceleration_limit,
-                    time_limit_ms, min_excitation):
+                    time_limit_ms, min_excitation, acceleration_uncertainty=None, time_uncertainty_ms=None,
+                    uncertainty_record=""):
     """Use declared pairings and tolerances without adjusting the saved configuration."""
     acceleration_limit, time_limit_ms, min_excitation = map(number, (acceleration_limit, time_limit_ms, min_excitation))
     if acceleration_limit < 0 or time_limit_ms < 0 or min_excitation <= acceleration_limit:
@@ -127,6 +147,12 @@ def check_reference(snapshot, channel, samples, content, *, reference_record, ac
     reference_record = reference_record.strip()
     if not reference_record or len(reference_record) > 200:
         raise ValueError("请填写独立参考仪器或试验记录编号。")
+    uncertainty_record = uncertainty_record.strip()
+    if acceleration_uncertainty is not None or time_uncertainty_ms is not None:
+        if not uncertainty_record or len(uncertainty_record) > 200:
+            raise ValueError("填写参考扩展不确定度时，须提供证书或依据编号。")
+        if any(number(value) < 0 for value in (acceleration_uncertainty, time_uncertainty_ms) if value is not None):
+            raise ValueError("参考扩展不确定度须为非负有限数值。")
 
     binding = active_channels(snapshot).get(channel)
     if not binding or not snapshot.get("source_sha256"):
@@ -164,5 +190,11 @@ def check_reference(snapshot, channel, samples, content, *, reference_record, ac
         metrics=dict(pair_count=len(rows), min_reference_m_s2=min_expected, max_reference_m_s2=max_expected,
                      max_acceleration_error_m_s2=max_acceleration_error, rms_error_m_s2=rms_error,
                      max_time_error_ms=max_time_error),
+        reference_uncertainty=dict(record=uncertainty_record or None,
+                                   acceleration_expanded_m_s2=acceleration_uncertainty, time_expanded_ms=time_uncertainty_ms,
+                                   acceleration_status=_uncertainty_status(max_acceleration_error, acceleration_limit,
+                                                                          acceleration_uncertainty, has_excitation=has_excitation),
+                                   time_status=_uncertainty_status(max_time_error, time_limit_ms, time_uncertainty_ms,
+                                                                  has_excitation=True)),
         pairs=rows,
     )

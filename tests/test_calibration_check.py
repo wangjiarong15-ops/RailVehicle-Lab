@@ -129,3 +129,18 @@ def test_report_handoff_rejects_stale_source_window_or_sensor_revision(paired):
     assert matching_reference(saved, revised, samples) is None
     revised["channels"][CHANNEL]["metadata"] = None
     assert matching_reference(saved, revised, samples) is None
+
+
+def test_reference_uncertainty_does_not_upgrade_the_software_result(paired):
+    no_uncertainty = run(paired)
+    assert no_uncertainty["reference_uncertainty"]["acceleration_status"] == "not_provided"
+    packet = run(paired, acceleration_uncertainty=.02, time_uncertainty_ms=.5,
+                 uncertainty_record="虚构覆盖依据 k=2")
+    assert packet["status"] == "within_limits"
+    assert packet["reference_uncertainty"]["acceleration_status"] == "overlap"
+    assert packet["reference_uncertainty"]["time_status"] == "within"
+    paired[0]["channels"][CHANNEL]["metadata"]["clock_offset_s"] = 0
+    packet = run(paired, time_uncertainty_ms=1, uncertainty_record="虚构计时证书")
+    assert packet["status"] == "outside_limits" and packet["reference_uncertainty"]["time_status"] == "outside"
+    with pytest.raises(ValueError, match="依据编号"):
+        run(paired, acceleration_uncertainty=.02)

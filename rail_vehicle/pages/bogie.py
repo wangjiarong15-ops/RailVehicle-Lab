@@ -20,6 +20,7 @@ from rail_vehicle.deployment import demo_source_options
 from rail_vehicle.event_anchor import resolve_event_row
 from rail_vehicle.pages.cockpit import build_replay_chart
 from rail_vehicle.pages.sensors import evidence_panel, read_snapshot
+from rail_vehicle.engineering_intake import source_label
 from rail_vehicle.sensor_mapping import CHANNELS
 from rail_vehicle.sensor_store import active_channels
 from rail_vehicle.sensor_evidence import viewer_sensors
@@ -718,6 +719,8 @@ def render(*, linked=False):
         snapshot = channel = None
         if source == HISTORY and track is not None:
             snapshot = read_snapshot(selection[1], selection[2])
+            if snapshot.get("engineering"):
+                st.caption(f"数据来源 · {source_label(snapshot)}。波形与异常使用源 CSV，三维运动为示意。")
             bindings = active_channels(snapshot)
             if bindings:
                 sensor_key = f"sensor_replay_{selection[1]}_{selection[2]}"

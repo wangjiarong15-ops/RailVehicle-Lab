@@ -37,12 +37,14 @@ def _records(connection, vehicle_id, batch_id, channel=None):
 def sensor_snapshot(vehicle_id, batch_id, db_path=None):
     with _read(db_path) as con:
         con.execute("BEGIN")
-        batch = con.execute("""SELECT b.file_name,b.source_sha256,v.vehicle_code FROM import_batches b, vehicles v
+        batch = con.execute("""SELECT b.file_name,b.source_sha256,b.engineering_json,v.vehicle_code FROM import_batches b, vehicles v
             WHERE b.id=? AND v.id=? AND EXISTS (SELECT 1 FROM run_samples s
             WHERE s.batch_id=b.id AND s.vehicle_id=v.id)""", (batch_id, vehicle_id)).fetchone()
         if batch is None:
             return {}
-        return dict(batch_id=batch_id, vehicle_id=vehicle_id, **dict(batch),
+        fields = dict(batch)
+        intake = fields.pop("engineering_json")
+        return dict(batch_id=batch_id, vehicle_id=vehicle_id, **fields, engineering=json.loads(intake) if intake else None,
                     channels={r["channel"]: r for r in _records(con, vehicle_id, batch_id)})
 
 

@@ -288,6 +288,8 @@ def suspension(w, scenario, stiffness_change, speed, amplitude):
 
 
 def report(w):
+    from rail_vehicle.engineering_intake import report_provenance
+
     rows = w.stats["samples"]
     data = build_analysis_report_data(
         w.data.vehicle,
@@ -300,6 +302,8 @@ def report(w):
         ai_context=w.anonymous_payload if w.verified else None,
         ai_result=w.verified,
         ai_selection_fingerprint=w.data.identity,
+        provenance=report_provenance(w.data.sensors, fallback=SOURCE_LABELS[w.data.source],
+                                     source_sha256=w.data.batch.get("source_sha256")),
     )
     data["title"] = f"{SOURCE_LABELS[w.data.source]} · {data['title']}"
     notes = []

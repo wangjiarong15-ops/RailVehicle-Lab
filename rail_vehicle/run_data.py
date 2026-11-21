@@ -3,6 +3,7 @@
 import csv
 import io
 from hashlib import sha256
+import json
 import math
 import sqlite3
 from collections import Counter
@@ -13,6 +14,7 @@ from typing import Any
 
 from rail_vehicle.data_quality import review_sampling_timestamps, summarize_timestamps
 from rail_vehicle.db import DB_PATH, get_connection
+from rail_vehicle.engineering_intake import assess_intake
 
 
 REQUIRED_COLUMNS = (
@@ -56,10 +58,19 @@ class CsvValidationResult:
     _source_content: bytes | str | None = field(default=None, repr=False)
     _vehicle_ids: dict[str, int] = field(default_factory=dict, repr=False)
     sampling_by_vehicle: dict[str, dict[str, Any]] = field(default_factory=dict)
+    missing_by_field: dict[str, int] = field(default_factory=dict)
+    naive_timestamp_rows: int = 0
 
     @property
     def is_valid(self) -> bool:
         return not self.errors and self.source_row_count > 0 and self._source_content is not None
+
+    @property
+    def source_sha256(self) -> str:
+        content = self._source_content
+        if content is None:
+            raise ValueError("当前没有可核对的 CSV 内容。")
+        return sha256(content if isinstance(content, bytes) else content.encode("utf-8")).hexdigest()
 
     @property
     def rows(self) -> list[dict[str, Any]]:
@@ -241,13 +252,18 @@ def validate_run_csv(
     vehicle_timestamps: dict[str, list[datetime]] = {}
     vehicle_codes = {value: code for code, value in vehicle_ids.items()}
     error_details_truncated = False
+    missing_by_field = Counter()
+    naive_timestamp_rows = 0
     try:
         reader = _make_csv_reader(content)
         headers, header_errors = _read_headers(reader)
         if headers is None or header_errors:
             return CsvValidationResult([], header_errors, 0)
+        required_indexes = {column: headers.index(column) for column in REQUIRED_COLUMNS}
         for row_number, values in _numbered_records(reader):
             source_row_count += 1
+            missing_by_field.update(column for column, index in required_indexes.items()
+                                    if index >= len(values) or not values[index].strip())
             if error_details_truncated:
                 if len(preview) < PREVIEW_LIMIT:
                     preview.append(
@@ -276,6 +292,7 @@ def validate_run_csv(
                 timestamp = normalized_row["timestamp"]
                 timestamp_order = datetime.fromisoformat(timestamp)
                 if timestamp_order.tzinfo is None:
+                    naive_timestamp_rows += 1
                     timestamp_order = timestamp_order.replace(tzinfo=timezone.utc)
                 timestamp_order = timestamp_order.astimezone(timezone.utc)
                 sampling_timestamps.append(timestamp_order)
@@ -316,6 +333,8 @@ def validate_run_csv(
         ),
         _source_content=content,
         _vehicle_ids=vehicle_ids,
+        missing_by_field=dict(missing_by_field),
+        naive_timestamp_rows=naive_timestamp_rows,
         sampling_by_vehicle=(
             {code: review_sampling_timestamps(timestamps)
              for code, timestamps in vehicle_timestamps.items()} if not errors else {}
@@ -327,20 +346,21 @@ def import_run_data(
     file_name: str,
     validation: CsvValidationResult,
     db_path: Path | str = DB_PATH,
+    *, engineering_manifest: dict | None = None,
 ) -> int:
     """Atomically save a validated batch and its running samples."""
     if not validation.is_valid:
         raise ValueError("CSV 校验未通过，不能导入数据库。")
     if not file_name.strip():
         raise ValueError("导入文件名不能为空。")
+    intake = assess_intake(validation, engineering_manifest) if engineering_manifest is not None else None
 
     try:
         with get_connection(db_path) as connection:
             cursor = connection.execute(
-                "INSERT INTO import_batches (file_name, row_count, source_sha256) VALUES (?, ?, ?)",
+                "INSERT INTO import_batches (file_name, row_count, source_sha256, engineering_json) VALUES (?, ?, ?, ?)",
                 (Path(file_name).name, validation.source_row_count,
-                 sha256(validation._source_content if isinstance(validation._source_content, bytes)
-                        else validation._source_content.encode("utf-8")).hexdigest()),
+                 validation.source_sha256, json.dumps(intake, ensure_ascii=False, allow_nan=False) if intake else None),
             )
             batch_id = int(cursor.lastrowid)
 

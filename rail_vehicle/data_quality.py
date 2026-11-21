@@ -66,7 +66,7 @@ def analyze_sampling_times(
 
 def review_sampling_timestamps(
     timestamps: Iterable[Any], *, expected_interval_seconds: float | None = None,
-    gap_multiplier: float = 3.0, detail_limit: int = 100,
+    gap_multiplier: float = 3.0, detail_limit: int = 100, flag_short_intervals: bool = False,
 ) -> dict[str, Any]:
     """Flag timestamp concerns without dropping, filling or reordering source data.
 
@@ -107,11 +107,14 @@ def review_sampling_timestamps(
                              "end_timestamp": current.isoformat(),
                              "interval_seconds": interval})
     reversals = sum(current < previous for previous, current in pairwise(instants))
-    concerns = bool(summary["duplicate_timestamp_rows"] or reversals or gap_count)
+    short_cutoff = expected_interval_seconds / 2 if expected_interval_seconds and flag_short_intervals else None
+    short_count = sum(interval < short_cutoff for interval in intervals) if short_cutoff is not None else 0
+    concerns = bool(summary["duplicate_timestamp_rows"] or reversals or gap_count or short_count)
     return {**summary, "baseline_seconds": baseline,
             "baseline_source": "specified" if expected_interval_seconds is not None else "median",
             "gap_multiplier": gap_multiplier, "gap_cutoff_seconds": cutoff,
             "out_of_order_pairs": reversals, "long_gap_count": gap_count,
+            **({"short_interval_count": short_count, "short_cutoff_seconds": short_cutoff} if flag_short_intervals else {}),
             "long_gaps": gaps, "details_truncated": gap_count > len(gaps),
             "status": "needs_review" if concerns else (
                 "insufficient" if len(ordered) < 2 else "no_flags")}

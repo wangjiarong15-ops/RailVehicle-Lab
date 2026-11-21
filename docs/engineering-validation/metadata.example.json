@@ -1,0 +1,31 @@
+{
+  "schema": "rail.engineering-intake.v1",
+  "source_kind": "synthetic",
+  "source_record": "虚构工程演练 CAL-DEMO-001",
+  "source_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "vehicle_code": "CAL-DEMO-001",
+  "sample_rate_hz": 1,
+  "time_basis": "device_offset",
+  "clock_offset_s": -0.04,
+  "units": {
+    "speed_kmh": "km/h",
+    "lateral_accel": "m/s²",
+    "vertical_accel": "m/s²"
+  },
+  "sensors": {
+    "lateral_accel": {
+      "sensor_id": "CAL-L-DEMO",
+      "part_id": "side_beam_l",
+      "position_frame": "model",
+      "position_m": [0, -1.16, 0.98],
+      "axis": "+Y"
+    },
+    "vertical_accel": {
+      "sensor_id": "CAL-V-DEMO",
+      "part_id": "side_beam_r",
+      "position_frame": "model",
+      "position_m": [0, 1.16, 0.98],
+      "axis": "+Z"
+    }
+  }
+}

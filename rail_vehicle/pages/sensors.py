@@ -7,7 +7,9 @@ from inspect import signature
 
 import streamlit as st
 
-from rail_vehicle.calibration_check import REFERENCE_COLUMNS, check_reference, matching_reference, reference_scope
+from rail_vehicle.calibration_check import (
+    REFERENCE_COLUMNS, UNCERTAINTY_STATUS, check_reference, matching_reference, reference_scope,
+)
 from rail_vehicle.sensor_evidence import observation, scope_evidence, supports_frame_projection
 from rail_vehicle.sensor_mapping import AXES, CHANNELS, PARTS, STATES, UNITS, registration
 from rail_vehicle.sensor_store import STATE_NAMES, active_channels, channel_inventory, revise, revisions, sensor_snapshot
@@ -19,7 +21,7 @@ REFERENCE_SESSION_KEY = "sensor_last_reference_check"
 def read_snapshot(vehicle, batch):
     try:
         return sensor_snapshot(vehicle, batch)
-    except (sqlite3.Error, OSError):
+    except (sqlite3.Error, OSError, json.JSONDecodeError):
         st.warning("暂时无法读取传感器档案。可继续按原始 CSV 通道分析。")
         return {}
 
@@ -105,6 +107,9 @@ def evidence_panel(snapshot, channel, sample, threshold, *, gap=False):
                f"传感器 {ev['serial'] or '未配置'} · 配置版本 {ev['version'] or '未知'}")
     if ev["synchronized_utc"]:
         st.caption(f"按登记时基对齐的 UTC · {ev['synchronized_utc']}")
+    if ev["calibrated_axis_si"] is not None and not gap:
+        st.caption(f"源 CSV 读数 {ev['raw_si']:.6g} m/s² · 标定换算 {ev['calibrated_axis_si']:.6g} m/s²"
+                   " · 曲线与规则异常沿用源读数")
     st.json(ev, expanded=False)
 
 
@@ -140,6 +145,11 @@ def _reference_panel(snapshot, channel, samples, key):
         acceleration_limit = limits[0].number_input("最大加速度误差（m/s²）", min_value=0.0, value=None)
         time_limit = limits[1].number_input("最大时间误差（ms）", min_value=0.0, value=None)
         excitation = limits[2].number_input("每个方向的最小激励（m/s²）", min_value=0.0, value=None)
+        st.caption("以下筛查限由试验方案指定。参考扩展不确定度仅覆盖参考侧，其余来源需另做预算。")
+        uncertainty_record = st.text_input("参考不确定度依据编号（可选）", max_chars=200)
+        uncertainty_columns = st.columns(2)
+        acceleration_u = uncertainty_columns[0].number_input("轴向参考扩展不确定度（m/s²）", min_value=0.0, value=None)
+        time_u = uncertainty_columns[1].number_input("参考计时扩展不确定度（ms）", min_value=0.0, value=None)
         submitted = st.form_submit_button("复核当前标定")
     if submitted:
         st.session_state.pop(REFERENCE_SESSION_KEY, None)
@@ -149,7 +159,8 @@ def _reference_panel(snapshot, channel, samples, key):
         try:
             result = check_reference(snapshot, channel, samples, reference.getvalue(), reference_record=source,
                                      acceleration_limit=acceleration_limit, time_limit_ms=time_limit,
-                                     min_excitation=excitation)
+                                     min_excitation=excitation, acceleration_uncertainty=acceleration_u,
+                                     time_uncertainty_ms=time_u, uncertainty_record=uncertainty_record)
         except ValueError as exc:
             st.error(str(exc))
             return
@@ -166,6 +177,9 @@ def _reference_panel(snapshot, channel, samples, key):
         st.warning("至少一个配对点超出设定误差。请核对测量轴、标定参数和时基。")
     else:
         st.warning("参考数据的双向激励不足，无法确认本次配置符合设定误差。")
+    uncertainty = result["reference_uncertainty"]
+    st.caption(f"参考不确定度筛查 · 加速度：{UNCERTAINTY_STATUS[uncertainty['acceleration_status']]} · "
+               f"时间：{UNCERTAINTY_STATUS[uncertainty['time_status']]}。独立实测验收待完成。")
     metrics = result["metrics"]
     a, b, c = st.columns(3)
     a.metric("配对点", metrics["pair_count"])
@@ -190,6 +204,8 @@ def batch_panel(vehicle, batch, *, key, analysis=None, threshold=None):
         if not snapshot:
             st.caption("找不到该车辆的批次档案。")
             return
+        from rail_vehicle.pages.engineering_intake import show_batch_intake
+        show_batch_intake(snapshot)
         rows = channel_inventory(snapshot)
         if rows:
             st.dataframe(rows, hide_index=True)

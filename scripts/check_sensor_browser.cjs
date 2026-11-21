@@ -61,8 +61,11 @@ base.searchParams.set("embed_options","dark_theme");
   try {
     await page.goto(base.href);
     const runUpload=page.getByTestId("stFileUploader").locator("input");
-    await runUpload.setInputFiles({name:"invalid-run.csv",mimeType:"text/csv",buffer:Buffer.from("bad,heading\n1,2")});
+    const csvHeader="timestamp,vehicle_id,speed_kmh,lateral_accel,vertical_accel";
+    await runUpload.setInputFiles({name:"invalid-run.csv",mimeType:"text/csv",
+      buffer:Buffer.from(csvHeader+"\n2026-10-08T09:30:00Z,DEMO-001,72,,0")});
     await page.getByText(/CSV 校验未通过/).waitFor();
+    await page.getByText(/必填字段缺值计数.*lateral_accel 1/).waitFor();
     assert.equal(await page.getByRole("button",{name:"导入到 SQLite",exact:true}).count(),0);
     const csv = ["timestamp,vehicle_id,speed_kmh,lateral_accel,vertical_accel",
       ...Array.from({length:120},(_,i)=>[
@@ -71,6 +74,31 @@ base.searchParams.set("embed_options","dark_theme");
       ].join(","))].join("\n");
     const sourceHash=createHash("sha256").update(csv).digest("hex");
     await runUpload.setInputFiles({name:"fictional-integrated.csv",mimeType:"text/csv",buffer:Buffer.from(csv)});
+    await page.getByText("工程数据接入（可选）",{exact:true}).click();
+    await page.getByText("本次导入附带工程元数据",{exact:true}).click();
+    const engineeringUpload=page.getByTestId("stFileUploader").filter({hasText:"工程元数据 JSON"}).locator("input");
+    const manifest={
+      schema:"rail.engineering-intake.v1", source_kind:"synthetic", source_record:"虚构工程验收 QA-01",
+      source_sha256:sourceHash, vehicle_code:"DEMO-001", sample_rate_hz:1, time_basis:"device_offset", clock_offset_s:-.04,
+      units:{speed_kmh:"km/h",lateral_accel:"m/s²",vertical_accel:"m/s²"},
+      sensors:{
+        lateral_accel:{sensor_id:"LAB-A-01",part_id:"axlebox_a_l",position_frame:"model",position_m:[-1.30,-1.20,.50],axis:"+X"},
+        vertical_accel:{sensor_id:"LAB-V-01",part_id:"side_beam_r",position_frame:"model",position_m:[0,1.16,.98],axis:"+Z"},
+      },
+    };
+    const importButton=page.getByRole("button",{name:"导入到 SQLite",exact:true});
+    await page.getByText("请上传工程元数据 JSON。",{exact:true}).waitFor();
+    assert(await importButton.isDisabled());
+    async function loadManifest(name, data) {
+      await engineeringUpload.setInputFiles({name,mimeType:"application/json",buffer:Buffer.from(JSON.stringify(data))});
+    }
+    await loadManifest("fictional-wrong-unit.json",{...manifest,units:{...manifest.units,lateral_accel:"g"}});
+    await page.getByText(/CSV 单位须为速度 km\/h/).waitFor();
+    assert(await importButton.isDisabled());
+    await loadManifest("fictional-engineering.json",manifest);
+    await page.getByText(/工程接入元数据已核对/).waitFor();
+    await page.getByText(/时钟漂移证据不足/).waitFor();
+    await page.screenshot({path:resolve(out,"engineering-intake.png")});
     await click("导入到 SQLite");
     const receipt=page.getByText(/导入成功：批次 #\d+，共保存 120 行。/);
     await receipt.waitFor();
@@ -101,6 +129,7 @@ base.searchParams.set("embed_options","dark_theme");
     await input("增益").fill("2");
     await input("偏置（通道单位）").fill("0.1");
     await input("时钟偏移（s）").fill("-0.04");
+    await input("采样率（Hz）").fill("1");
     await click("保存配置版本");
     await page.getByText("查看修改记录",{exact:true}).waitFor();
     await click("回放历史批次 →");
@@ -136,6 +165,7 @@ base.searchParams.set("embed_options","dark_theme");
     assert.equal(packet.configuration.version,1);
     assert.equal(packet.csv_lines_in_analysis_order.length,120);
     assert.equal(packet.sha256,sourceHash);
+    assert.equal(packet.data_origin,"虚构工程演练");
     assert.deepEqual(packet.registration.direction,[0,1,0]);
     await page.getByText("用独立参考数据复核标定",{exact:true}).click();
     const reference = [
@@ -156,7 +186,9 @@ base.searchParams.set("embed_options","dark_theme");
     async function submitReference() {
       await loadReference("fictional-reference.csv",reference);
       await input("独立参考记录编号").fill("虚构台架时钟与激励记录");
-      for (const [name,value] of [["最大加速度误差（m/s²）","0.05"],["最大时间误差（ms）","5"],["每个方向的最小激励（m/s²）","1"]])
+      await input("参考不确定度依据编号（可选）").fill("虚构计量依据 QA-U");
+      for (const [name,value] of [["最大加速度误差（m/s²）","0.05"],["最大时间误差（ms）","5"],["每个方向的最小激励（m/s²）","1"],
+        ["轴向参考扩展不确定度（m/s²）","0.06"],["参考计时扩展不确定度（ms）","1"]])
         await page.getByRole("spinbutton",{name,exact:true}).fill(value);
       await click("复核当前标定");
     }
@@ -167,6 +199,8 @@ base.searchParams.set("embed_options","dark_theme");
     assert.equal(check.status,"within_limits");
     assert.deepEqual(check.pairs.map(pair=>pair.csv_line),[32,33,34]);
     assert.equal(check.metrics.max_time_error_ms,0);
+    assert.equal(check.reference_uncertainty.acceleration_status,"overlap");
+    assert.equal(check.reference_uncertainty.time_status,"within");
     assert.equal(check.pairs[0].raw_m_s2,1.4);
     assert.ok(Math.abs(check.pairs[0].measured_m_s2-2.9)<1e-12);
     assert.equal(check.reference_sha256,createHash("sha256").update(reference).digest("hex"));
@@ -177,6 +211,7 @@ base.searchParams.set("embed_options","dark_theme");
     await page.getByText(/至少一个配对点超出设定误差/).waitFor();
     const failedCheck=await downloadJson("下载参考复核证据","fictional-reference-20ms-mismatch.json");
     assert.equal(failedCheck.metrics.max_time_error_ms,20);
+    assert.equal(failedCheck.reference_uncertainty.time_status,"outside");
     await loadReference("fictional-wrong-source.csv",reference.replaceAll(sourceHash,"0".repeat(64)));
     await click("复核当前标定");
     await page.getByText(/源文件 SHA-256 不匹配/).waitFor();
@@ -186,6 +221,7 @@ base.searchParams.set("embed_options","dark_theme");
     await page.getByText(/所选参考点在设定误差内/).waitFor();
     await continueTo("分析报告");
     await page.getByText(/标定复核将附入 PDF.*配置 v1/).waitFor();
+    await page.getByText(/工程证据.*虚构工程演练.*独立实测验收待完成/).waitFor();
     await click("生成 PDF 分析报告");
     const [pdf]=await Promise.all([page.waitForEvent("download"),click("下载 PDF 报告")]);
     await pdf.saveAs(resolve(out,"fictional-integrated-report.pdf"));
@@ -237,6 +273,7 @@ base.searchParams.set("embed_options","dark_theme");
     const projection=await downloadJson("下载投影计算依据");
     assert.equal(projection.configuration.version,2);
     assert.equal(projection.source_sha256,sourceHash);
+    assert.equal(projection.data_layer,"simulation");
     assert.equal(projection.time_basis,"relative_seconds");
     assert.equal(projection.axis_accel_m_s2.length,601);
     assert(projection.axis_accel_m_s2.every(v=>v===0)); // +Y is orthogonal to the calculated +Z acceleration.

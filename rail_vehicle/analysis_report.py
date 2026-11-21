@@ -32,8 +32,9 @@ from reportlab.lib.colors import HexColor
 from rail_vehicle.ai.provider import input_fingerprint
 from rail_vehicle.ai.schemas import AIContractError, has_unverified_claim_scopes, validate_output
 from rail_vehicle.anomaly import EVENT_DURATION_NOTE
-from rail_vehicle.calibration_check import REFERENCE_STATUS
+from rail_vehicle.calibration_check import REFERENCE_STATUS, UNCERTAINTY_STATUS
 from rail_vehicle.data_quality import analyze_sampling_times, review_sampling_timestamps
+from rail_vehicle.engineering_intake import CONFIG_LABELS
 
 
 REPORT_TITLE = "轨道车辆运行与动力学分析报告"
@@ -241,6 +242,7 @@ def build_analysis_report_data(
     replay_rows: tuple[int, int] | list[int] | None = None,
     report_comparison: dict[str, Any] | None = None,
     calibration_reference: dict[str, Any] | None = None,
+    provenance: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Assemble a stable report payload from the current filtered analysis."""
     samples = analysis["samples"]
@@ -283,6 +285,7 @@ def build_analysis_report_data(
         **({"replay_rows": tuple(replay_rows)} if replay_rows is not None else {}),
         **({"report_comparison": report_comparison} if report_comparison is not None else {}),
         **({"calibration_reference": calibration_reference} if calibration_reference is not None else {}),
+        **({"provenance": provenance} if provenance is not None else {}),
         "speed": dict(analysis["speed"]),
         "lateral_accel": dict(analysis["lateral_accel"]),
         "vertical_accel": dict(analysis["vertical_accel"]),
@@ -555,6 +558,25 @@ def generate_analysis_report_pdf(report: dict[str, Any]) -> bytes:
             )
         )
 
+        if provenance := report.get("provenance"):
+            story.append(_paragraph(f"数据来源 {provenance['source']}。独立实测验收待完成。", body_style))
+            if provenance["source_record"]:
+                story.append(_paragraph(f"采集记录 {provenance['source_record']}。", small_style))
+            story.append(_paragraph(f"源 CSV SHA-256　{provenance['source_sha256'] or '缺少摘要'}", small_style))
+            if intake := provenance["intake"]:
+                declared, quality = intake["manifest"], intake["quality"]
+                story.append(_paragraph(f"接入声明 {declared['sample_rate_hz']:g} Hz · 时基 {declared['time_basis']}。"
+                                        f"全文件筛查记录 {quality['duplicate_timestamp_rows']} 条重复时刻、"
+                                        f"{quality['short_interval_count']} 处短间隔及 {quality['long_gap_count']} 处长间隔。"
+                                        "时钟漂移证据不足。", small_style))
+            evidence_labels = {**CONFIG_LABELS, "verified": "轴向已登记核验", "unverified": "待核验", "unknown": "核验未知"}
+            configurations = [
+                f"{row['channel']} · {'v'+str(row['version']) if row['version'] else '无版本'} · {evidence_labels[row['status']]}"
+                for row in provenance["configurations"]
+            ]
+            story.append(_paragraph("测点配置证据 · " + " / ".join(configurations), small_style))
+            story.append(_paragraph("本报告覆盖数据质量与软件分析。工程精度、运行安全和标准符合性须独立验收。", small_style))
+
         if replay_rows := report.get("replay_rows"):
             first, last = replay_rows
             story.append(_paragraph(f"三维回放窗口：按批次时间排序的第 {first:,}–{last:,} 条观测。", body_style))
@@ -676,6 +698,22 @@ def generate_analysis_report_pdf(report: dict[str, Any]) -> bytes:
             binding = calibration["configuration"]
             metadata = binding["metadata"]
             metrics, limits = calibration["metrics"], calibration["limits"]
+            uncertainty = calibration.get("reference_uncertainty")
+            uncertainty_lines = []
+            if uncertainty:
+                clauses = []
+                for axis, label, unit, field in (
+                    ("acceleration", "加速度", "m/s^2", "acceleration_expanded_m_s2"),
+                    ("time", "时间", "ms", "time_expanded_ms"),
+                ):
+                    u = uncertainty[field]
+                    value = f" U={u:g} {unit}" if u is not None else ""
+                    clauses.append(f"{label}{value} · {UNCERTAINTY_STATUS[uncertainty[axis+'_status']]}")
+                uncertainty_lines.extend([
+                    _paragraph("参考侧不确定度筛查 · " + " / ".join(clauses), small_style),
+                    _paragraph(f"依据 {uncertainty['record'] or '未登记'}。筛查限由试验方案给定，"
+                               "此处仅计参考侧扩展不确定度。", small_style),
+                ])
             source = "虚构教学示意" if metadata["origin"] == "illustration" else "现场登记配置"
             story.append(KeepTogether([
                 _paragraph("独立参考标定复核", heading_style),
@@ -691,6 +729,7 @@ def generate_analysis_report_pdf(report: dict[str, Any]) -> bytes:
                            f"设定限值 {limits['max_time_error_ms']:g} ms。", small_style),
                 _paragraph(f"源 CSV SHA-256　{calibration['source_sha256']}", small_style),
                 _paragraph(f"参考 CSV SHA-256　{calibration['reference_sha256']}", small_style),
+                *uncertainty_lines,
                 _paragraph("运行统计与异常定位沿用源 CSV 读数和原时间。复核使用登记的轴向、增益、偏置与时基，"
                            "结论仅覆盖配对点及设定阈值。逐点原始行号、读数和时差见复核 JSON。", small_style),
             ]))

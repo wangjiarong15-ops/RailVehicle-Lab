@@ -1,5 +1,6 @@
 """Local-only provenance. Native batch statistics continue using the imported SI channel."""
 
+from rail_vehicle.engineering_intake import source_label
 from rail_vehicle.sensor_mapping import CHANNELS, PARTS, acceleration_si, aligned_time, registration
 from rail_vehicle.sensor_store import active_channels
 
@@ -12,6 +13,8 @@ def observation(snapshot, channel, sample, threshold, *, gap=False):
     space = registration(m)
     calibrated = acceleration_si(raw, m["unit"], m["gain"], m["bias"]) if space["vehicle_direction"] else None
     return {
+        "data_origin": source_label(snapshot, "CSV 观测 · 来源未声明"),
+        "data_layer": "source_csv_with_optional_calibrated_reading",
         "batch_id": snapshot.get("batch_id"), "vehicle_code": snapshot.get("vehicle_code"),
         "file_name": snapshot.get("file_name"), "sha256": snapshot.get("source_sha256"),
         "csv_line": sample.get("csv_line"), "database_sample_id": sample.get("sample_id"),
@@ -56,6 +59,7 @@ def project_frame_response(snapshot, channel, version, simulation):
         raise ValueError("轴向投影仅支持单自由度垂向工况。")
     direction = registration(binding["metadata"])["direction"]
     return dict(schema="rail.frame-axis-projection.v1", source="简化动力学计算", vehicle_code=snapshot["vehicle_code"],
+                data_layer="simulation", input_batch_origin=source_label(snapshot),
                 vehicle_id=snapshot["vehicle_id"], source_sha256=snapshot.get("source_sha256"),
                 batch_id=snapshot["batch_id"], channel=channel, configuration=binding, model_direction=direction,
                 solver_version=simulation["version"], parameters=simulation["parameters"], time_basis="relative_seconds",
@@ -68,6 +72,7 @@ def scope_evidence(snapshot, channel, ordered, metrics, threshold, source):
     binding = active_channels(snapshot).get(channel)
     lines = [s.get("csv_line") for s in ordered]
     return dict(schema="rail.sensor-evidence.v1", source=source, batch_id=snapshot.get("batch_id"),
+                data_origin=source_label(snapshot, source), data_layer="source_csv",
                 vehicle_code=snapshot.get("vehicle_code"), file_name=snapshot.get("file_name"),
                 sha256=snapshot.get("source_sha256"), channel=channel, configuration=binding,
                 registration=registration(binding["metadata"] if binding else {}),

@@ -206,6 +206,8 @@ def _render_import() -> None:
         )
     if uploaded_file is not None:
         validation = validate_run_csv(uploaded_file.getvalue(), vehicles)
+        from rail_vehicle.pages.engineering_intake import import_preflight
+        manifest, intake_ok = import_preflight(validation, revision=st.session_state.get("import_upload_revision", 0))
         if validation.preview:
             st.subheader("数据预览")
             st.dataframe(
@@ -220,6 +222,8 @@ def _render_import() -> None:
 
         if validation.errors:
             st.error("CSV 校验未通过，本文件不会写入数据库。")
+            if validation.missing_by_field:
+                st.write("必填字段缺值计数：" + "、".join(f"{key} {count}" for key, count in validation.missing_by_field.items()))
             for error in validation.errors:
                 st.write(f"- {error}")
         else:
@@ -275,10 +279,13 @@ def _render_import() -> None:
                     column.metric(
                         label, f"{value:.3f}" if value is not None else "—"
                     )
-            st.success("格式检查通过，可以导入。")
-            if st.button("导入到 SQLite", type="primary"):
+            if intake_ok:
+                st.success("格式检查通过，可以导入。")
+            if st.button("导入到 SQLite", type="primary", disabled=not intake_ok):
                 try:
-                    batch_id = import_run_data(uploaded_file.name, validation)
+                    batch_id = import_run_data(uploaded_file.name, validation, **(
+                        {"engineering_manifest": manifest} if manifest else {}
+                    ))
                 except ValueError as exc:
                     st.error(str(exc))
                 except (sqlite3.Error, OSError):
@@ -928,6 +935,7 @@ def _render_anomaly_view(result, anomaly_result, threshold, vehicle_id, batch_id
 def _render_report_view(vehicles, selected_vehicle, vehicle_id, batch_id, batches, selected_start,
                         selected_end, result, anomaly_result, sampling_review, replay_rows, comparison, threshold,
                         ai_payload, ai_selection, *, demo):
+    from rail_vehicle.engineering_intake import report_provenance
     with st.container(border=True):
         st.subheader("导出分析报告")
         st.caption("PDF 报告包含当前车辆、批次、时间范围、统计、异常事件、采样质量检查与规则及曲线。"
@@ -939,21 +947,26 @@ def _render_report_view(vehicles, selected_vehicle, vehicle_id, batch_id, batche
                       on_click=st.session_state.pop, args=(REPORT_COMPARISON, None))
         current_ai_result = None if demo else st.session_state.get("ai_single_batch_result")
         reference = None
+        snapshot = {}
         if not demo:
             from rail_vehicle.calibration_check import REFERENCE_STATUS, matching_reference
             from rail_vehicle.pages.sensors import REFERENCE_SESSION_KEY, read_snapshot
+            snapshot = read_snapshot(vehicle_id, batch_id)
             saved_reference = st.session_state.get(REFERENCE_SESSION_KEY)
             if saved_reference:
-                reference = matching_reference(saved_reference, read_snapshot(vehicle_id, batch_id), result["samples"])
+                reference = matching_reference(saved_reference, snapshot, result["samples"])
                 if reference:
                     st.caption(f"标定复核将附入 PDF · {reference['channel']} · "
                                f"配置 v{reference['configuration']['version']} · {REFERENCE_STATUS[reference['status']]}。")
                 else:
                     st.info("最近一次标定复核与当前批次、范围或配置版本不一致，报告将使用当前运行分析。")
         selected_batch = next(batch for batch in batches if batch["id"] == batch_id)
+        provenance = report_provenance(snapshot, fallback="内置虚构演示" if demo else "历史导入 · 数据来源未声明",
+                                       source_sha256=selected_batch.get("source_sha256"))
         st.markdown("**报告内容预览**")
         st.write(f"{'虚构演示' if demo else '历史导入'} · 车辆 {selected_vehicle['vehicle_code']} · 批次 #{batch_id}")
         st.text(selected_batch["file_name"])
+        st.caption(f"工程证据 · {provenance['source']} · 独立实测验收待完成")
         if replay_rows:
             st.write(f"报告范围：批次第 {replay_rows[0]:,}–{replay_rows[1]:,} 条观测（按样本行）")
             range_label = "窗口时间（UTC）"
@@ -982,6 +995,7 @@ def _render_report_view(vehicles, selected_vehicle, vehicle_id, batch_id, batche
             "sampling_quality": sampling_review, "ai_result": current_ai_pdf_fingerprint,
             "vehicle": selected_vehicle, "samples": result["samples"], "comparison": comparison_section,
             "calibration_reference": reference,
+            "provenance": provenance,
         }) if generate or st.session_state.get(report_pdf_key) else None
         if st.session_state.get(report_state_key) != report_key:
             st.session_state.pop(report_state_key, None)
@@ -1009,6 +1023,7 @@ def _render_report_view(vehicles, selected_vehicle, vehicle_id, batch_id, batche
                     sampling_gap_multiplier=sampling_review["gap_multiplier"],
                     report_comparison=comparison_section,
                     calibration_reference=reference,
+                    provenance=provenance,
                     **({"replay_rows": replay_rows} if replay_rows else {}),
                 )
                 pdf_bytes = generate_analysis_report_pdf(report_data)
