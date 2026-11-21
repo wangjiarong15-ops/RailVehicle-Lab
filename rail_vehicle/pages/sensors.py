@@ -6,8 +6,9 @@ from inspect import signature
 
 import streamlit as st
 
+from rail_vehicle.calibration_check import REFERENCE_COLUMNS, check_reference
 from rail_vehicle.sensor_evidence import observation, scope_evidence, supports_frame_projection
-from rail_vehicle.sensor_mapping import AXES, CHANNELS, PARTS, STATES, UNITS
+from rail_vehicle.sensor_mapping import AXES, CHANNELS, PARTS, STATES, UNITS, registration
 from rail_vehicle.sensor_store import STATE_NAMES, active_channels, channel_inventory, revise, revisions, sensor_snapshot
 
 _LAZY_EXPANDER = "on_change" in signature(st.expander).parameters
@@ -105,6 +106,75 @@ def evidence_panel(snapshot, channel, sample, threshold, *, gap=False):
     st.json(ev, expanded=False)
 
 
+def _reference_panel(snapshot, channel, samples, key):
+    if not st.toggle("用独立参考数据复核标定", key=key + "_show_reference"):
+        return
+    binding = active_channels(snapshot).get(channel)
+    metadata = binding["metadata"] if binding else {}
+    spatial = registration(metadata)
+    digest = snapshot.get("source_sha256")
+    if not digest:
+        st.info("该批次缺少原文件摘要。请保留旧批次并重新导入原文件，才能进行逐行参考比对。")
+        return
+    if spatial["position"] is None or spatial["direction"] is None or metadata.get("clock_status") != "verified":
+        st.info("请在数据导入页登记并核验安装点、模型系测量轴和时间基准，再上传参考数据。")
+        return
+    st.caption("参考数据应来自同一试次的独立记录。按源 CSV 起始行配对，填入带时区的参考时间和模型系三轴加速度（m/s²）。")
+    st.code(digest, language=None)
+    st.download_button("下载参考 CSV 表头", ",".join(REFERENCE_COLUMNS) + "\n",
+                       file_name="calibration-reference-template.csv", mime="text/csv", key=key + "_template")
+    version = binding["version"]
+    scope = (key, channel, version, digest, samples[0].get("sample_id"), samples[-1].get("sample_id"), len(samples))
+    form_key = f"{key}_{channel}_v{version}_reference"
+    result_key = "sensor_last_reference_check"
+    with st.form(form_key):
+        source = st.text_input("独立参考记录编号", max_chars=200)
+        reference = st.file_uploader("独立参考 CSV", type=["csv"])
+        limits = st.columns(3)
+        acceleration_limit = limits[0].number_input("最大加速度误差（m/s²）", min_value=0.0, value=None)
+        time_limit = limits[1].number_input("最大时间误差（ms）", min_value=0.0, value=None)
+        excitation = limits[2].number_input("每个方向的最小激励（m/s²）", min_value=0.0, value=None)
+        submitted = st.form_submit_button("复核当前标定")
+    if submitted:
+        st.session_state.pop(result_key, None)
+        if reference is None or None in (acceleration_limit, time_limit, excitation):
+            st.error("请选择参考 CSV，并按试验要求填写全部三个阈值。")
+            return
+        try:
+            result = check_reference(snapshot, channel, samples, reference.getvalue(), reference_record=source,
+                                     acceleration_limit=acceleration_limit, time_limit_ms=time_limit,
+                                     min_excitation=excitation)
+        except ValueError as exc:
+            st.error(str(exc))
+            return
+        st.session_state[result_key] = (scope, result)
+    saved = st.session_state.get(result_key)
+    if not saved or saved[0] != scope:
+        return
+    result = saved[1]
+    st.caption(f"本会话最近一次复核 · {binding['serial']} v{version} · {result['reference_record']}")
+    if metadata["origin"] == "illustration":
+        st.caption("当前传感器配置为虚构教学示意。")
+    if result["status"] == "within_limits":
+        st.success("所选参考点在设定误差内。")
+    elif result["status"] == "outside_limits":
+        st.warning("至少一个配对点超出设定误差。请核对测量轴、标定参数和时基。")
+    else:
+        st.warning("参考数据的双向激励不足，无法确认本次配置符合设定误差。")
+    metrics = result["metrics"]
+    a, b, c = st.columns(3)
+    a.metric("配对点", metrics["pair_count"])
+    b.metric("最大加速度偏差", f"{metrics['max_acceleration_error_m_s2']:.4g} m/s²")
+    c.metric("最大时间偏差", f"{metrics['max_time_error_ms']:.4g} ms")
+    st.dataframe([{"原始 CSV 行": row["csv_line"], "参考投影 m/s²": row["expected_m_s2"],
+                   "标定读值 m/s²": row["measured_m_s2"], "读值误差 m/s²": row["error_m_s2"],
+                   "时间差 ms": row["delta_ms"]} for row in result["pairs"]], hide_index=True,
+                 height=min(220, (metrics["pair_count"] + 1) * 36 + 2))
+    st.download_button("下载参考复核证据", json.dumps(result, ensure_ascii=False, allow_nan=False, indent=2),
+                       file_name=f"batch-{result['batch_id']}-{channel}-reference-v{version}.json",
+                       mime="application/json", key=form_key + "_download")
+
+
 def batch_panel(vehicle, batch, *, key, analysis=None, threshold=None):
     options = {"key": f"sensor_{key}_{vehicle}_{batch}", "on_change": "rerun"} if _LAZY_EXPANDER else {}
     panel = st.expander("传感器配置与数据溯源", **options)
@@ -135,6 +205,7 @@ def batch_panel(vehicle, batch, *, key, analysis=None, threshold=None):
                 from rail_vehicle.ui import SIMULATION, navigate
                 st.button("按此测量轴查看仿真响应", on_click=navigate, args=(SIMULATION,),
                           kwargs={"frame_sensor_target": (vehicle, batch, channel, binding["version"])})
+            _reference_panel(snapshot, channel, samples, f"{key}_{vehicle}_{batch}")
         else:
             _edit(snapshot, channel, f"sensor_{key}_{vehicle}_{batch}")
             if channel in snapshot["channels"]:

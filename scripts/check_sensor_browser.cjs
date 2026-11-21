@@ -20,17 +20,26 @@ base.searchParams.set("embed_options","dark_theme");
   const input = label=>page.getByRole("textbox",{name:label,exact:true});
   async function choose(label,value) {
     const combo=page.getByRole("combobox",{name:label,exact:true});
-    await combo.evaluate(n=>n.scrollIntoView({block:"center",behavior:"instant"}));
-    await combo.click();
-    await combo.fill(label==="安装部件" ? value.split(" · ").at(-1) : value);
+    const idle=page.locator('[data-testid="stApp"][data-test-script-state="notRunning"]');
     const option=page.getByRole("option",{name:value,exact:true});
-    await option.waitFor();
-    if (label==="安装部件") {
-      // The searchable list can reposition as the revision history finishes rendering.
-      if (await combo.getAttribute("aria-activedescendant")!==await option.getAttribute("id"))
-        await combo.press("ArrowDown");
-      await combo.press("Enter");
-    } else await option.click();
+    const part=label==="安装部件";
+    for (let attempt=0; attempt<3; attempt++) {
+      await idle.waitFor();
+      await combo.evaluate(n=>n.scrollIntoView({block:"center",behavior:"instant"}));
+      await combo.click();
+      await combo.fill(part ? value.split(" · ").at(-1) : value);
+      try {
+        await option.click({timeout:2500});
+        if (!part) return;
+        // Remounting the dropdown can discard a click. Confirm the committed label before saving.
+        const id=await combo.getAttribute("id");
+        await page.waitForFunction(([control,expected])=>document.getElementById(control)?.value===expected,
+          [id,value],{timeout:2000});
+        return;
+      } catch(error) {
+        if (attempt===2) throw error;
+      }
+    }
   }
   const click=label=>page.getByRole("button",{name:label,exact:true}).click();
   async function openSensors(scope) {
@@ -38,11 +47,11 @@ base.searchParams.set("embed_options","dark_theme");
     await heading.waitFor();
     if (!await heading.evaluate(el=>el.closest("details").open)) await heading.click();
   }
-  async function downloadJson(label) {
+  async function downloadJson(label, savedName) {
     const button=page.getByRole("button",{name:label,exact:true});
     await button.waitFor();
     const [file]=await Promise.all([page.waitForEvent("download"),button.click()]);
-    await file.saveAs(resolve(out,file.suggestedFilename()));
+    await file.saveAs(resolve(out,savedName || file.suggestedFilename()));
     return JSON.parse(await readFile(await file.path(),"utf8"));
   }
   try {
@@ -100,6 +109,33 @@ base.searchParams.set("embed_options","dark_theme");
     assert.equal(packet.configuration.version,1);
     assert.equal(packet.csv_lines_in_analysis_order.length,120);
     assert.equal(packet.sha256.length,64);
+    await page.getByText("用独立参考数据复核标定",{exact:true}).click();
+    await input("独立参考记录编号").fill("虚构台架时钟与激励记录");
+    const reference = [
+      ["source_sha256","csv_line","reference_utc","model_ax_m_s2","model_ay_m_s2","model_az_m_s2"],
+      [packet.sha256,32,"2026-10-08T09:30:30Z",0,1.4,0],
+      [packet.sha256,33,"2026-10-08T09:30:31Z",0,1.8,0],
+      [packet.sha256,34,"2026-10-08T09:30:32Z",0,-1.5,0],
+    ].map(row=>row.join(",")).join("\n");
+    const upload = page.locator('input[type="file"]').last();
+    await upload.setInputFiles({name:"fictional-reference.csv",mimeType:"text/csv",buffer:Buffer.from(reference)});
+    for (const [name,value] of [["最大加速度误差（m/s²）","0.05"],["最大时间误差（ms）","5"],["每个方向的最小激励（m/s²）","1"]])
+      await page.getByRole("spinbutton",{name,exact:true}).fill(value);
+    await click("复核当前标定");
+    await page.getByText(/所选参考点在设定误差内/).waitFor();
+    const check = await downloadJson("下载参考复核证据");
+    assert.equal(check.configuration.version,1);
+    assert.equal(check.status,"within_limits");
+    assert.deepEqual(check.pairs.map(pair=>pair.csv_line),[32,33,34]);
+    assert.equal(check.metrics.max_time_error_ms,0);
+    await page.getByText("下载参考复核证据",{exact:true}).scrollIntoViewIfNeeded();
+    await page.screenshot({path:resolve(out,"calibration-reference.png")});
+    await upload.setInputFiles({name:"fictional-offset-reference.csv",mimeType:"text/csv",
+      buffer:Buffer.from(reference.replace("09:30:32Z","09:30:32.020Z"))});
+    await click("复核当前标定");
+    await page.getByText(/至少一个配对点超出设定误差/).waitFor();
+    const failedCheck=await downloadJson("下载参考复核证据","fictional-reference-20ms-mismatch.json");
+    assert.equal(failedCheck.metrics.max_time_error_ms,20);
     await click("在 Copilot 中分析");
     const chat=page.getByTestId("stChatInputTextArea");
     await chat.fill("查看传感器坐标标定和安装位置");
@@ -114,6 +150,7 @@ base.searchParams.set("embed_options","dark_theme");
     await choose("安装部件","左侧 侧梁 · side_beam_l");
     await input("安装位置 [x,y,z]（m）").fill("[0,-1.16,0.98]");
     await click("保存配置版本");
+    await page.getByText("已保存传感器配置版本",{exact:true}).waitFor();
     await page.getByText("查看修改记录",{exact:true}).waitFor();
     await click("分析历史批次 →");
     await openSensors("analysis");
@@ -128,7 +165,7 @@ base.searchParams.set("embed_options","dark_theme");
     await page.screenshot({path:resolve(out,"sensor-projection.png")});
     assert.equal(await page.getByTestId("stException").count(),0);
     assert.deepEqual(errors,[]);
-    console.log("Fictional configuration and revision, GLB point, axis and visibility, single-channel plot, physical row 32, evidence download, offline Copilot and 601 calculated projections passed.");
+    console.log("Fictional reference and 20 ms mismatch, GLB point and visibility, row 32, evidence, offline Copilot and 601 calculated projections passed.");
   } catch(e) {await page.screenshot({path:resolve(out,"failure.png")});throw e;}
   finally {await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});
