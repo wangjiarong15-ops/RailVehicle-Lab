@@ -938,6 +938,18 @@ def _render_report_view(vehicles, selected_vehicle, vehicle_id, batch_id, batche
             st.button("移除报告中的三维对照", key="analysis_remove_report_comparison",
                       on_click=st.session_state.pop, args=(REPORT_COMPARISON, None))
         current_ai_result = None if demo else st.session_state.get("ai_single_batch_result")
+        reference = None
+        if not demo:
+            from rail_vehicle.calibration_check import REFERENCE_STATUS, matching_reference
+            from rail_vehicle.pages.sensors import REFERENCE_SESSION_KEY, read_snapshot
+            saved_reference = st.session_state.get(REFERENCE_SESSION_KEY)
+            if saved_reference:
+                reference = matching_reference(saved_reference, read_snapshot(vehicle_id, batch_id), result["samples"])
+                if reference:
+                    st.caption(f"标定复核将附入 PDF · {reference['channel']} · "
+                               f"配置 v{reference['configuration']['version']} · {REFERENCE_STATUS[reference['status']]}。")
+                else:
+                    st.info("最近一次标定复核与当前批次、范围或配置版本不一致，报告将使用当前运行分析。")
         selected_batch = next(batch for batch in batches if batch["id"] == batch_id)
         st.markdown("**报告内容预览**")
         st.write(f"{'虚构演示' if demo else '历史导入'} · 车辆 {selected_vehicle['vehicle_code']} · 批次 #{batch_id}")
@@ -969,6 +981,7 @@ def _render_report_view(vehicles, selected_vehicle, vehicle_id, batch_id, batche
             "analysis": ai_payload, "selection": ai_selection,
             "sampling_quality": sampling_review, "ai_result": current_ai_pdf_fingerprint,
             "vehicle": selected_vehicle, "samples": result["samples"], "comparison": comparison_section,
+            "calibration_reference": reference,
         }) if generate or st.session_state.get(report_pdf_key) else None
         if st.session_state.get(report_state_key) != report_key:
             st.session_state.pop(report_state_key, None)
@@ -995,6 +1008,7 @@ def _render_report_view(vehicles, selected_vehicle, vehicle_id, batch_id, batche
                     ),
                     sampling_gap_multiplier=sampling_review["gap_multiplier"],
                     report_comparison=comparison_section,
+                    calibration_reference=reference,
                     **({"replay_rows": replay_rows} if replay_rows else {}),
                 )
                 pdf_bytes = generate_analysis_report_pdf(report_data)

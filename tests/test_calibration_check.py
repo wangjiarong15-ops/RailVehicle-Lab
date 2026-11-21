@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from rail_vehicle.calibration_check import check_reference
+from rail_vehicle.calibration_check import check_reference, matching_reference, reference_scope
 from rail_vehicle.db import get_connection, init_db
 from rail_vehicle.run_data import import_run_data, list_batch_samples, validate_run_csv
 from rail_vehicle.sensor_store import revise, sensor_snapshot
@@ -114,3 +114,18 @@ def test_duplicate_observation_line_cannot_replace_missing_reference(paired):
     paired[1][1]["csv_line"] = paired[1][0]["csv_line"]
     with pytest.raises(ValueError, match="重复的原始 CSV 行"):
         run(paired)
+
+
+def test_report_handoff_rejects_stale_source_window_or_sensor_revision(paired):
+    snapshot, samples, _ = paired
+    packet = run(paired)
+    saved = (reference_scope(snapshot, CHANNEL, snapshot["channels"][CHANNEL], samples), packet)
+    assert matching_reference(saved, snapshot, samples) == packet
+    assert matching_reference(saved, snapshot, samples[1:]) is None
+    assert matching_reference(saved, {**snapshot, "batch_id": 999}, samples) is None
+    assert matching_reference(saved, {**snapshot, "source_sha256": "0" * 64}, samples) is None
+    revised = deepcopy(snapshot)
+    revised["channels"][CHANNEL]["version"] += 1
+    assert matching_reference(saved, revised, samples) is None
+    revised["channels"][CHANNEL]["metadata"] = None
+    assert matching_reference(saved, revised, samples) is None

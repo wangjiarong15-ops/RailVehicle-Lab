@@ -1,5 +1,6 @@
 // This suite writes a fictional calibration only in the runner's disposable SQLite database.
 const assert = require("node:assert/strict");
+const {createHash} = require("node:crypto");
 const {mkdir,readFile} = require("node:fs/promises");
 const {resolve} = require("node:path");
 const {chromium} = require(process.env.RAIL_PLAYWRIGHT_MODULE || "playwright");
@@ -42,8 +43,11 @@ base.searchParams.set("embed_options","dark_theme");
     }
   }
   const click=label=>page.getByRole("button",{name:label,exact:true}).click();
+  const continueTo=label=>page.getByTestId("stMain").getByRole("button",{name:label,exact:true}).click();
+  let batch, batchLabel;
+  const nav = name=>page.getByTestId("stSidebar").getByRole("button",{name:new RegExp(name+"$")}).click();
   async function openSensors(scope) {
-    const heading=page.locator(".st-key-sensor_"+scope+"_1_1").getByText("传感器配置与数据溯源",{exact:true});
+    const heading=page.locator(".st-key-sensor_"+scope+"_1_"+batch).getByText("传感器配置与数据溯源",{exact:true});
     await heading.waitFor();
     if (!await heading.evaluate(el=>el.closest("details").open)) await heading.click();
   }
@@ -56,7 +60,29 @@ base.searchParams.set("embed_options","dark_theme");
   }
   try {
     await page.goto(base.href);
-    await choose("打开历史批次","#1 · demo_run_1.csv");
+    const runUpload=page.getByTestId("stFileUploader").locator("input");
+    await runUpload.setInputFiles({name:"invalid-run.csv",mimeType:"text/csv",buffer:Buffer.from("bad,heading\n1,2")});
+    await page.getByText(/CSV 校验未通过/).waitFor();
+    assert.equal(await page.getByRole("button",{name:"导入到 SQLite",exact:true}).count(),0);
+    const csv = ["timestamp,vehicle_id,speed_kmh,lateral_accel,vertical_accel",
+      ...Array.from({length:120},(_,i)=>[
+        new Date(Date.UTC(2026,9,8,9,30,i,40)).toISOString(),"DEMO-001",72,
+        [1.4,1.8,-1.5][i-30] ?? 0, i===70 ? 1.6 : 0,
+      ].join(","))].join("\n");
+    const sourceHash=createHash("sha256").update(csv).digest("hex");
+    await runUpload.setInputFiles({name:"fictional-integrated.csv",mimeType:"text/csv",buffer:Buffer.from(csv)});
+    await click("导入到 SQLite");
+    const receipt=page.getByText(/导入成功：批次 #\d+，共保存 120 行。/);
+    await receipt.waitFor();
+    batch=Number((await receipt.textContent()).match(/#(\d+)/)[1]);
+    batchLabel=`#${batch} · fictional-integrated.csv`;
+    await page.locator(".st-key-import_analyze_latest button").click();
+    await openSensors("analysis");
+    await page.getByText("用独立参考数据复核标定",{exact:true}).click();
+    await page.getByText(/请在数据导入页登记并核验安装点/).waitFor();
+    assert.equal(await page.getByRole("button",{name:"下载参考复核证据",exact:true}).count(),0);
+    await page.goto(base.href);
+    await choose("打开历史批次",batchLabel);
     await openSensors("history");
     await input("传感器唯一编号").fill("LAB-A-01");
     await input("来源凭据或记录编号").fill("虚构安装记录 QA-01");
@@ -64,16 +90,17 @@ base.searchParams.set("embed_options","dark_theme");
     await choose("配置性质","虚构教学示意");
     await choose("安装位置坐标系","模型");
     await choose("安装点核验状态","已核验");
-    await choose("传感器局部测量正方向","+Y");
+    await choose("传感器局部测量正方向","+X");
     await choose("CSV 通道单位","m/s²");
     await choose("轴向标定状态","已核验");
-    await choose("记录时间基准","UTC / 显式时区");
+    await choose("记录时间基准","设备时间加固定偏移至 UTC");
     await choose("时钟核验状态","已核验");
     await input("安装位置 [x,y,z]（m）").fill("[-1.30,-1.20,0.50]");
-    for (const label of ["传感器到车辆旋转矩阵（3×3）","车辆到模型旋转矩阵（3×3）"])
-      await input(label).fill("[[1,0,0],[0,1,0],[0,0,1]]");
-    await input("增益").fill("1");
-    await input("偏置（通道单位）").fill("0");
+    await input("传感器到车辆旋转矩阵（3×3）").fill("[[0,-1,0],[1,0,0],[0,0,1]]");
+    await input("车辆到模型旋转矩阵（3×3）").fill("[[1,0,0],[0,1,0],[0,0,1]]");
+    await input("增益").fill("2");
+    await input("偏置（通道单位）").fill("0.1");
+    await input("时钟偏移（s）").fill("-0.04");
     await click("保存配置版本");
     await page.getByText("查看修改记录",{exact:true}).waitFor();
     await click("回放历史批次 →");
@@ -101,41 +128,81 @@ base.searchParams.set("embed_options","dark_theme");
     await page.getByText(/CSV 原始起始行 32 · lateral_accel/).waitFor();
     // Return through the analysis workbench so Copilot receives the exact historical batch.
     await page.goto(base.href);
-    await choose("打开历史批次","#1 · demo_run_1.csv");
+    await choose("打开历史批次",batchLabel);
     await click("分析历史批次 →");
     await openSensors("analysis");
     const packet=await downloadJson("下载本通道分析证据");
     assert.equal(packet.configuration.serial,"LAB-A-01");
     assert.equal(packet.configuration.version,1);
     assert.equal(packet.csv_lines_in_analysis_order.length,120);
-    assert.equal(packet.sha256.length,64);
+    assert.equal(packet.sha256,sourceHash);
+    assert.deepEqual(packet.registration.direction,[0,1,0]);
     await page.getByText("用独立参考数据复核标定",{exact:true}).click();
-    await input("独立参考记录编号").fill("虚构台架时钟与激励记录");
     const reference = [
       ["source_sha256","csv_line","reference_utc","model_ax_m_s2","model_ay_m_s2","model_az_m_s2"],
-      [packet.sha256,32,"2026-10-08T09:30:30Z",0,1.4,0],
-      [packet.sha256,33,"2026-10-08T09:30:31Z",0,1.8,0],
-      [packet.sha256,34,"2026-10-08T09:30:32Z",0,-1.5,0],
+      [sourceHash,32,"2026-10-08T09:30:30Z",0,2.9,0],
+      [sourceHash,33,"2026-10-08T09:30:31Z",0,3.7,0],
+      [sourceHash,34,"2026-10-08T09:30:32Z",0,-2.9,0],
     ].map(row=>row.join(",")).join("\n");
     const upload = page.locator('input[type="file"]').last();
-    await upload.setInputFiles({name:"fictional-reference.csv",mimeType:"text/csv",buffer:Buffer.from(reference)});
-    for (const [name,value] of [["最大加速度误差（m/s²）","0.05"],["最大时间误差（ms）","5"],["每个方向的最小激励（m/s²）","1"]])
-      await page.getByRole("spinbutton",{name,exact:true}).fill(value);
-    await click("复核当前标定");
+    async function loadReference(name, csvText) {
+      const [response]=await Promise.all([
+        page.waitForResponse(r=>r.request().method()==="PUT" && r.url().includes("/_stcore/upload_file/")),
+        upload.setInputFiles({name,mimeType:"text/csv",buffer:Buffer.from(csvText)}),
+      ]);
+      assert(response.ok(),"Reference fixture upload failed");
+      await page.getByText("参考文件已接收 · "+name,{exact:true}).waitFor();
+    }
+    async function submitReference() {
+      await loadReference("fictional-reference.csv",reference);
+      await input("独立参考记录编号").fill("虚构台架时钟与激励记录");
+      for (const [name,value] of [["最大加速度误差（m/s²）","0.05"],["最大时间误差（ms）","5"],["每个方向的最小激励（m/s²）","1"]])
+        await page.getByRole("spinbutton",{name,exact:true}).fill(value);
+      await click("复核当前标定");
+    }
+    await submitReference();
     await page.getByText(/所选参考点在设定误差内/).waitFor();
     const check = await downloadJson("下载参考复核证据");
     assert.equal(check.configuration.version,1);
     assert.equal(check.status,"within_limits");
     assert.deepEqual(check.pairs.map(pair=>pair.csv_line),[32,33,34]);
     assert.equal(check.metrics.max_time_error_ms,0);
+    assert.equal(check.pairs[0].raw_m_s2,1.4);
+    assert.ok(Math.abs(check.pairs[0].measured_m_s2-2.9)<1e-12);
+    assert.equal(check.reference_sha256,createHash("sha256").update(reference).digest("hex"));
     await page.getByText("下载参考复核证据",{exact:true}).scrollIntoViewIfNeeded();
     await page.screenshot({path:resolve(out,"calibration-reference.png")});
-    await upload.setInputFiles({name:"fictional-offset-reference.csv",mimeType:"text/csv",
-      buffer:Buffer.from(reference.replace("09:30:32Z","09:30:32.020Z"))});
+    await loadReference("fictional-offset-reference.csv",reference.replace("09:30:32Z","09:30:32.020Z"));
     await click("复核当前标定");
     await page.getByText(/至少一个配对点超出设定误差/).waitFor();
     const failedCheck=await downloadJson("下载参考复核证据","fictional-reference-20ms-mismatch.json");
     assert.equal(failedCheck.metrics.max_time_error_ms,20);
+    await loadReference("fictional-wrong-source.csv",reference.replaceAll(sourceHash,"0".repeat(64)));
+    await click("复核当前标定");
+    await page.getByText(/源文件 SHA-256 不匹配/).waitFor();
+    assert.equal(await page.getByRole("button",{name:"下载参考复核证据",exact:true}).count(),0);
+    await loadReference("fictional-reference.csv",reference);
+    await click("复核当前标定");
+    await page.getByText(/所选参考点在设定误差内/).waitFor();
+    await continueTo("分析报告");
+    await page.getByText(/标定复核将附入 PDF.*配置 v1/).waitFor();
+    await click("生成 PDF 分析报告");
+    const [pdf]=await Promise.all([page.waitForEvent("download"),click("下载 PDF 报告")]);
+    await pdf.saveAs(resolve(out,"fictional-integrated-report.pdf"));
+    await page.waitForFunction(()=>{
+      const key=Object.keys(sessionStorage).find(key=>key.startsWith("rail_workspace_v1:"));
+      return key && JSON.parse(sessionStorage.getItem(key)).page==="分析报告" &&
+        new URL(location.href).searchParams.get("rail_resume")==="1";
+    });
+    await page.reload();
+    await page.getByRole("heading",{name:"分析报告",exact:true}).waitFor();
+    await page.getByText(new RegExp(`历史导入 · 车辆 DEMO-001 · 批次 #${batch}$`)).waitFor();
+    assert.equal(await page.getByText(/标定复核将附入 PDF/).count(),0);
+    await continueTo("异常检测");
+    await page.locator(".st-key-run_analysis_bogie_jump button").click();
+    await page.getByText("已定位到所选统计证据的异常样本。",{exact:true}).waitFor();
+    await page.getByText(/CSV 原始起始行 32 · lateral_accel/).waitFor();
+    await page.locator(".st-key-bogie_return_analysis button").click();
     await click("在 Copilot 中分析");
     const chat=page.getByTestId("stChatInputTextArea");
     await chat.fill("查看传感器坐标标定和安装位置");
@@ -144,8 +211,14 @@ base.searchParams.set("embed_options","dark_theme");
     await page.frameLocator("iframe[title*=bogie_viewer]").last().locator("#sensor-overlay text")
       .filter({hasText:"LAB-A-01"}).waitFor();
     // A revised fictional frame mount enables only applicable rigid-frame projections.
-    await page.goto(base.href);
-    await choose("打开历史批次","#1 · demo_run_1.csv");
+    await nav("运行分析");
+    await openSensors("analysis");
+    if (!await input("独立参考记录编号").isVisible())
+      await page.getByText("用独立参考数据复核标定",{exact:true}).click();
+    await submitReference();
+    await page.getByText(/所选参考点在设定误差内/).waitFor();
+    await nav("数据导入");
+    await choose("打开历史批次",batchLabel);
     await openSensors("history");
     await choose("安装部件","左侧 侧梁 · side_beam_l");
     await input("安装位置 [x,y,z]（m）").fill("[0,-1.16,0.98]");
@@ -153,11 +226,17 @@ base.searchParams.set("embed_options","dark_theme");
     await page.getByText("已保存传感器配置版本",{exact:true}).waitFor();
     await page.getByText("查看修改记录",{exact:true}).waitFor();
     await click("分析历史批次 →");
+    await continueTo("分析报告");
+    await page.getByText(/最近一次标定复核与当前批次、范围或配置版本不一致/).waitFor();
+    assert.equal(await page.getByText(/标定复核将附入 PDF/).count(),0);
+    assert.equal(await page.getByRole("button",{name:"下载 PDF 报告",exact:true}).count(),0);
+    await nav("运行分析");
     await openSensors("analysis");
     await click("按此测量轴查看仿真响应");
     await page.getByText("沿登记测量轴的计算响应",{exact:true}).waitFor();
     const projection=await downloadJson("下载投影计算依据");
     assert.equal(projection.configuration.version,2);
+    assert.equal(projection.source_sha256,sourceHash);
     assert.equal(projection.time_basis,"relative_seconds");
     assert.equal(projection.axis_accel_m_s2.length,601);
     assert(projection.axis_accel_m_s2.every(v=>v===0)); // +Y is orthogonal to the calculated +Z acceleration.
@@ -165,7 +244,7 @@ base.searchParams.set("embed_options","dark_theme");
     await page.screenshot({path:resolve(out,"sensor-projection.png")});
     assert.equal(await page.getByTestId("stException").count(),0);
     assert.deepEqual(errors,[]);
-    console.log("Fictional reference and 20 ms mismatch, GLB point and visibility, row 32, evidence, offline Copilot and 601 calculated projections passed.");
+    console.log("CSV import and rejection, missing evidence, wrong digest, v1/v2 mismatch, 20 ms rejection, PDF, refresh, exact replay, offline Copilot and 601 calculated projections passed.");
   } catch(e) {await page.screenshot({path:resolve(out,"failure.png")});throw e;}
   finally {await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

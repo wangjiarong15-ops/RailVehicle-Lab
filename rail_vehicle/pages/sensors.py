@@ -2,16 +2,18 @@
 
 import json
 import sqlite3
+from hashlib import sha256
 from inspect import signature
 
 import streamlit as st
 
-from rail_vehicle.calibration_check import REFERENCE_COLUMNS, check_reference
+from rail_vehicle.calibration_check import REFERENCE_COLUMNS, check_reference, matching_reference, reference_scope
 from rail_vehicle.sensor_evidence import observation, scope_evidence, supports_frame_projection
 from rail_vehicle.sensor_mapping import AXES, CHANNELS, PARTS, STATES, UNITS, registration
 from rail_vehicle.sensor_store import STATE_NAMES, active_channels, channel_inventory, revise, revisions, sensor_snapshot
 
 _LAZY_EXPANDER = "on_change" in signature(st.expander).parameters
+REFERENCE_SESSION_KEY = "sensor_last_reference_check"
 
 
 def read_snapshot(vehicle, batch):
@@ -124,19 +126,23 @@ def _reference_panel(snapshot, channel, samples, key):
     st.download_button("下载参考 CSV 表头", ",".join(REFERENCE_COLUMNS) + "\n",
                        file_name="calibration-reference-template.csv", mime="text/csv", key=key + "_template")
     version = binding["version"]
-    scope = (key, channel, version, digest, samples[0].get("sample_id"), samples[-1].get("sample_id"), len(samples))
+    scope = reference_scope(snapshot, channel, binding, samples)
     form_key = f"{key}_{channel}_v{version}_reference"
-    result_key = "sensor_last_reference_check"
+    reference = st.file_uploader("独立参考 CSV", type=["csv"], max_upload_size=1, key=form_key + "_file")
+    if reference is not None:
+        st.text(f"参考文件已接收 · {reference.name}")
+        saved = matching_reference(st.session_state.get(REFERENCE_SESSION_KEY), snapshot, samples)
+        if saved and saved["channel"] == channel and saved["reference_sha256"] != sha256(reference.getvalue()).hexdigest():
+            st.session_state.pop(REFERENCE_SESSION_KEY, None)
     with st.form(form_key):
         source = st.text_input("独立参考记录编号", max_chars=200)
-        reference = st.file_uploader("独立参考 CSV", type=["csv"])
         limits = st.columns(3)
         acceleration_limit = limits[0].number_input("最大加速度误差（m/s²）", min_value=0.0, value=None)
         time_limit = limits[1].number_input("最大时间误差（ms）", min_value=0.0, value=None)
         excitation = limits[2].number_input("每个方向的最小激励（m/s²）", min_value=0.0, value=None)
         submitted = st.form_submit_button("复核当前标定")
     if submitted:
-        st.session_state.pop(result_key, None)
+        st.session_state.pop(REFERENCE_SESSION_KEY, None)
         if reference is None or None in (acceleration_limit, time_limit, excitation):
             st.error("请选择参考 CSV，并按试验要求填写全部三个阈值。")
             return
@@ -147,11 +153,10 @@ def _reference_panel(snapshot, channel, samples, key):
         except ValueError as exc:
             st.error(str(exc))
             return
-        st.session_state[result_key] = (scope, result)
-    saved = st.session_state.get(result_key)
-    if not saved or saved[0] != scope:
+        st.session_state[REFERENCE_SESSION_KEY] = (scope, result)
+    result = matching_reference(st.session_state.get(REFERENCE_SESSION_KEY), snapshot, samples)
+    if not result or result["channel"] != channel:
         return
-    result = saved[1]
     st.caption(f"本会话最近一次复核 · {binding['serial']} v{version} · {result['reference_record']}")
     if metadata["origin"] == "illustration":
         st.caption("当前传感器配置为虚构教学示意。")
@@ -172,7 +177,7 @@ def _reference_panel(snapshot, channel, samples, key):
                  height=min(220, (metrics["pair_count"] + 1) * 36 + 2))
     st.download_button("下载参考复核证据", json.dumps(result, ensure_ascii=False, allow_nan=False, indent=2),
                        file_name=f"batch-{result['batch_id']}-{channel}-reference-v{version}.json",
-                       mime="application/json", key=form_key + "_download")
+                       mime="application/json", key=form_key + "_download", on_click="ignore")
 
 
 def batch_panel(vehicle, batch, *, key, analysis=None, threshold=None):

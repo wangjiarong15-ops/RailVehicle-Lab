@@ -32,6 +32,7 @@ from reportlab.lib.colors import HexColor
 from rail_vehicle.ai.provider import input_fingerprint
 from rail_vehicle.ai.schemas import AIContractError, has_unverified_claim_scopes, validate_output
 from rail_vehicle.anomaly import EVENT_DURATION_NOTE
+from rail_vehicle.calibration_check import REFERENCE_STATUS
 from rail_vehicle.data_quality import analyze_sampling_times, review_sampling_timestamps
 
 
@@ -239,6 +240,7 @@ def build_analysis_report_data(
     sampling_gap_multiplier: float = 3.0,
     replay_rows: tuple[int, int] | list[int] | None = None,
     report_comparison: dict[str, Any] | None = None,
+    calibration_reference: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Assemble a stable report payload from the current filtered analysis."""
     samples = analysis["samples"]
@@ -280,6 +282,7 @@ def build_analysis_report_data(
         "sample_count": analysis["sample_count"],
         **({"replay_rows": tuple(replay_rows)} if replay_rows is not None else {}),
         **({"report_comparison": report_comparison} if report_comparison is not None else {}),
+        **({"calibration_reference": calibration_reference} if calibration_reference is not None else {}),
         "speed": dict(analysis["speed"]),
         "lateral_accel": dict(analysis["lateral_accel"]),
         "vertical_accel": dict(analysis["vertical_accel"]),
@@ -667,6 +670,30 @@ def generate_analysis_report_pdf(report: dict[str, Any]) -> bytes:
                 "只附已核对的两条观测。三维姿态是示意；参照未超阈值或速度相近，不能证明车辆安全或运行工况相同。",
                 small_style,
             ))
+
+        calibration = report.get("calibration_reference")
+        if calibration:
+            binding = calibration["configuration"]
+            metadata = binding["metadata"]
+            metrics, limits = calibration["metrics"], calibration["limits"]
+            source = "虚构教学示意" if metadata["origin"] == "illustration" else "现场登记配置"
+            story.append(KeepTogether([
+                _paragraph("独立参考标定复核", heading_style),
+                _paragraph(f"{source} · {calibration['channel']} · {binding['serial']} v{binding['version']} · "
+                           f"{REFERENCE_STATUS[calibration['status']]}。", body_style),
+                _paragraph(f"参考记录 {calibration['reference_record']} · {metrics['pair_count']} 个配对点 · "
+                           f"模型测量轴 {calibration['registration']['direction']} · "
+                           f"增益 {metadata['gain']:g} · 偏置 {metadata['bias']:g} m/s^2 · "
+                           f"时基 {metadata['time_basis']} · 时差补偿 {metadata.get('clock_offset_s', 0):g} s。", small_style),
+                _paragraph(f"最大加速度偏差 {metrics['max_acceleration_error_m_s2']:.6g} m/s^2，"
+                           f"设定限值 {limits['max_acceleration_error_m_s2']:g} m/s^2。"
+                           f"最大时间偏差 {metrics['max_time_error_ms']:.6g} ms，"
+                           f"设定限值 {limits['max_time_error_ms']:g} ms。", small_style),
+                _paragraph(f"源 CSV SHA-256　{calibration['source_sha256']}", small_style),
+                _paragraph(f"参考 CSV SHA-256　{calibration['reference_sha256']}", small_style),
+                _paragraph("运行统计与异常定位沿用源 CSV 读数和原时间。复核使用登记的轴向、增益、偏置与时基，"
+                           "结论仅覆盖配对点及设定阈值。逐点原始行号、读数和时差见复核 JSON。", small_style),
+            ]))
 
         sampling = report["sampling_summary"]
         def interval_text(key: str) -> str:

@@ -17,6 +17,29 @@ REFERENCE_COLUMNS = (
 )
 MAX_REFERENCE_BYTES = 512 * 1024
 MAX_REFERENCE_POINTS = 2000
+REFERENCE_STATUS = {
+    "within_limits": "所选参考点在设定误差内",
+    "outside_limits": "至少一个配对点超出设定误差",
+    "insufficient_excitation": "参考数据的双向激励不足",
+}
+
+
+def reference_scope(snapshot, channel, binding, samples):
+    """Identity for the immutable, chronologically ordered batch analysis window."""
+    return (snapshot["vehicle_id"], snapshot["batch_id"], channel, binding["version"],
+            snapshot.get("source_sha256"), samples[0].get("sample_id"), samples[-1].get("sample_id"), len(samples))
+
+
+def matching_reference(saved, snapshot, samples):
+    """Use only a session result for the current source, window and active configuration."""
+    if not saved or not samples:
+        return None
+    scope, evidence = saved
+    channel = evidence["channel"]
+    binding = active_channels(snapshot).get(channel)
+    if binding and scope == reference_scope(snapshot, channel, binding, samples) and binding == evidence["configuration"]:
+        return evidence
+    return None
 
 
 def _reference_points(content, source_digest):

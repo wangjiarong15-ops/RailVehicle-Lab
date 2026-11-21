@@ -604,6 +604,7 @@ def render(*, linked=False):
                 if "bogie_camera_pair" not in st.session_state:
                     st.session_state["bogie_camera_pair"] = token_urlsafe(18)
                 camera_group = st.session_state["bogie_camera_pair"]
+    located_event_channel = None
     if target and requested:
         row = None
         expected = ((DEMO, target["batch_id"]) if fictional else
@@ -624,6 +625,7 @@ def render(*, linked=False):
             else:
                 row = None
         if row is not None:
+            located_event_channel = f"{target['axis']}_accel"
             _seek(track.offsets[row], row)
             st.success("已定位到虚构演示的异常样本。" if fictional else
                        "已定位到所选统计证据的异常样本。")
@@ -718,7 +720,10 @@ def render(*, linked=False):
             snapshot = read_snapshot(selection[1], selection[2])
             bindings = active_channels(snapshot)
             if bindings:
-                channel = st.selectbox("传感器与波形", [None, *bindings], key=f"sensor_replay_{selection[1]}_{selection[2]}",
+                sensor_key = f"sensor_replay_{selection[1]}_{selection[2]}"
+                if located_event_channel is not None:
+                    st.session_state[sensor_key] = located_event_channel if located_event_channel in bindings else None
+                channel = st.selectbox("传感器与波形", [None, *bindings], key=sensor_key,
                                        format_func=lambda c: f"{bindings[c]['serial']} · {CHANNELS[c]}" if c else "全部通道")
                 if channel and bindings[channel]["metadata"].get("mount_status") != "verified":
                     st.caption("安装位置尚未核验。当前通道可查看波形和来源。")

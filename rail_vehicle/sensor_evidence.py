@@ -56,6 +56,7 @@ def project_frame_response(snapshot, channel, version, simulation):
         raise ValueError("轴向投影仅支持单自由度垂向工况。")
     direction = registration(binding["metadata"])["direction"]
     return dict(schema="rail.frame-axis-projection.v1", source="简化动力学计算", vehicle_code=snapshot["vehicle_code"],
+                vehicle_id=snapshot["vehicle_id"], source_sha256=snapshot.get("source_sha256"),
                 batch_id=snapshot["batch_id"], channel=channel, configuration=binding, model_direction=direction,
                 solver_version=simulation["version"], parameters=simulation["parameters"], time_basis="relative_seconds",
                 sample_hz=simulation["sample_hz"], method="a_axis = a_frame_z * direction_model_z",

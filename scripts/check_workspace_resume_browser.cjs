@@ -116,13 +116,17 @@ async function audit(browser, width, height) {
     await sameEvent();
     await saved(page, "异常检测", 1);
 
-    await page.evaluate(() => {
+    // Inject after the old document goes away, before Streamlit can read this tab's checkpoint.
+    await page.addInitScript(() => {
+      if (sessionStorage.getItem("rail_test_corrupt_next_checkpoint") !== "1") return;
+      sessionStorage.removeItem("rail_test_corrupt_next_checkpoint");
       const key = Object.keys(sessionStorage).find(key => key.startsWith("rail_workspace_v1:"));
       const data = JSON.parse(sessionStorage.getItem(key));
       data.page = "AI 智能分析中心";
       data.event[1] = "0".repeat(64);
       sessionStorage.setItem(key, JSON.stringify(data));
     });
+    await page.evaluate(() => sessionStorage.setItem("rail_test_corrupt_next_checkpoint", "1"));
     await page.reload();
     await heading(page, "异常检测").waitFor();
     await page.getByText(/未继续打开旧证据/).waitFor();

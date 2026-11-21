@@ -170,9 +170,11 @@ async function audit(browser, width, height) {
     await sidebar.getByRole("button",{name:/联动分析$/}).click();
     await source.getByText("内置虚构演示",{exact:true}).click();
     await frame.locator("#axle-labels").waitFor({state:"hidden"});
+    await page.locator('[data-testid="stApp"][data-test-script-state="notRunning"]').waitFor();
     const plot = page.locator(".st-key-bogie_curves .js-plotly-plot");
+    await plot.evaluate(node=>node.scrollIntoView({block:"center",behavior:"instant"}));
     const point = plot.locator(".scatterlayer .trace").first().locator("path.point").nth(15);
-    await point.scrollIntoViewIfNeeded();
+    await point.waitFor();
     const box = await point.boundingBox();
     await page.mouse.click(box.x+box.width/2,box.y+box.height/2);
     await page.locator(".st-key-bogie_status_card").getByText(/第 16\/120 条/).waitFor();
