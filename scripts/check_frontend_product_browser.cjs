@@ -114,14 +114,18 @@ async function audit(browser, width, height) {
     const eventWidget = page.locator(".st-key-anomaly_review_event");
     await eventWidget.evaluate((node) => node.scrollIntoView({ block: "center" }));
     const verticalOption = page.getByRole("option", { name: /2\.\s*垂向/ });
-    // The dropdown can dismiss while Streamlit finishes restoring scroll position.
-    // Reopen it once if that happened; the following assertion still requires selection.
-    for (let attempt = 0; attempt < 2; attempt++) {
-      if (await verticalOption.isVisible()) break;
-      await eventWidget.getByRole("button", { name: "Open", exact: true }).click();
-      if (await verticalOption.waitFor({ timeout: 2000 }).then(() => true, () => false)) break;
+    // React may replace the list between visibility and click after a Streamlit rerun.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await waitForRender();
+      if (!await verticalOption.isVisible())
+        await eventWidget.getByRole("button", { name: "Open", exact: true }).click();
+      try {
+        await verticalOption.click({ timeout: 3000 });
+        break;
+      } catch (error) {
+        if (attempt === 2) throw error;
+      }
     }
-    await verticalOption.click();
     await page.getByText("2026-10-09 09:31:10+00:00", { exact: true }).waitFor();
     await waitForRender();
     await open("联动分析", "联动分析");
