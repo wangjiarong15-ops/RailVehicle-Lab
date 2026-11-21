@@ -1,9 +1,10 @@
 """Single-axis accelerometer registration. Vectors are columns; lengths are metres."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta, timezone
 from math import fsum, isfinite
 
 from rail_vehicle.bogie_model_spec import model_contract
+from rail_vehicle.timestamp_utils import parse_iso_timestamp
 
 
 CHANNELS = {"lateral_accel": "横向加速度", "vertical_accel": "垂向加速度"}
@@ -142,7 +143,7 @@ def aligned_time(raw, metadata):
     if metadata.get("clock_status") != "verified" or not raw or not basis or basis == "device_offset" and "clock_offset_s" not in metadata:
         return None
     try:
-        instant = datetime.fromisoformat(raw)
+        instant = parse_iso_timestamp(raw)
         instant = instant.replace(tzinfo=timezone.utc) if instant.tzinfo is None else instant.astimezone(timezone.utc)
         if basis == "device_offset":
             instant += timedelta(seconds=metadata["clock_offset_s"])

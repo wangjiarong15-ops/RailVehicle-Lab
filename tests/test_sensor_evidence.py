@@ -66,6 +66,7 @@ def test_declared_frames_signed_axis_units_and_time():
     assert acceleration_si(1,"g",2,-1) == pytest.approx(9.80665)
     assert acceleration_si(1000,"mm/s²",1,0) == 1
     assert aligned_time("2026-01-01 08:00:00+08:00",META) == "2025-12-31T23:59:59.750000+00:00"
+    assert aligned_time("2026-01-01T00:00:00z",META) == "2025-12-31T23:59:59.750000+00:00"
     assert aligned_time("2026-01-01 00:00:00",{}) is None
     assert aligned_time("2026-01-01 00:00:00",dict(META,clock_status="unverified")) is None
     assert aligned_time("2026-01-01 00:00:00",{"time_basis":"device_offset"}) is None
