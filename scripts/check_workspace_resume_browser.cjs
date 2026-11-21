@@ -118,6 +118,7 @@ async function audit(browser, width, height) {
 
     // Inject after the old document goes away, before Streamlit can read this tab's checkpoint.
     await page.addInitScript(() => {
+      if (window.top !== window) return;
       if (sessionStorage.getItem("rail_test_corrupt_next_checkpoint") !== "1") return;
       sessionStorage.removeItem("rail_test_corrupt_next_checkpoint");
       const key = Object.keys(sessionStorage).find(key => key.startsWith("rail_workspace_v1:"));
