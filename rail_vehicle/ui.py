@@ -29,6 +29,16 @@ def plot_chart(figure, *, config=None, **kwargs):
 
 
 def apply_design():
+    if (not {"light_theme", "dark_theme"}.intersection(st.query_params.get_all("embed_options"))
+            and st.query_params.get(RESUME_PARAM) != "1"):
+        # The browser decides the native palette once per bare URL. Prevent a
+        # first click from being lost if that decision requires a document reload.
+        st.html("""<style>
+        html:not([data-rail-theme]):not(:has([data-testid="stException"])) :is([data-testid="stSidebarUserContent"],[data-testid="stMainBlockContainer"])
+          {visibility:hidden}
+        html:not([data-rail-theme]):not(:has([data-testid="stException"])) [data-testid="stMain"]::before
+          {content:"正在载入工作台…";position:absolute;top:4rem;left:2rem}
+        </style>""")
     # Scope styling to our keyed components and a few stable native test IDs.
     st.html("""<style>
     [data-testid="stMainBlockContainer"] {padding:3.35rem clamp(1rem,2.1vw,2.6rem) 2.25rem;max-width:1840px}
@@ -71,7 +81,7 @@ def initialize_theme():
     """Run after page rendering, avoiding navigation during lazy library imports."""
     # Use documented embed_options theme URLs, not Streamlit's private storage.
     # Only our presentation preference is read/written; no application data.
-    st.html("""<script>(()=>{
+    st.html(r"""<script>(()=>{
     const u=new URL(window.location.href);
     const modes=u.searchParams.getAll('embed_options');
     const explicit=modes.includes('light_theme')?'light':modes.includes('dark_theme')?'dark':null;
@@ -82,7 +92,16 @@ def initialize_theme():
       document.documentElement.style.setProperty('--rv-'+name,value);
     }
     try{localStorage.setItem('rail_vehicle_theme',theme);}catch(e){}
-    if(!explicit){u.searchParams.append('embed_options',theme+'_theme');window.location.replace(u.href);}
+    if(!explicit){
+      u.searchParams.append('embed_options',theme+'_theme');
+      // Streamlit already paints the configured palette on a fresh installation.
+      // Keep the current document and its live widgets when the palette matches.
+      const app=document.querySelector('[data-testid="stApp"]');
+      const rgb=app && getComputedStyle(app).backgroundColor.match(/^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/);
+      const current=rgb ? (.2126*rgb[1]+.7152*rgb[2]+.0722*rgb[3] > 127?'light':'dark') : null;
+      if(current!==theme){window.location.replace(u.href);return;}
+    }
+    document.documentElement.dataset.railTheme=theme;
     })();</script>""".replace("__THEME_TOKENS__", json.dumps(THEME_TOKENS)), unsafe_allow_javascript=True)
 
 

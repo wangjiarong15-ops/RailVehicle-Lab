@@ -13,6 +13,38 @@ const routes = [
   ["spectrum","振动与平稳性分析"], ["fleet","多车辆运行对比"], ["ml","机器学习异常检测"],
   ["cockpit","动态运行驾驶舱"], ["demo","演示中心"], ["demo-analysis","统计与异常演示"],
 ];
+async function checkColdStart(browser, colorScheme) {
+  const page = await browser.newPage({colorScheme});
+  const base = new URL(address);
+  assert.equal(base.hostname,"127.0.0.1");
+  const entries = [];
+  page.on("request",r => {
+    if (r.isNavigationRequest() && r.frame() === page.mainFrame()) entries.push(r.url());
+  });
+  try {
+    await page.goto(base.href);
+    await page.getByTestId("stSidebar").getByRole("button",{name:/AI Copilot$/}).click();
+    await page.getByRole("heading",{name:"RailVehicle Copilot",exact:true}).waitFor();
+    await page.waitForFunction(() => document.documentElement.style.getPropertyValue("--rv-surface") === "#1C293C" &&
+      getComputedStyle(document.querySelector('[data-testid="stApp"]')).backgroundColor === "rgb(11, 18, 32)");
+    if (colorScheme === "dark") assert.equal(entries.length,1,"The active dark palette unnecessarily reloaded");
+    else assert(entries.length <= 2,"The initial palette caused a reload loop");
+    const light = new URL(base);
+    light.searchParams.set("embed_options","light_theme");
+    await page.goto(light.href);
+    await page.waitForFunction(() => localStorage.getItem("rail_vehicle_theme") === "light");
+    const vehicle = new URL(base);
+    vehicle.searchParams.set("rail_page","车辆管理");
+    await page.goto(vehicle.href);
+    await page.getByRole("heading",{name:"车辆参数",exact:true}).waitFor();
+    await page.waitForFunction(() => document.documentElement.style.getPropertyValue("--rv-surface") === "#FFFFFF" &&
+      getComputedStyle(document.querySelector('[data-testid="stApp"]')).backgroundColor === "rgb(241, 245, 250)");
+    console.log(colorScheme+" desktop cold start retained the first navigation and restored light on a deep link.");
+  } catch (error) {
+    await page.screenshot({path:resolve(output,colorScheme+"-cold-start-failure.png")});
+    throw error;
+  } finally {await page.close();}
+}
 async function capture(browser,width,height,theme) {
   const page = await browser.newPage({viewport:{width,height}});
   const errors = [];
@@ -87,6 +119,10 @@ async function capture(browser,width,height,theme) {
   const browser=await chromium.launch({executablePath:process.env.RAIL_BROWSER_PATH,
     args:["--use-angle=swiftshader","--enable-unsafe-swiftshader"]});
   try {
+    if (!baseline) {
+      await checkColdStart(browser,"dark");
+      await checkColdStart(browser,"light");
+    }
     for (const theme of ["dark","light"]) {
       const results=await Promise.allSettled([[1366,768],[1920,1080]].map(([w,h])=>capture(browser,w,h,theme)));
       for(const result of results) if(result.status==="rejected") throw result.reason;
