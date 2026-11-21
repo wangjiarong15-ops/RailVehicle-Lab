@@ -49,6 +49,12 @@
     <div id="workspace">
       <div id="stage">
         <div id="surface"></div>
+        <svg id="sensor-overlay" aria-label="传感器安装点与测量正方向" style="display:none">
+          <defs><marker id="sensor-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+            <path d="M0 0L10 5L0 10Z" fill="#58dfb3"/></marker></defs>
+          <g><line stroke="#58dfb3" stroke-width="3" marker-end="url(#sensor-arrow)"/>
+            <circle r="5" stroke="#102e31" stroke-width="2" fill="#62f0bf"/><text x="8" y="-8"></text></g>
+        </svg>
         <div id="labels" aria-hidden="true"></div>
         <svg id="mount-overlay" aria-hidden="true" style="display:none">
           <line stroke-dasharray="4 3"/>

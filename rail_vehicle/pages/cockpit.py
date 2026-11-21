@@ -75,7 +75,7 @@ def _demo_track() -> ReplayTrack:
 
 
 def build_replay_chart(track: ReplayTrack, index: int, position: float, threshold: float,
-                       *, event_index=None, playhead=False, window=None, seekable=False):
+                       *, event_index=None, playhead=False, window=None, seekable=False, selected_channel=None):
     """Bounded observed samples: trailing while playing, either side when seeking."""
     by_row = window is not None and window.start == window.end
     # At a repeated timestamp, keep rows through the explicitly selected sample only.
@@ -88,13 +88,18 @@ def build_replay_chart(track: ReplayTrack, index: int, position: float, threshol
         last = min(upper, index+500, bisect_right(track.offsets, position+60, lo=index)-1)
     rows = track.samples[first:last + 1]
     x_values = list(range(first + 1, last + 2)) if by_row else track.offsets[first:last + 1]
-    figure = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.09)
     shapes = []
     channels = (
         ("speed_kmh", "速度（km/h）", "#2563eb"),
         ("lateral_accel", "横向加速度（m/s²）", "#0891b2"),
         ("vertical_accel", "垂向加速度（m/s²）", "#7c3aed"),
     )
+    if selected_channel is not None:
+        channels = tuple(c for c in channels if c[0] == selected_channel)
+        if not channels:
+            raise ValueError("未知运行数据通道。")
+    figure = make_subplots(rows=len(channels), cols=1, shared_xaxes=True, vertical_spacing=0.09)
+    suffixes = {field: str(i) if i > 1 else "" for i, (field, _, _) in enumerate(channels, 1)}
     for row_index, (field, label, color) in enumerate(channels, start=1):
         values = [row[field] for row in rows]
         figure.add_trace(go.Scatter(x=x_values, y=values, name=label,
@@ -102,7 +107,7 @@ def build_replay_chart(track: ReplayTrack, index: int, position: float, threshol
                                    mode="markers", marker_size=5 if seekable else 4,
                                    line_color=color), row=row_index, col=1)
         figure.update_yaxes(title_text=label, row=row_index, col=1)
-        if row_index > 1:
+        if field != "speed_kmh":
             abnormal = [i for i, value in enumerate(values) if abs(value) > threshold]
             figure.add_trace(go.Scatter(
                 x=[x_values[i] for i in abnormal], y=[values[i] for i in abnormal],
@@ -111,7 +116,7 @@ def build_replay_chart(track: ReplayTrack, index: int, position: float, threshol
                 name=f"{label}超阈值",
             ), row=row_index, col=1)
             for value in (-threshold, threshold):
-                shapes.append(dict(type="line", xref=f"x{row_index} domain", yref=f"y{row_index}",
+                shapes.append(dict(type="line", xref=f"x{suffixes[field]} domain", yref=f"y{suffixes[field]}",
                                    x0=0, x1=1, y0=value, y1=value, line=dict(dash="dash", color="#dc2626")))
     if by_row:
         spans = ()  # Temporal bands have no width here; the individual flags are still shown.
@@ -121,15 +126,16 @@ def build_replay_chart(track: ReplayTrack, index: int, position: float, threshol
     else:
         spans = event_index.window(track.offsets, first, last, CHART_EVENT_LIMIT)
     for field, start, end in spans:
-        row_index = 2 if field == "lateral_accel" else 3
-        location = dict(xref=f"x{row_index}", yref=f"y{row_index} domain", x0=start, x1=end, y0=0, y1=1)
+        if field not in suffixes:
+            continue
+        location = dict(xref=f"x{suffixes[field]}", yref=f"y{suffixes[field]} domain", x0=start, x1=end, y0=0, y1=1)
         if start == end:
             shapes.append(dict(type="line", **location, line=dict(color="#dc2626"), opacity=.5))
         else:
             shapes.append(dict(type="rect", **location, fillcolor="#dc2626", opacity=.13, line=dict(width=0)))
     if playhead:
         observed = index + 1 if by_row else track.offsets[index]
-        for suffix in ("", "2", "3"):
+        for suffix in suffixes.values():
             shapes.append(dict(type="line", xref=f"x{suffix}", yref=f"y{suffix} domain", x0=observed,
                                x1=observed, y0=0, y1=1, line=dict(color="#39c4ce", dash="dash")))
     if by_row:
@@ -141,8 +147,9 @@ def build_replay_chart(track: ReplayTrack, index: int, position: float, threshol
         x_range = [window.start, window.end] if window else [max(0, position - 60), max(10, position + 1, track.offsets[last])]
         figure.update_xaxes(range=x_range)
         axis_label = "相对运行时间（秒）"
-    figure.update_xaxes(title_text=axis_label, row=3, col=1)
-    figure.update_layout(height=570, showlegend=False, margin=dict(l=20, r=20, t=15, b=20), shapes=shapes)
+    figure.update_xaxes(title_text=axis_label, row=len(channels), col=1)
+    figure.update_layout(height=570 if len(channels)>1 else 280, showlegend=False,
+                         margin=dict(l=20, r=20, t=15, b=20), shapes=shapes)
     if seekable:
         figure.update_layout(clickmode="event+select")
     return figure

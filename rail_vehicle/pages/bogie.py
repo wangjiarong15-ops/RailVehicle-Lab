@@ -19,6 +19,10 @@ from rail_vehicle.demo_data import DEMO_BATCH_IDS, analysis_demo_data
 from rail_vehicle.deployment import demo_source_options
 from rail_vehicle.event_anchor import resolve_event_row
 from rail_vehicle.pages.cockpit import build_replay_chart
+from rail_vehicle.pages.sensors import evidence_panel, read_snapshot
+from rail_vehicle.sensor_mapping import CHANNELS
+from rail_vehicle.sensor_store import active_channels
+from rail_vehicle.sensor_evidence import viewer_sensors
 from rail_vehicle.pages.data_workflow import WORKBENCH_RETURN, analysis_button, render_replay_return, return_to_workbench
 from rail_vehicle.replay import ReplayState, advance_replay, comparison_reference, control_replay, prepare_replay
 from rail_vehicle.replay_evidence import (
@@ -62,14 +66,14 @@ class Inspection:
 
 def _model_view(mode, phase, state, inspection, highlight, height, key, renderer, continuous,
                 *, labels=False, focus=None, exploded=False, export_context=None, reference=False, periodic=False,
-                related_review=(), camera_group=None):
+                related_review=(), camera_group=None, sensors=None):
     camera = dict(height=height, rails=inspection.rails, camera_revision=inspection.camera_revision)
     if renderer == WEBGL:
         render_webgl(mode=mode, phase=phase, state=state, visible=inspection.visible, highlight=highlight,
                      view=inspection.view, focus=focus, labels=labels, exploded=exploded,
                      spread=inspection.spread, continuous=continuous and not exploded, key=key,
                      export_context=export_context, reference=reference, periodic=periodic,
-                     related_review=related_review, camera_group=camera_group, **camera)
+                     related_review=related_review, camera_group=camera_group, sensors=sensors, **camera)
     else:
         plot_chart(build_bogie(mode, phase, inspection.visible, highlight, inspection.view,
                               labels=labels, exploded=exploded, spread=inspection.spread,
@@ -274,7 +278,7 @@ def _load(source, target):
 
 
 def _display(track, duration, threshold, cutoff, teaching, inspection, event_index, show_signals,
-             window, renderer, source, selection, camera_group, speed_tolerance):
+             window, renderer, source, selection, camera_group, speed_tolerance, snapshot=None, channel=None):
     if st.session_state.pop("bogie_curve_moved", False):
         st.rerun(scope="app")
     state = st.session_state[STATE_KEY]
@@ -343,7 +347,8 @@ def _display(track, duration, threshold, cutoff, teaching, inspection, event_ind
                     _model_view(scene.mode, phase, state, inspection, scene.parts, height, "bogie_model",
                                 renderer, scene is not GAP, labels=inspection.labels, focus=inspection.focus,
                                 exploded=inspection.exploded, export_context=export_context, periodic=track is None,
-                                related_review=related_review, camera_group=link_group)
+                                related_review=related_review, camera_group=link_group,
+                                sensors=viewer_sensors(snapshot, channel) if snapshot else None)
                 if compare:
                     with reference:
                         position = track.offsets[reference_row] if reference_row is not None else state.position
@@ -358,7 +363,8 @@ def _display(track, duration, threshold, cutoff, teaching, inspection, event_ind
                         _model_view("正常运行", illustration_phase(position), ref_state, inspection, (), height,
                                     "bogie_reference", renderer, scene is not GAP, reference=True,
                                     export_context=reference_context,
-                                    periodic=track is None, related_review=related_review, camera_group=link_group)
+                                    periodic=track is None, related_review=related_review, camera_group=link_group,
+                                    sensors=viewer_sensors(snapshot, channel) if snapshot and reference_row is not None else None)
                 if reference_row is not None:
                     ref_sample = track.samples[reference_row]
                     st.table([{
@@ -460,9 +466,11 @@ def _display(track, duration, threshold, cutoff, teaching, inspection, event_ind
     if track is not None and show_signals:
         with st.container(border=True, key="bogie_signal_card"):
             st.subheader("运行信号")
+            if channel and sample and not state.playing:
+                evidence_panel(snapshot, channel, sample, threshold, gap=scene is GAP)
             st.caption("青色线为当前观测；红色菱形为超阈值样本。两次采样之间不补算数据。")
             chart = build_replay_chart(track, index, state.position, threshold, event_index=event_index,
-                                       playhead=True, window=window, seekable=not state.playing)
+                                       playhead=True, window=window, seekable=not state.playing, selected_channel=channel)
             if state.playing:
                 plot_chart(chart, width="stretch", key="bogie_curves_live")
             else:
@@ -705,8 +713,19 @@ def render(*, linked=False):
                     st.session_state.pop(f"bogie_event_choice_{direction}", None)
             event_index = cache["index"]
             _event_explorer(track, cache, threshold, state, window)
+        snapshot = channel = None
+        if source == HISTORY and track is not None:
+            snapshot = read_snapshot(selection[1], selection[2])
+            bindings = active_channels(snapshot)
+            if bindings:
+                channel = st.selectbox("传感器与波形", [None, *bindings], key=f"sensor_replay_{selection[1]}_{selection[2]}",
+                                       format_func=lambda c: f"{bindings[c]['serial']} · {CHANNELS[c]}" if c else "全部通道")
+                if channel and bindings[channel]["metadata"].get("mount_status") != "verified":
+                    st.caption("安装位置尚未核验。当前通道可查看波形和来源。")
+            else:
+                st.caption("该批次尚无传感器配置。可在数据导入的历史批次中登记安装位置。")
         with view_slot:
             st.fragment(run_every=(0.15 if track is None else 0.4) if state.playing else None)(_display)(
                 track, duration, threshold, st.session_state.get("bogie_gap_cutoff"),
                 teaching, inspection, event_index, show_signals, window, renderer, source,
-                selection, camera_group, speed_tolerance)
+                selection, camera_group, speed_tolerance, snapshot, channel)

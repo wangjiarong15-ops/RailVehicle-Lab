@@ -21,6 +21,9 @@ from rail_vehicle.copilot.tools import TOOLS, Work
 from rail_vehicle.demo_data import analysis_demo_data
 from rail_vehicle.event_anchor import resolve_event_row
 from rail_vehicle.pages.bogie_link import event_replay_button
+from rail_vehicle.pages.sensors import evidence_panel, read_snapshot
+from rail_vehicle.sensor_evidence import viewer_sensors
+from rail_vehicle.sensor_store import active_channels
 from rail_vehicle.replay import ReplayState, prepare_replay
 from rail_vehicle.run_data import list_batch_samples, list_vehicle_batches
 from rail_vehicle.ui import page_title, plot_chart
@@ -90,6 +93,7 @@ def _source(public):
             sel.get("row_span"),
             handoff["target"].get("scope"),
             preferred_event=handoff.get("evidence_id"),
+            sensors=read_snapshot(v["id"], b["id"]) if origin == "history" else {},
         ), None
     threshold = st.number_input(
         "加速度绝对值阈值（m/s²）", min_value=0.0, value=s.get("cp_threshold", 1.0),
@@ -144,6 +148,7 @@ def _source(public):
             rows[i] if demo else list_batch_samples(v["id"], i),
             threshold,
             batches=tuple(batches),
+            sensors=read_snapshot(v["id"], i) if not demo else {},
         )
 
     return snapshot(chosen), snapshot(other) if other is not None else None
@@ -219,6 +224,7 @@ def _wave(output, data, key):
                 camera_revision=0,
                 height=330,
                 key=key + "_observed",
+                sensors=viewer_sensors(data.sensors, field),
                 export_context=inspection_context(
                     sample=sample, index=cursor, total=len(track.samples), threshold=data.threshold,
                     scene=rule, teaching="", fictional=data.source == "demo", batch_id=data.batch["id"],
@@ -227,6 +233,13 @@ def _wave(output, data, key):
             )
         else:
             st.info("本机三维资源不可用，仍可按样本核查波形。")
+    if data.source in ("history", "upload"):
+        with st.expander("异常样本与传感器证据"):
+            snapshot = data.sensors or dict(vehicle_code=data.vehicle.get("vehicle_code"),
+                                             file_name=data.batch["file_name"], source_sha256=data.batch.get("source_sha256"))
+            evidence_panel(snapshot, field, sample, data.threshold)
+            st.caption(f"规则证据 {eid} · 当前范围样本 {row+1}–{end+1} · CSV 物理行按时间顺序列出")
+            st.json({"event_id": eid, "csv_lines": [s.get("csv_line") for s in track.samples[row:end+1]]}, expanded=False)
     st.caption(
         f"{eid} · {e['start_timestamp']} — {e['end_timestamp']} · 峰值 {e['maximum_absolute_value']:g} m/s²"
     )
@@ -302,8 +315,19 @@ def _turn(turn, work, detail, live_keys):
             if not detail:
                 continue
             key = f"cp_{turn.id}_{i}"
+            if o.provenance:
+                st.download_button("下载计算证据与配置版本", json.dumps(o.provenance, ensure_ascii=False, indent=2),
+                                   file_name="channel-evidence.json", mime="application/json", key=key+"_provenance")
             if o.rows:
                 st.dataframe(o.rows, hide_index=True)
+            if r["tool"] == "sensors" and active_channels(work.data.sensors) and webgl_available():
+                bindings = active_channels(work.data.sensors)
+                field = st.selectbox("查看登记安装点", list(bindings), key=key+"_sensor",
+                                     format_func=lambda f: bindings[f]["serial"]+" · "+f)
+                render_webgl(mode="正常运行", phase=0, state=ReplayState(), visible=PARTS, highlight=(),
+                             view="整体视图", focus=None, labels=False, rails=True, exploded=False, spread=0,
+                             camera_revision=0, continuous=False, height=420, key=key+"_sensor_model",
+                             sensors=viewer_sensors(work.data.sensors, field))
             if o.events:
                 _wave(o, work.data, key)
             if o.plot:

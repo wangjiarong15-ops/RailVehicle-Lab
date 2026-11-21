@@ -20,7 +20,7 @@ def webgl_available():
         "index.html", "viewer.js", "viewer.css", "geometry.js",
         "lighting.js", "camera.js", "camera-link.js", "interaction.js", "motion.js", "model-loader.js",
         "playback-batches.js", "part-browser.js", "measurement.js", "section-plane.js",
-        "inspection-export.js", "view-bookmarks.js", "bookmark-transfer.js", "response-player.js",
+        "inspection-export.js", "view-bookmarks.js", "bookmark-transfer.js", "response-player.js", "sensor-marker.js",
         "vendor/three.module.min.js", "vendor/three.core.min.js",
         "vendor/OrbitControls.js", "vendor/RoomEnvironment.js", "vendor/utils/BufferGeometryUtils.js",
     ))
@@ -28,7 +28,8 @@ def webgl_available():
 
 def render_webgl(*, mode, phase, state, visible, highlight, view, focus, labels, rails,
                  exploded, spread, camera_revision, continuous, height, key, export_context=None, reference=False,
-                 periodic=False, related_review=(), camera_group=None, simulation=None, studio_command=None):
+                 periodic=False, related_review=(), camera_group=None, simulation=None, studio_command=None,
+                 sensors=None):
     # Keep the same widget identity on replay ticks so the orbit camera and scene stay mounted.
     component = declare_component("bogie_viewer", path=str(ASSETS))
     component(
@@ -40,4 +41,5 @@ def render_webgl(*, mode, phase, state, visible, highlight, view, focus, labels,
         replayRunning=state.playing, exportContext=export_context, reference=reference, relatedReview=related_review,
         cameraGroup=camera_group, simulation=simulation, studioCommand=studio_command,
         reviewChannels=REVIEW_CHANNELS if export_context and export_context.get("sample_number") else {},
+        sensors=sensors,
     )

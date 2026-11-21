@@ -1,11 +1,15 @@
 """Parameter controls for the independent vertical response calculation."""
 from dataclasses import replace
+import json
 
 import streamlit as st
 
 from rail_vehicle.bogie import PARTS
 from rail_vehicle.bogie_viewer import render_webgl, webgl_available
+from rail_vehicle.deployment import public_demo_enabled
+from rail_vehicle.pages.sensors import read_snapshot
 from rail_vehicle.replay import ReplayState
+from rail_vehicle.sensor_evidence import project_frame_response
 from rail_vehicle.suspension import SCENARIOS, SuspensionCase, simulate
 
 
@@ -56,6 +60,9 @@ def render_lab(main):
                        "模型以轮座为参考，构架按计算行程移动，一系弹簧与减振器跟随端点。"
                        "参数为教学假设，横移、摇头和轮转为运动学示意。")
         st.caption(notes[scenario] + motion_note)
+        target = st.session_state.get("frame_sensor_target")
+        if target and not public_demo_enabled():
+            _show_projection(target, result)
         with st.expander("计算方法与数值样本"):
             if dual:
                 st.latex(r"m\ddot z=F_B+F_A,\quad I_y\ddot\theta=\tfrac{L}{2}(F_B-F_A)")
@@ -76,3 +83,22 @@ def render_lab(main):
             else:
                 table.update({"支承（m）": c["support_m"], "悬挂行程（m）": c["travel_m"]})
             st.dataframe(table, hide_index=True)
+
+
+def _show_projection(target, result):
+    vehicle, batch, channel, version = target
+    snapshot = read_snapshot(vehicle, batch)
+    try:
+        projection = project_frame_response(snapshot, channel, version, result)
+    except ValueError as exc:
+        st.info(str(exc))
+        return
+    binding = projection["configuration"]
+    st.subheader("沿登记测量轴的计算响应")
+    st.caption(f"{snapshot['vehicle_code']} · 批次 #{batch} · {binding['serial']} · {channel} · v{version}。"
+               "横轴为仿真相对时间，曲线为构架垂向计算加速度在登记轴上的分量。")
+    values = projection["axis_accel_m_s2"]
+    st.line_chart({"仿真时间（s）": [i/projection["sample_hz"] for i in range(len(values))],
+                   "计算轴向加速度（m/s²）": values}, x="仿真时间（s）", y="计算轴向加速度（m/s²）")
+    st.download_button("下载投影计算依据", json.dumps(projection, ensure_ascii=False),
+                       file_name=f"simulation-batch-{batch}-{channel}-v{version}.json", mime="application/json")

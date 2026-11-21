@@ -13,6 +13,7 @@ import {measurement} from "./measurement.js";
 import {sectionPlane} from "./section-plane.js";
 import {exportInspectionPng} from "./inspection-export.js";
 import {viewBookmarks} from "./view-bookmarks.js";
+import {sensorMarker} from "./sensor-marker.js";
 
 async function readAssembly(path) {
   const response = await fetch(path);
@@ -205,6 +206,8 @@ export async function mount() {
     updateShadows();
     invalidate();
   });
+  const drawSensor = sensorMarker(assembly, scene, rig.camera, section);
+  const selectedSensor = state => state?.sensors?.channels.find(s => s.channel === state.sensors.selected);
   function toggleMeasurement() {
     measuring = !measuring;
     clearMeasurement();
@@ -238,6 +241,19 @@ export async function mount() {
     const group = detailed?.parts.get(selection)?.spec.group ?? selection;
     const sample = args.exportContext;
     const hint = document.getElementById("channel-context");
+    const sensor = selectedSensor(args);
+    if (sensor && (!detailed || !selection && !sensor.position)) {
+      hint.textContent = sensor.serial + " · " + sensor.label + " · " +
+        (!detailed ? "兼容模型缺少精细部件定位，可核查通道波形" : "安装位置未知或待核验");
+      return;
+    }
+    const matches = args.sensors?.channels.filter(s => s.part && s.part === selection) ?? [];
+    if (matches.length) {
+      hint.textContent = matches.map(s => s.serial + " · " + s.label + " · v" + s.version +
+        (s.position ? (s.illustration ? " · 示意安装点" : " · 登记安装点") : " · 安装位置待核验") +
+        (s.direction ? " · 已登记测量方向" : " · 模型轴向未知")).join(" / ");
+      return;
+    }
     if (!group || !sample?.sample_number) {hint.textContent = ""; return;}
     const channels = Object.entries(args.reviewChannels ?? {}).filter(([, spec]) => spec.groups.includes(group));
     hint.textContent = channels.length ? sample.source + " · " + sample.sample_kind + " · " +
@@ -403,6 +419,10 @@ export async function mount() {
     renderer.render(scene, rig.camera);
     if (exportPending && !args.replayRunning && !settling) saveInspection();
     picker.labels(args, width, height, isolated);
+    const sensor = selectedSensor(args);
+    const sensorGroup = detailed?.parts.get(sensor?.part)?.spec.group;
+    drawSensor(sensor, (sensorGroup === "轨道参照" ? args.rails : args.visible.includes(sensorGroup)) &&
+      !hidden.has(sensor.part) && (!isolated || isolated === sensor.part), width, height);
     dirty = false;
     // Lightweight diagnostics for checking interaction and renderer performance.
     Object.assign(workbench.dataset, {
@@ -511,12 +531,16 @@ export async function mount() {
     if (isolationEnded) isolated = null;
     const reframe = transition || isolationEnded || !previous || previous.view !== args.view || previous.revision !== args.revision
       || Boolean(previous.spread) !== Boolean(args.spread) || previous.rails !== args.rails;
+    const sensor = selectedSensor(args), lastSensor = selectedSensor(previous);
+    const sensorChanged = sensor?.channel !== lastSensor?.channel || sensor?.version !== lastSensor?.version ||
+      sensor?.serial !== lastSensor?.serial || sensor?.part !== lastSensor?.part;
     const newAppearance = JSON.stringify([
       args.visible, args.highlight, args.focus, args.rails, args.spread, software && detailed && args.playing, review,
     ]);
-    if (transition || newAppearance !== appearance) {
+    if (transition || sensorChanged || newAppearance !== appearance) {
       appearance = newAppearance;
-      const part = transition || !previous || previous.focus !== args.focus ? args.focus : selection;
+      let part = transition || !previous || previous.focus !== args.focus ? args.focus : selection;
+      if (sensorChanged && !review) part = sensor?.position ? sensor.part : args.focus;
       const group = detailed?.parts.get(part)?.spec.group ?? part;
       select(detailed?.parts.has(part) || args.visible.includes(group) ? part : null);
       shadowDirty = true;

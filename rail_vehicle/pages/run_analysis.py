@@ -111,6 +111,8 @@ def _batch_actions(batch_id, vehicles, *, scope):
                     vehicle_id=vehicle_id, batch_id=batch_id, page=ANOMALIES)
     batch_replay_button(replay, label=replay_label, key=f"import_bogie_{suffix}",
                         vehicle_id=vehicle_id, batch_id=batch_id)
+    from rail_vehicle.pages.sensors import batch_panel
+    batch_panel(vehicle_id, batch_id, key=scope)
 
 
 def _render_import_history():
@@ -715,6 +717,9 @@ def _render_dynamics_analysis(*, demo: bool = False, view=ANALYSIS) -> None:
         "evidence_selection": ai_selection,
         "evidence_id": evidence_id,
     }
+    if not demo:
+        from rail_vehicle.pages.sensors import batch_panel
+        batch_panel(vehicle_id, batch_id, key="analysis", analysis=result, threshold=threshold)
     with st.container(border=True):
         st.markdown("**继续处理当前批次**")
         replay, evidence, related = st.columns(3)

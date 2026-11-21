@@ -7,7 +7,7 @@ from contextlib import contextmanager, closing
 from pathlib import Path
 
 from rail_vehicle import db
-from rail_vehicle.sensor_mapping import CHANNELS, registration, validate_metadata
+from rail_vehicle.sensor_mapping import CHANNELS, validate_metadata
 
 
 @contextmanager
@@ -97,8 +97,8 @@ def channel_inventory(snapshot):
         m = rec["metadata"]
         rows.append({"通道": channel, "传感器": rec["serial"], "版本": rec["version"],
                      "部件 ID": m.get("part_id"), "来源凭据": m.get("source"),
-                     "位置": "示意" if m.get("origin") == "illustration" else
-                         "已核验" if registration(m)["position"] is not None else "待核验",
+                     "配置性质": {"illustration": "教学示意", "recorded": "现场记录"}.get(m.get("origin"), "未知"),
+                     "位置": STATE_NAMES[m.get("mount_status", "unknown")],
                      "测量轴": m.get("axis"), "标定": STATE_NAMES[m.get("calibration", "unknown")],
                      "单位": m.get("unit"), "采样率 Hz": m.get("rate_hz"), "时间基准": m.get("time_basis"),
                      "时钟核验": STATE_NAMES[m.get("clock_status", "unknown")]})

@@ -147,6 +147,9 @@ def return_to_evidence():
 
 
 def clear_workbench_navigation(page):
+    from rail_vehicle.ui import SIMULATION
+    if page != SIMULATION:
+        st.session_state.pop("frame_sensor_target", None)
     if page not in (AI, BOGIE):
         st.session_state.pop(WORKBENCH_RETURN, None)
         st.session_state.pop(AI_REPLAY_SCOPE, None)

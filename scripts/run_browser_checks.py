@@ -28,6 +28,7 @@ SUITES = {
     "resume": "check_workspace_resume_browser.cjs",
     "frontend": "check_frontend_product_browser.cjs",
     "interface": "check_interface_browser.cjs",
+    "sensors": "check_sensor_browser.cjs",
 }
 
 
