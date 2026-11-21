@@ -25,6 +25,7 @@ class Dataset:
     replay_scope: object = None
     batches: tuple = ()
     preferred_event: str | None = None
+    sensors: dict = field(default_factory=dict)
     identity: str = field(init=False)
 
     def __post_init__(self):
@@ -33,6 +34,8 @@ class Dataset:
         if not math.isfinite(self.threshold) or self.threshold < 0:
             raise ValueError("阈值须为非负有限数。")
         fields = [self.source, self.vehicle, self.batch, self.threshold, self.row_span, self.rows]
+        if self.sensors:
+            fields.append(self.sensors)
         self.identity = sha256(
             json.dumps(fields, sort_keys=True, default=str, allow_nan=False).encode()
         ).hexdigest()
@@ -60,9 +63,11 @@ def csv_datasets(content, filename, threshold):
     groups = {v["id"]: [] for v in vehicles}
     for row in validated.iter_rows():
         groups[row["vehicle_id"]].append(row)
+    digest = sha256(content).hexdigest()
     return {
         v["vehicle_code"]: Dataset(
-            "upload", v, dict(id=0, file_name=filename[:120]), groups[v["id"]], threshold
+            "upload", v, dict(id=0, file_name=filename[:120], source_sha256=digest),
+            groups[v["id"]], threshold
         )
         for v in vehicles
     }

@@ -2,6 +2,7 @@
 
 import csv
 import io
+from hashlib import sha256
 import math
 import sqlite3
 from collections import Counter
@@ -186,6 +187,14 @@ def _normalize_csv_row(
     )
 
 
+def _numbered_records(reader):
+    end_line = reader.line_num
+    for values in reader:
+        first_line, end_line = end_line + 1, reader.line_num
+        if values and any(value.strip() for value in values):
+            yield first_line, values
+
+
 def _iter_normalized_csv_rows(content: bytes | str, vehicle_ids: dict[str, int]):
     """Yield validated normalized rows; fail closed if the source changed or is malformed."""
     try:
@@ -193,13 +202,11 @@ def _iter_normalized_csv_rows(content: bytes | str, vehicle_ids: dict[str, int])
         headers, header_errors = _read_headers(reader)
         if header_errors or headers is None:
             raise ValueError("CSV 内容与校验结果不一致。")
-        for values in reader:
-            if not values or all(not value.strip() for value in values):
-                continue
+        for first_line, values in _numbered_records(reader):
             row, _raw, row_errors = _normalize_csv_row(values, headers, vehicle_ids)
             if row_errors or row is None:
                 raise ValueError("CSV 内容与校验结果不一致。")
-            yield row
+            yield {**row, "csv_line": first_line}
     except (csv.Error, UnicodeDecodeError):
         raise ValueError("CSV 内容与校验结果不一致。") from None
 
@@ -239,9 +246,7 @@ def validate_run_csv(
         headers, header_errors = _read_headers(reader)
         if headers is None or header_errors:
             return CsvValidationResult([], header_errors, 0)
-        for row_number, values in enumerate(reader, start=2):
-            if not values or all(not value.strip() for value in values):
-                continue
+        for row_number, values in _numbered_records(reader):
             source_row_count += 1
             if error_details_truncated:
                 if len(preview) < PREVIEW_LIMIT:
@@ -332,8 +337,10 @@ def import_run_data(
     try:
         with get_connection(db_path) as connection:
             cursor = connection.execute(
-                "INSERT INTO import_batches (file_name, row_count) VALUES (?, ?)",
-                (Path(file_name).name, validation.source_row_count),
+                "INSERT INTO import_batches (file_name, row_count, source_sha256) VALUES (?, ?, ?)",
+                (Path(file_name).name, validation.source_row_count,
+                 sha256(validation._source_content if isinstance(validation._source_content, bytes)
+                        else validation._source_content.encode("utf-8")).hexdigest()),
             )
             batch_id = int(cursor.lastrowid)
 
@@ -343,13 +350,13 @@ def import_run_data(
                 nonlocal inserted_row_count
                 for row in validation.iter_rows():
                     inserted_row_count += 1
-                    yield {**row, "batch_id": batch_id}
+                    yield {**row, "csv_line": row.get("csv_line"), "batch_id": batch_id}
 
             connection.executemany(
                 """INSERT INTO run_samples
-                   (batch_id, vehicle_id, timestamp, speed_kmh, lateral_accel, vertical_accel)
+                   (batch_id, vehicle_id, timestamp, speed_kmh, lateral_accel, vertical_accel, csv_line)
                    VALUES (:batch_id, :vehicle_id, :timestamp, :speed_kmh,
-                           :lateral_accel, :vertical_accel)""",
+                           :lateral_accel, :vertical_accel, :csv_line)""",
                 rows_for_import(),
             )
             if inserted_row_count != validation.source_row_count:
@@ -394,7 +401,7 @@ def list_vehicle_batches(
     """List import batches containing samples for the selected vehicle."""
     with get_connection(db_path) as connection:
         rows = connection.execute(
-            """SELECT b.id, b.file_name, b.imported_at, COUNT(s.id) AS sample_count
+            """SELECT b.id, b.file_name, b.imported_at, b.source_sha256, COUNT(s.id) AS sample_count
                FROM import_batches AS b
                JOIN run_samples AS s ON s.batch_id = b.id
                WHERE s.vehicle_id = ?
@@ -411,7 +418,7 @@ def list_batch_samples(
     """Fetch one vehicle's samples from a selected import batch."""
     with get_connection(db_path) as connection:
         rows = connection.execute(
-            """SELECT timestamp, speed_kmh, lateral_accel, vertical_accel
+            """SELECT id AS sample_id, timestamp, speed_kmh, lateral_accel, vertical_accel, csv_line
                FROM run_samples
                WHERE vehicle_id = ? AND batch_id = ?
                ORDER BY timestamp, id""",
@@ -482,10 +489,10 @@ def list_batch_sample_window(
             ids = sample_ids[offset:offset + _WINDOW_ID_CHUNK]
             placeholders = ", ".join("?" for _ in ids)
             for row in connection.execute(
-                f"""SELECT id, timestamp, speed_kmh, lateral_accel, vertical_accel
+                f"""SELECT id AS sample_id, timestamp, speed_kmh, lateral_accel, vertical_accel, csv_line
                     FROM run_samples WHERE id IN ({placeholders})""", ids,
             ):
                 sample = dict(row)
-                payload_by_id[sample.pop("id")] = sample
+                payload_by_id[sample["sample_id"]] = sample
         return BatchSampleWindow((first, last), [payload_by_id[sample_id] for sample_id in sample_ids],
                                  first_row=before + 1, batch_count=batch_count)

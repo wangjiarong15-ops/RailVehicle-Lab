@@ -34,6 +34,21 @@ def get_connection(db_path: Path | str = DB_PATH) -> Iterator[sqlite3.Connection
         connection.close()
 
 
+def _add_columns(connection, table, definitions):
+    # Table and column names are constants from the schema below.
+    def columns():
+        return {row["name"] for row in connection.execute(f"PRAGMA table_info({table})")}
+
+    if definitions.keys() <= columns():
+        return
+    if not connection.in_transaction:
+        connection.execute("BEGIN IMMEDIATE")
+    existing = columns()  # Another session might have finished the same upgrade.
+    for name, definition in definitions.items():
+        if name not in existing:
+            connection.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
+
+
 def init_db(db_path: Path | str = DB_PATH) -> None:
     """Create the initial tables if they do not already exist."""
     with get_connection(db_path) as connection:
@@ -54,20 +69,13 @@ def init_db(db_path: Path | str = DB_PATH) -> None:
             """
         )
         # Upgrade databases created by the original scaffold without losing rows.
-        columns = {
-            row["name"] for row in connection.execute("PRAGMA table_info(vehicles)")
-        }
         migrations = {
             "vehicle_length_m": "REAL NOT NULL DEFAULT 0",
             "bogie_count": "INTEGER NOT NULL DEFAULT 0",
             "max_speed_kmh": "REAL NOT NULL DEFAULT 0",
             "notes": "TEXT NOT NULL DEFAULT ''",
         }
-        for name, definition in migrations.items():
-            if name not in columns:
-                connection.execute(
-                    f"ALTER TABLE vehicles ADD COLUMN {name} {definition}"
-                )
+        _add_columns(connection, "vehicles", migrations)
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS import_batches (
@@ -129,12 +137,15 @@ def init_db(db_path: Path | str = DB_PATH) -> None:
             "analysis_type": "TEXT NOT NULL DEFAULT 'single_batch'",
             "data_source": "TEXT NOT NULL DEFAULT 'history'",
         }
-        history_columns = {row["name"] for row in connection.execute("PRAGMA table_info(ai_analysis_history)")}
-        if history_migrations.keys() - history_columns:
-            # Check again after taking the write lock in case another session upgraded first.
-            connection.execute("BEGIN IMMEDIATE")
-            history_columns = {row["name"] for row in connection.execute("PRAGMA table_info(ai_analysis_history)")}
-            for name, definition in history_migrations.items():
-                if name not in history_columns:
-                    connection.execute(f"ALTER TABLE ai_analysis_history ADD COLUMN {name} {definition}")
+        _add_columns(connection, "ai_analysis_history", history_migrations)
         connection.execute("CREATE INDEX IF NOT EXISTS idx_ai_history_type_id ON ai_analysis_history(analysis_type, id)")
+        _add_columns(connection, "import_batches", {"source_sha256": "TEXT"})
+        _add_columns(connection, "run_samples", {"csv_line": "INTEGER"})
+        connection.execute("""CREATE TABLE IF NOT EXISTS sensor_devices (
+            serial TEXT PRIMARY KEY, vehicle_id INTEGER NOT NULL REFERENCES vehicles(id))""")
+        connection.execute("""CREATE TABLE IF NOT EXISTS sensor_revisions (
+            batch_id INTEGER NOT NULL REFERENCES import_batches(id),
+            vehicle_id INTEGER NOT NULL REFERENCES vehicles(id), channel TEXT NOT NULL,
+            version INTEGER NOT NULL, serial TEXT NOT NULL REFERENCES sensor_devices(serial),
+            metadata TEXT, changed_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+            PRIMARY KEY(batch_id,vehicle_id,channel,version))""")

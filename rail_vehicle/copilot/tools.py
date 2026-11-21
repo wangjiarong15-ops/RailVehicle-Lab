@@ -20,6 +20,9 @@ from rail_vehicle.data_quality import review_sampling_timestamps
 from rail_vehicle.dynamics import analyze_run_data
 from rail_vehicle.event_anchor import anchors_by_evidence
 from rail_vehicle.suspension import SCENARIOS, SuspensionCase, simulate
+from rail_vehicle.sensor_mapping import registration
+from rail_vehicle.sensor_store import active_channels, channel_inventory
+from rail_vehicle.sensor_evidence import scope_evidence
 from rail_vehicle.timestamp_utils import parse_iso_timestamp
 from rail_vehicle.vibration import analyze_vibration, VibrationUnavailableError
 
@@ -34,6 +37,7 @@ class Output:
     scene: dict | None = None
     pdf: bytes | None = None
     citations: list = field(default_factory=list)
+    provenance: dict | None = None
 
 
 @dataclass
@@ -115,6 +119,20 @@ def batch_catalog(w):
     )
 
 
+def sensors(w):
+    rows = channel_inventory(w.data.sensors)
+    for row in rows:
+        record = active_channels(w.data.sensors)[row["通道"]]
+        space = registration(record["metadata"])
+        row["车辆系正方向"] = space["vehicle_direction"]
+        row["模型系正方向"] = space["direction"]
+        row["模型安装坐标 m"] = space["position"]
+    if not rows:
+        return Output("当前数据范围没有传感器登记记录。可按 CSV 通道核查异常，安装位置与测量正方向未知。")
+    return Output("已读取当前车辆和批次的传感器版本。正方向为对应坐标系的单位向量。"
+                  "三维位置用于核查安装记录，部件故障仍需独立证据。", rows=rows)
+
+
 def sample_window(w, first, count):
     if first > len(w.data.rows):
         raise ValueError("起始样本超出当前数据范围。")
@@ -130,9 +148,14 @@ def sample_window(w, first, count):
 
 def statistics(w, axis):
     a = w.stats[axis + "_accel"]
+    data = w.data
+    origin = data.sensors or dict(file_name=data.batch["file_name"], source_sha256=data.batch.get("source_sha256"),
+                                  vehicle_code=data.vehicle.get("vehicle_code"),
+                                  batch_id=data.batch["id"] if data.source == "history" else None)
     return Output(
         f"{AXES[axis]}加速度 RMS {a['rms']:.4g} m/s²，绝对峰值 {a['peak_absolute']:.4g} m/s²。",
         (f"metric.accel.{axis}.rms", f"metric.accel.{axis}.peak_absolute"),
+        provenance=scope_evidence(origin, axis+"_accel", w.stats["samples"], a, data.threshold, SOURCE_LABELS[data.source]),
     )
 
 
@@ -332,6 +355,7 @@ class Tool:
 
 
 TOOLS = {
+    "sensors": Tool("查询传感器、坐标标定和安装来源", sensors),
     "vehicle": Tool("读取当前车辆与批次", vehicle),
     "quality": Tool("检查采样质量", quality),
     "batches": Tool("查询车辆批次目录", batch_catalog),

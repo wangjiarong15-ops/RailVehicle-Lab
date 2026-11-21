@@ -48,6 +48,11 @@ def local_plan(prompt, previous=()):
         else:
             ordinal = history.get("review", {}).get("ordinal", 1) + 1
         return validate_plan([call("review", axis=axis, ordinal=ordinal)])
+    if any(k in text for k in ("传感器", "安装位置", "测量方向", "坐标标定", "坐标变换")):
+        steps = [call("sensors")]
+        if "异常" in text or "超阈" in text:
+            steps.append(call("events", axis=axis))
+        return steps
     window = re.search(r"第\s*(\d+)\s*(?:到|至|[-–])\s*(\d+)\s*(?:条|行)", text)
     if window:
         first, last = map(int, window.groups())

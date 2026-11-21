@@ -53,6 +53,9 @@ def prepare_replay(samples: list[dict[str, Any]]) -> ReplayTrack:
         instants.append(timestamp)
         normalized.append({
             "timestamp": timestamp.isoformat(sep=" "),
+            **({"csv_line": sample["csv_line"], "source_time": sample["timestamp"]}
+               if "csv_line" in sample else {}),
+            **({"sample_id": sample["sample_id"]} if "sample_id" in sample else {}),
             **{field: float(sample[field]) for field in
                ("speed_kmh", "lateral_accel", "vertical_accel")},
         })
