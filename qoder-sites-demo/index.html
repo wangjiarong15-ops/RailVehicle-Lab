@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RailVehicle-Lab · 三维转向架演示</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script type="importmap">
+    {"imports": {
+      "three": "./vendor/three.module.min.js",
+      "three/addons/controls/OrbitControls.js": "./vendor/OrbitControls.js",
+      "three/addons/environments/RoomEnvironment.js": "./vendor/RoomEnvironment.js",
+      "three/addons/loaders/GLTFLoader.js": "./vendor/loaders/GLTFLoader.js"
+    }}
+  </script>
+</head>
+<body>
+  <div id="app">
+    <header id="topbar">
+      <div class="brand">
+        <span class="mark"></span>
+        <div class="brand-text">
+          <strong>RailVehicle-Lab</strong>
+          <span>三维转向架交互演示</span>
+        </div>
+      </div>
+      <nav id="modes" role="tablist" aria-label="功能模式">
+        <button type="button" role="tab" data-mode="parts" aria-selected="true">零部件</button>
+        <button type="button" role="tab" data-mode="sensors" aria-selected="false">传感器标记</button>
+        <button type="button" role="tab" data-mode="motion" aria-selected="false">教学动画</button>
+      </nav>
+      <button type="button" id="panel-toggle" aria-controls="panel" aria-expanded="false">信息面板</button>
+    </header>
+
+    <main id="workspace">
+      <section id="stage">
+        <canvas id="scene" aria-label="三维转向架视图，可拖拽旋转、滚轮缩放"></canvas>
+        <div id="sensor-layer" hidden aria-label="传感器测点"></div>
+        <p id="hint">左键拖拽旋转 · 滚轮缩放 · 右键平移 · 点击零件查看详情</p>
+        <div id="loading" role="status">正在载入三维模型…</div>
+        <div id="error" role="alert" hidden>三维视图不可用：模型或 WebGL 加载失败。</div>
+      </section>
+      <aside id="panel" aria-label="信息面板">
+        <div id="panel-body"></div>
+      </aside>
+    </main>
+
+    <footer id="toolbar">
+      <div class="group" role="group" aria-label="视角切换">
+        <button type="button" data-view="home" class="primary">整体</button>
+        <button type="button" data-view="side">侧视</button>
+        <button type="button" data-view="front">正视</button>
+        <button type="button" data-view="top">俯视</button>
+        <button type="button" id="reset-view">重置视角</button>
+        <button type="button" id="auto-rotate" aria-pressed="false">自动旋转</button>
+      </div>
+      <div class="group" id="motion-controls" role="group" aria-label="动画控制" hidden>
+        <select id="scenario" aria-label="动画场景">
+          <option value="normal">正常运行</option>
+          <option value="lateral">横向振动示意</option>
+          <option value="vertical">垂向振动示意</option>
+          <option value="fault">悬挂异常示意</option>
+        </select>
+        <button type="button" id="play" aria-pressed="false">播放</button>
+        <button type="button" id="anim-reset">重置动画</button>
+        <select id="rate" aria-label="播放速度">
+          <option value=".25">0.25×</option><option value=".5">0.5×</option>
+          <option value="1" selected>1×</option><option value="2">2×</option>
+        </select>
+      </div>
+      <div class="group legend"><span><i class="dot"></i>Three.js r180 · 本地模型与库</span></div>
+    </footer>
+  </div>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
