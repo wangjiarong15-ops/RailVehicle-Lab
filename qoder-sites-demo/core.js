@@ -37,7 +37,11 @@ export function buildRig(root, data) {
     layers[id] = layer;
   }
   const parents = {frame: new THREE.Group(), wheel: new THREE.Group(), fixed: new THREE.Group()};
-  root.add(parents.frame, parents.wheel, parents.fixed);
+  // 契约坐标为工程世界系（Z-up）；抵消 root 的 Y-up→Z-up 旋转，pose/links 才能直接按世界坐标驱动
+  const world = new THREE.Group();
+  world.rotation.x = -Math.PI / 2;
+  root.add(world);
+  world.add(parents.frame, parents.wheel, parents.fixed);
 
   const objects = [], spins = [], links = [], partNodes = new Map(), parts = new Map();
   const lower = new THREE.Vector3(), upper = new THREE.Vector3(), direction = new THREE.Vector3();
@@ -49,9 +53,10 @@ export function buildRig(root, data) {
     group.quaternion.setFromUnitVectors(Y_AXIS, direction.divideScalar(length));
     return length;
   }
-  function spinAt(holder, pivot) {
+  function spinAt(holder, pivot, offset) {
     const axle = new THREE.Group();
-    axle.position.set(...pivot);
+    // spin 为绝对工程坐标，holder 已带相对 offset，避免枢轴被叠加两次
+    axle.position.set(pivot[0] - offset[0], pivot[1] - offset[1], pivot[2] - offset[2]);
     holder.add(axle);
     spins.push(axle);
     return axle;
@@ -82,7 +87,7 @@ export function buildRig(root, data) {
     const holder = new THREE.Group();
     parents[spec.parent].add(holder);
     holder.position.set(...spec.offset);
-    (spec.spin ? spinAt(holder, spec.spin) : holder).attach(node);
+    (spec.spin ? spinAt(holder, spec.spin, spec.offset) : holder).attach(node);
   }
 
   const importedLinks = new Map([...parts.values()]
@@ -92,7 +97,7 @@ export function buildRig(root, data) {
     const entry = importedLinks.get(index);
     if (!entry) continue;
     const node = new THREE.Group();
-    root.add(node);
+    world.add(node);
     const start = new THREE.Vector3(...a), end = new THREE.Vector3(...b);
     const length = orient(node, start, end);
     node.attach(entry.node);
@@ -100,7 +105,9 @@ export function buildRig(root, data) {
       // glTF 将 Blender 的 +Y 连杆轴编码为 -Z。
       entry.damperRod.position.z = length - current;
     });
-    links.push({node, a: start, b: end, part: entry.spec.group, id: entry.id, length, slide});
+    // 弹簧随座距压缩/伸长：沿连杆组 +Y（即当前连杆轴）缩放，避免姿态下端部脱开
+    const stretch = kind === "coil" && ((current) => { node.scale.y = current / length; });
+    links.push({node, a: start, b: end, part: entry.spec.group, id: entry.id, length, slide, stretch});
   }
 
   const seatHeight = data.links.find(([, kind]) => kind === "coil")[3][2];
@@ -126,6 +133,7 @@ export function buildRig(root, data) {
         endpoints(link, lower, upper);
         const length = orient(link.node, lower, upper);
         if (link.slide) link.slide(length);
+        if (link.stretch) link.stretch(length);
       }
     },
   };

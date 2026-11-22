@@ -51,7 +51,10 @@ let userMoved = false;
 controls.addEventListener("start", () => { userMoved = true; touchIdle(); });
 
 const pmrem = new THREE.PMREMGenerator(renderer);
-scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+const room = new RoomEnvironment();
+scene.environment = pmrem.fromScene(room, 0.04).texture;
+room.dispose();
+pmrem.dispose();
 scene.add(new THREE.HemisphereLight(0x9fb8d8, 0x1c2a3a, 0.7));
 const key = new THREE.DirectionalLight(0xe8f2ff, 1.6); key.position.set(6, 7, 9); scene.add(key);
 const rim = new THREE.DirectionalLight(0x50d3c3, 0.5); rim.position.set(-7, -5, 4); scene.add(rim);
@@ -262,6 +265,7 @@ function setWorkspace(name) {
     else if (name === "inspect") { setMode(mode === "motion" ? "parts" : mode); applyScenarioAlerts(); }
     else motionControls.hidden = true;
   }
+  dock?.syncDisplay();
   resize();
 }
 document.querySelectorAll("#rail [data-ws]").forEach((b) =>
@@ -287,6 +291,7 @@ panelBody.addEventListener("click", (event) => {
     const on = event.target.getAttribute("aria-pressed") !== "true";
     event.target.setAttribute("aria-pressed", String(on));
     inspector.setGhost(on);
+    dock?.syncDisplay();
   }
 });
 

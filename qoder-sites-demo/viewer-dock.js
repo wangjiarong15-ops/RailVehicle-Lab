@@ -119,6 +119,10 @@ export function createViewerDock({renderer, scene, camera, controls, rig, inspec
 
   return {
     resetAll, syncCamera,
+    syncDisplay() {
+      pressed(wire, !!rig.objects[0]?.material.wireframe);
+      pressed(ghost, inspector.ghosted);
+    },
     state() {
       return {
         key: lights.key.intensity, azimuth: azimuthValue, rim: lights.rim.intensity,
