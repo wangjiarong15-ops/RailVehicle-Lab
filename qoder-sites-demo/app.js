@@ -5,6 +5,7 @@ import {loadBogie, loadViewerData, buildRig} from "./core.js";
 import {createInspector, createSensors} from "./interactions.js";
 import {createAnalysisWorkspace} from "./workspace.js";
 import {createDemoGuide} from "./demo-guide.js";
+import {createViewerDock} from "./viewer-dock.js";
 
 const canvas = document.querySelector("#scene");
 const stage = document.querySelector("#stage");
@@ -54,6 +55,8 @@ scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 scene.add(new THREE.HemisphereLight(0x9fb8d8, 0x1c2a3a, 0.7));
 const key = new THREE.DirectionalLight(0xe8f2ff, 1.6); key.position.set(6, 7, 9); scene.add(key);
 const rim = new THREE.DirectionalLight(0x50d3c3, 0.5); rim.position.set(-7, -5, 4); scene.add(rim);
+const fill = new THREE.DirectionalLight(0xfca549, 0.32); fill.position.set(5, -6, 2.5); scene.add(fill);
+const fog = scene.fog;
 const grid = new THREE.GridHelper(24, 48, 0x34485e, 0x1d3048);
 grid.rotation.x = Math.PI / 2;
 grid.material.transparent = true; grid.material.opacity = .5;
@@ -98,8 +101,34 @@ function focusOn(box) {
   controls.target.copy(center);
 }
 
-let rig = null, inspector = null, sensors = null, data = null, analysis = null, guide = null;
+let rig = null, inspector = null, sensors = null, data = null, analysis = null, guide = null, dock = null;
 let mode = "parts", playing = false, scenario = "normal", workspaceName = "home";
+
+function setAutoRotate(on) {
+  controls.autoRotate = on;
+  if (on) controls.autoRotateSpeed = Number(document.querySelector("#dk-speed").value) || 1.2;
+  document.querySelector("#auto-rotate").setAttribute("aria-pressed", String(on));
+  document.querySelector("#dk-auto").setAttribute("aria-pressed", String(on));
+}
+
+/* static baked contact shadow: one canvas gradient, never recomputed per frame */
+function addContactShadow(size) {
+  const pad = document.createElement("canvas");
+  pad.width = pad.height = 256;
+  const ctx = pad.getContext("2d");
+  const gradient = ctx.createRadialGradient(128, 128, 12, 128, 128, 126);
+  gradient.addColorStop(0, "rgba(0,0,0,.52)");
+  gradient.addColorStop(.6, "rgba(0,0,0,.26)");
+  gradient.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, 256, 256);
+  const shadow = new THREE.Mesh(
+    new THREE.PlaneGeometry(size.x * 1.7, size.y * 1.7),
+    new THREE.MeshBasicMaterial({map: new THREE.CanvasTexture(pad), transparent: true, depthWrite: false, opacity: .7}));
+  shadow.position.set(0, 0, .015);
+  shadow.renderOrder = -1;
+  scene.add(shadow);
+}
 
 function describePart(id) {
   const entry = rig.parts.get(id);
@@ -170,12 +199,15 @@ function setWorkspace(name) {
   const isAnalysis = name === "analysis";
   const isContent = name === "home" || name === "about";
   const is3D = !isContent;
-  barContent.hidden = !isContent;
+  barContent.hidden = !(isContent || name === "motion");
   if (isContent) {
     contentTitle.textContent = name === "home" ? "工作台" : "项目说明";
     contentSub.textContent = name === "home"
       ? "无需 Python · 无需账号 · 无需 API 密钥"
       : "架构 · 双版本区别 · 证据口径";
+  } else if (name === "motion") {
+    contentTitle.textContent = "教学仿真";
+    contentSub.textContent = "工况示意 · 动画控制 · 非实车测量与诊断";
   }
   barInspect.hidden = name !== "inspect";
   barAnalysis.hidden = !isAnalysis;
@@ -300,6 +332,13 @@ function start() {
         describePart,
         openDrawer,
       });
+      addContactShadow(size);
+      dock = createViewerDock({
+        renderer, scene, camera, controls, rig, inspector, grid,
+        lights: {key, rim, fill}, fog,
+        onResize: resize, onResetView: () => setView("home"),
+        onUserCamera: () => { userMoved = true; }, setAutoRotate,
+      });
       showPanel(defaultPanel());
       loading.hidden = true;
       setWorkspace(workspaceName);
@@ -340,11 +379,7 @@ document.querySelectorAll("#toolbar [data-view]").forEach((b) =>
   b.addEventListener("click", () => setView(b.dataset.view)));
 document.querySelector("#reset-view").addEventListener("click", () => setView("home"));
 const autoRotate = document.querySelector("#auto-rotate");
-autoRotate.addEventListener("click", () => {
-  controls.autoRotate = !controls.autoRotate;
-  controls.autoRotateSpeed = 1.2;
-  autoRotate.setAttribute("aria-pressed", String(controls.autoRotate));
-});
+autoRotate.addEventListener("click", () => setAutoRotate(!controls.autoRotate));
 document.querySelectorAll("#modes [data-mode]").forEach((b) =>
   b.addEventListener("click", () => setMode(b.dataset.mode)));
 document.querySelector("#play").addEventListener("click", () => { playing = !playing; updatePlay(); });
@@ -425,7 +460,9 @@ window.__railLab = {
   get rig() { return rig; },
   get inspector() { return inspector; },
   get guide() { return guide; },
+  get dock() { return dock; },
   get workspace() { return workspaceName; },
   get mode() { return mode; },
-  setWorkspace, setMode, renderer, scene, camera,
+  setWorkspace, setMode, renderer, scene, camera, controls, grid,
+  lights: {key, rim, fill},
 };

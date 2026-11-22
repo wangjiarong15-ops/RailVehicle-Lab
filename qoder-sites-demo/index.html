@@ -225,6 +225,7 @@
                   <li><code>analysis.js</code><span>CSV 校验、统计、阈值事件、回放状态机与场景判定（与原 Python 规则同口径）。</span></li>
                   <li><code>charts.js</code><span>Canvas 三通道曲线、超阈值点、事件带、游标与拖拽寻址。</span></li>
                   <li><code>workspace.js</code><span>数据源/统计/事件/证据面板与统一时间轴，驱动曲线与三维同步。</span></li>
+                  <li><code>viewer-dock.js</code><span>视图与渲染控制坞：光照/显示/相机/质量实时调节、恢复默认与 PNG 导出。</span></li>
                   <li><code>app.js</code><span>工作区导航、相机/视角、单一渲染循环与移动端抽屉。</span></li>
                 </ul>
                 <p class="note">纯前端 ES Modules + 本地 vendored Three.js r180，无后端、无 CDN、无新增运行时依赖。</p>
@@ -272,6 +273,59 @@
             <div id="error" role="alert" hidden>
               <span id="error-text">三维视图不可用：模型或 WebGL 加载失败。</span>
               <button type="button" id="error-retry">重试加载</button>
+            </div>
+          </section>
+
+          <section id="view-dock" aria-label="视图与渲染控制">
+            <header class="dock-head">
+              <strong>视图与渲染</strong>
+              <span>实时作用于三维视口</span>
+            </header>
+            <div class="dock-scroll">
+              <div class="dock-group">
+                <h3>光照</h3>
+                <label class="dock-field"><span>主光强度</span><output>1.60</output>
+                  <input id="dk-key" type="range" min="0" max="3" step="0.05" value="1.6"></label>
+                <label class="dock-field"><span>主光方位</span><output>49°</output>
+                  <input id="dk-azimuth" type="range" min="0" max="360" step="1" value="49"></label>
+                <label class="dock-field"><span>轮廓光（青）</span><output>0.50</output>
+                  <input id="dk-rim" type="range" min="0" max="2" step="0.05" value="0.5"></label>
+                <label class="dock-field"><span>环境反射</span><output>1.00</output>
+                  <input id="dk-env" type="range" min="0" max="2" step="0.05" value="1"></label>
+              </div>
+              <div class="dock-group">
+                <h3>显示</h3>
+                <div class="dock-toggles">
+                  <button type="button" id="dk-wire" aria-pressed="false">线框</button>
+                  <button type="button" id="dk-ghost" aria-pressed="false">构架透明</button>
+                  <button type="button" id="dk-grid" aria-pressed="true">网格参照</button>
+                  <button type="button" id="dk-fog" aria-pressed="true">距离雾</button>
+                </div>
+              </div>
+              <div class="dock-group">
+                <h3>相机</h3>
+                <label class="dock-field"><span>观察距离</span><output>— m</output>
+                  <input id="dk-dist" type="range" min="2" max="30" step="0.1" value="6"></label>
+                <label class="dock-field"><span>旋转速度</span><output>1.2×</output>
+                  <input id="dk-speed" type="range" min="0.2" max="4" step="0.1" value="1.2"></label>
+                <div class="dock-toggles">
+                  <button type="button" id="dk-auto" aria-pressed="false">自动旋转</button>
+                </div>
+              </div>
+              <div class="dock-group">
+                <h3>质量</h3>
+                <label class="dock-field select"><span>渲染像素比</span>
+                  <select id="dk-quality" aria-label="渲染像素比">
+                    <option value="1">1.0×（省电）</option>
+                    <option value="1.5">1.5×</option>
+                    <option value="2">2.0×（高清）</option>
+                  </select></label>
+              </div>
+            </div>
+            <div class="dock-actions">
+              <button type="button" id="dk-reset-view">重置视图</button>
+              <button type="button" id="dk-defaults">恢复默认</button>
+              <button type="button" id="dk-export" class="primary">导出 PNG</button>
             </div>
           </section>
 

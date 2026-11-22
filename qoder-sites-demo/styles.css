@@ -657,3 +657,98 @@ summary:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outli
   .start-list li { grid-template-columns: 26px 1fr; }
   .start-list button { grid-column: 2; justify-self: start; }
 }
+
+/* ---------- live viewer control dock (inspect / motion) ---------- */
+#view-dock { display: none; }
+#app[data-workspace="inspect"] #center,
+#app[data-workspace="motion"] #center {
+  display: grid; grid-template-columns: minmax(0, 1fr) 248px;
+  grid-template-rows: minmax(0, 1fr);
+}
+#app[data-workspace="inspect"] #stage,
+#app[data-workspace="motion"] #stage { grid-column: 1; grid-row: 1; }
+#app[data-workspace="inspect"] #view-dock,
+#app[data-workspace="motion"] #view-dock {
+  display: flex; flex-direction: column; min-height: 0;
+  grid-column: 2; grid-row: 1;
+  border-left: 1px solid var(--line);
+  background: linear-gradient(180deg, #122135, #0e1b2c 70%, #0c1826);
+}
+.dock-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  padding: 12px 14px 9px; border-bottom: 1px solid var(--line-soft);
+}
+.dock-head strong { font-size: 13px; color: var(--text); }
+.dock-head span { font-size: 11px; color: var(--dim); }
+.dock-scroll {
+  flex: 1; min-height: 0; overflow-y: auto;
+  padding: 12px 14px 16px; display: flex; flex-direction: column; gap: 15px;
+}
+.dock-group h3 {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .14em;
+  color: var(--dim); margin-bottom: 8px;
+}
+.dock-field {
+  display: grid; grid-template-columns: 1fr auto; align-items: center;
+  gap: 2px 8px; margin-bottom: 9px; font-size: 12px; color: var(--muted);
+}
+.dock-field output {
+  font-family: var(--mono); font-size: 11.5px; color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.dock-field input[type="range"] { grid-column: 1 / -1; width: 100%; height: 18px; appearance: none; background: transparent; cursor: pointer; }
+.dock-field input[type="range"]::-webkit-slider-runnable-track { height: 4px; border-radius: 4px; background: var(--line-soft); }
+.dock-field input[type="range"]::-webkit-slider-thumb {
+  appearance: none; width: 13px; height: 13px; margin-top: -4.5px; border-radius: 50%;
+  background: var(--accent); border: 2px solid #0b1521; box-shadow: 0 0 0 1px var(--accent);
+}
+.dock-field input[type="range"]::-moz-range-track { height: 4px; border-radius: 4px; background: var(--line-soft); }
+.dock-field input[type="range"]::-moz-range-thumb {
+  width: 11px; height: 11px; border-radius: 50%; background: var(--accent); border: 2px solid #0b1521;
+}
+.dock-field.select select {
+  grid-column: 1 / -1; font: inherit; font-size: 12px; color: var(--text);
+  background: #122135; border: 1px solid var(--line); border-radius: 7px; padding: 5px 8px;
+}
+.dock-toggles { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.dock-toggles button {
+  font: inherit; font-size: 12px; cursor: pointer; padding: 6px 8px;
+  color: var(--muted); background: #122135; border: 1px solid var(--line); border-radius: 7px;
+}
+.dock-toggles button:hover { border-color: var(--accent); }
+.dock-toggles button[aria-pressed="true"] {
+  color: var(--accent); background: var(--accent-soft); border-color: var(--accent);
+}
+.dock-actions {
+  flex: none; display: grid; gap: 6px;
+  padding: 10px 14px; border-top: 1px solid var(--line-soft);
+  background: rgba(11, 21, 33, .5);
+}
+.dock-actions button {
+  font: inherit; font-size: 12.5px; cursor: pointer; padding: 7px 10px;
+  color: var(--text); background: #122135; border: 1px solid var(--line); border-radius: 8px;
+}
+.dock-actions button:hover { border-color: var(--accent); }
+.dock-actions button.primary {
+  color: #062024; font-weight: 600; border-color: transparent;
+  background: linear-gradient(135deg, var(--accent), #35b0a2);
+}
+@media (max-width: 1100px) {
+  #app[data-workspace="inspect"] #center,
+  #app[data-workspace="motion"] #center { grid-template-columns: minmax(0, 1fr) 212px; }
+}
+@media (max-width: 720px) {
+  #app[data-workspace="inspect"] #center,
+  #app[data-workspace="motion"] #center { grid-template-columns: 1fr; grid-template-rows: auto auto; }
+  #app[data-workspace="inspect"] #stage,
+  #app[data-workspace="motion"] #stage { grid-column: 1; grid-row: 1; }
+  #app[data-workspace="inspect"] #view-dock,
+  #app[data-workspace="motion"] #view-dock {
+    grid-column: 1; grid-row: 2; border-left: none; border-top: 1px solid var(--line);
+  }
+  .dock-scroll { flex: none; overflow: visible; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .dock-actions {
+    grid-column: 1 / -1; grid-template-columns: repeat(3, 1fr);
+    position: sticky; bottom: 0; z-index: 5; background: #0e1b2c;
+  }
+}

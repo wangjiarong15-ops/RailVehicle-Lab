@@ -66,6 +66,13 @@ export function createInspector(rig, camera, canvas, onSelect) {
     isolate(partId) { isolated = partId; apply(); },
     showAll() { isolated = null; apply(); },
     setGhost(value) { ghost = value; apply(); },
+    get ghosted() { return ghost; },
+    setWireframe(value) {
+      for (const mesh of rig.objects) mesh.userData.original.wireframe = value;
+      for (const pair of finishCache.values())
+        for (const surface of Object.values(pair)) surface.wireframe = value;
+      apply();
+    },
     setAlerts(ids) { alerts.clear(); for (const id of ids) alerts.add(id); apply(); },
     boxOf(partId) {
       const box = new THREE.Box3();
