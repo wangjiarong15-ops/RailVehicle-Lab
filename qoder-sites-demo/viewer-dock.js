@@ -3,14 +3,15 @@
 
 const $ = (selector) => document.querySelector(selector);
 
-export function createViewerDock({renderer, scene, camera, controls, rig, inspector, grid, lights, fog, onResize, onResetView, onUserCamera, setAutoRotate}) {
+export function createViewerDock({renderer, scene, camera, controls, rig, inspector, grid, lights, fog, points, particleCount, sensors, setDrift, onResize, onResetView, onUserCamera, setAutoRotate, onUserInteract}) {
   const key = $("#dk-key"), azimuth = $("#dk-azimuth"), rim = $("#dk-rim"), env = $("#dk-env");
   const dist = $("#dk-dist"), speed = $("#dk-speed"), quality = $("#dk-quality");
+  const particles = $("#dk-particles"), glow = $("#dk-glow");
   const wire = $("#dk-wire"), ghost = $("#dk-ghost"), gridBtn = $("#dk-grid"), fogBtn = $("#dk-fog");
-  const auto = $("#dk-auto"), exportBtn = $("#dk-export");
+  const auto = $("#dk-auto"), driftBtn = $("#dk-drift"), exportBtn = $("#dk-export");
   const out = (input) => input.parentElement.querySelector("output");
-  const DEFAULTS = {key: 1.6, azimuth: 49, rim: .5, env: 1, speed: 1.2};
-  let azimuthValue = DEFAULTS.azimuth;
+  const DEFAULTS = {key: 1.6, azimuth: 49, rim: .5, env: 1, speed: 1.2, particles: .6, glow: .5};
+  let azimuthValue = DEFAULTS.azimuth, driftOn = true;
 
   function paint() {
     out(key).textContent = Number(key.value).toFixed(2);
@@ -19,6 +20,8 @@ export function createViewerDock({renderer, scene, camera, controls, rig, inspec
     out(env).textContent = Number(env.value).toFixed(2);
     out(dist).textContent = `${Number(dist.value).toFixed(1)} m`;
     out(speed).textContent = `${Number(speed.value).toFixed(1)}×`;
+    out(particles).textContent = `${Math.round(Number(particles.value) * 100)}%`;
+    out(glow).textContent = Number(glow.value).toFixed(2);
   }
   function applyLight() {
     lights.key.intensity = Number(key.value);
@@ -26,6 +29,10 @@ export function createViewerDock({renderer, scene, camera, controls, rig, inspec
     lights.key.position.set(Math.cos(rad) * 9.2, Math.sin(rad) * 9.2, 9);
     lights.rim.intensity = Number(rim.value);
     scene.environmentIntensity = Number(env.value);
+  }
+  function applyAtmosphere() {
+    points.geometry.setDrawRange(0, Math.round(particleCount * Number(particles.value)));
+    sensors?.setGlow(Number(glow.value));
   }
   function syncCamera() {
     const d = camera.position.distanceTo(controls.target);
@@ -39,6 +46,8 @@ export function createViewerDock({renderer, scene, camera, controls, rig, inspec
   azimuth.addEventListener("input", () => { azimuthValue = Number(azimuth.value); applyLight(); paint(); });
   rim.addEventListener("input", () => { applyLight(); paint(); });
   env.addEventListener("input", () => { applyLight(); paint(); });
+  particles.addEventListener("input", () => { applyAtmosphere(); paint(); });
+  glow.addEventListener("input", () => { applyAtmosphere(); paint(); });
   dist.addEventListener("input", () => {
     const direction = camera.position.clone().sub(controls.target).normalize();
     camera.position.copy(controls.target).add(direction.multiplyScalar(Number(dist.value)));
@@ -65,7 +74,13 @@ export function createViewerDock({renderer, scene, camera, controls, rig, inspec
     pressed(fogBtn, on); scene.fog = on ? fog : null;
   });
   auto.addEventListener("click", () => setAutoRotate(!controls.autoRotate));
+  driftBtn.addEventListener("click", () => {
+    driftOn = !driftOn;
+    pressed(driftBtn, driftOn); setDrift(driftOn);
+  });
   controls.addEventListener("change", syncCamera);
+  $("#view-dock").addEventListener("input", onUserInteract);
+  $("#view-dock").addEventListener("click", onUserInteract);
 
   $("#dk-reset-view").addEventListener("click", () => { onResetView(); syncCamera(); });
   $("#dk-defaults").addEventListener("click", resetAll);
@@ -84,19 +99,23 @@ export function createViewerDock({renderer, scene, camera, controls, rig, inspec
     key.value = String(DEFAULTS.key); azimuth.value = String(DEFAULTS.azimuth);
     rim.value = String(DEFAULTS.rim); env.value = String(DEFAULTS.env);
     speed.value = String(DEFAULTS.speed);
+    particles.value = String(window.innerWidth <= 720 ? .35 : DEFAULTS.particles);
+    glow.value = String(DEFAULTS.glow);
     azimuthValue = DEFAULTS.azimuth;
     controls.autoRotateSpeed = DEFAULTS.speed;
-    applyLight();
-    for (const [button, on] of [[wire, false], [ghost, false], [gridBtn, true], [fogBtn, true]]) pressed(button, on);
+    applyLight(); applyAtmosphere();
+    for (const [button, on] of [[wire, false], [ghost, false], [gridBtn, true], [fogBtn, true], [driftBtn, true]]) pressed(button, on);
     inspector.setWireframe(false); inspector.setGhost(false);
     grid.visible = true; scene.fog = fog;
+    driftOn = true; setDrift(true);
     setAutoRotate(false);
     renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
     syncQuality(); onResize(); onResetView(); syncCamera(); paint();
   }
 
-  applyLight(); syncQuality(); syncCamera(); paint();
-  pressed(gridBtn, grid.visible); pressed(fogBtn, !!scene.fog);
+  if (window.innerWidth <= 720) particles.value = "0.35";
+  applyLight(); applyAtmosphere(); syncQuality(); syncCamera(); paint();
+  pressed(gridBtn, grid.visible); pressed(fogBtn, !!scene.fog); pressed(driftBtn, driftOn);
 
   return {
     resetAll, syncCamera,
@@ -109,6 +128,7 @@ export function createViewerDock({renderer, scene, camera, controls, rig, inspec
         grid: grid.visible, fog: !!scene.fog,
         auto: controls.autoRotate, speed: controls.autoRotateSpeed,
         quality: renderer.getPixelRatio(),
+        particles: points.geometry.drawRange.count, glow: sensors?.glowLevel ?? 0, drift: driftOn,
       };
     },
   };

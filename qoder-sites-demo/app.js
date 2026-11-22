@@ -48,7 +48,7 @@ controls.dampingFactor = .08;
 controls.minDistance = 2;
 controls.maxDistance = 30;
 let userMoved = false;
-controls.addEventListener("start", () => { userMoved = true; });
+controls.addEventListener("start", () => { userMoved = true; touchIdle(); });
 
 const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
@@ -128,6 +128,33 @@ function addContactShadow(size) {
   shadow.position.set(0, 0, .015);
   shadow.renderOrder = -1;
   scene.add(shadow);
+}
+
+/* ---- atmosphere: drifting dust + idle camera drift (single loop, baked textures) ---- */
+const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const Z_AXIS = new THREE.Vector3(0, 0, 1);
+const PARTICLE_COUNT = 700;
+let atmosphere = null, driftOn = true, lastInteract = performance.now();
+function touchIdle() { lastInteract = performance.now(); }
+function setDrift(on) { driftOn = on; }
+function addAtmosphere() {
+  let seed = 42;
+  const rand = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
+  const positions = new Float32Array(PARTICLE_COUNT * 3);
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    positions[i * 3] = (rand() - .5) * 13;
+    positions[i * 3 + 1] = (rand() - .5) * 13;
+    positions[i * 3 + 2] = rand() * 4.2;
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  const points = new THREE.Points(geometry, new THREE.PointsMaterial({
+    color: 0x82bbf6, size: .035, transparent: true, opacity: .3,
+    blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true,
+  }));
+  points.geometry.setDrawRange(0, Math.round(PARTICLE_COUNT * .6));
+  scene.add(points);
+  return points;
 }
 
 function describePart(id) {
@@ -333,11 +360,13 @@ function start() {
         openDrawer,
       });
       addContactShadow(size);
+      atmosphere = addAtmosphere();
       dock = createViewerDock({
         renderer, scene, camera, controls, rig, inspector, grid,
         lights: {key, rim, fill}, fog,
+        points: atmosphere, particleCount: PARTICLE_COUNT, sensors, setDrift,
         onResize: resize, onResetView: () => setView("home"),
-        onUserCamera: () => { userMoved = true; }, setAutoRotate,
+        onUserCamera: () => { userMoved = true; }, setAutoRotate, onUserInteract: touchIdle,
       });
       showPanel(defaultPanel());
       loading.hidden = true;
@@ -408,6 +437,8 @@ window.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawer(
 
 /* ---- hover feedback for pickable parts ---- */
 let hoverAt = null;
+canvas.addEventListener("pointerdown", touchIdle);
+canvas.addEventListener("wheel", touchIdle, {passive: true});
 canvas.addEventListener("pointermove", (event) => { hoverAt = [event.clientX, event.clientY]; });
 canvas.addEventListener("pointerleave", () => { hoverAt = null; canvas.style.cursor = ""; });
 
@@ -450,6 +481,17 @@ renderer.setAnimationLoop((now) => {
     }
     sensors?.update(stage.clientWidth, stage.clientHeight);
   }
+  if (atmosphere && !reducedMotion) {
+    atmosphere.rotation.z += dt * .012;
+    atmosphere.position.z = Math.sin(now * .00012) * .12;
+  }
+  if (driftOn && !reducedMotion && !controls.autoRotate &&
+      (workspaceName === "inspect" || workspaceName === "motion") &&
+      now - lastInteract > 6000) {
+    const offset = camera.position.clone().sub(controls.target);
+    offset.applyAxisAngle(Z_AXIS, dt * .05);
+    camera.position.copy(controls.target).add(offset);
+  }
   controls.update();
   renderer.render(scene, camera);
 });
@@ -459,6 +501,7 @@ window.__railLab = {
   get analysis() { return analysis; },
   get rig() { return rig; },
   get inspector() { return inspector; },
+  get sensors() { return sensors; },
   get guide() { return guide; },
   get dock() { return dock; },
   get workspace() { return workspaceName; },

@@ -303,6 +303,16 @@
                 </div>
               </div>
               <div class="dock-group">
+                <h3>氛围</h3>
+                <label class="dock-field"><span>尘埃粒子</span><output>60%</output>
+                  <input id="dk-particles" type="range" min="0" max="1" step="0.05" value="0.6"></label>
+                <label class="dock-field"><span>测点辉光</span><output>0.50</output>
+                  <input id="dk-glow" type="range" min="0" max="1" step="0.05" value="0.5"></label>
+                <div class="dock-toggles">
+                  <button type="button" id="dk-drift" aria-pressed="true">待机漂移</button>
+                </div>
+              </div>
+              <div class="dock-group">
                 <h3>相机</h3>
                 <label class="dock-field"><span>观察距离</span><output>— m</output>
                   <input id="dk-dist" type="range" min="2" max="30" step="0.1" value="6"></label>

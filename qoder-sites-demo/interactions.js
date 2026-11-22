@@ -88,20 +88,27 @@ export function createSensors(rig, scene, camera, data, layer, onSelect) {
   scene.add(group);
   const sphere = new THREE.SphereGeometry(.03, 16, 12);
   const inverse = new THREE.Color(0x102e31);
+  const glowMap = makeGlowTexture();
+  let glowLevel = .5;
   const markers = data.sensors.map((sensor) => {
     const node = rig.partNodes.get(sensor.part);
     const body = new THREE.Mesh(sphere, new THREE.MeshBasicMaterial({color: ACCENT}));
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: glowMap, color: ACCENT, transparent: true, opacity: .375,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    }));
+    glow.scale.setScalar(.8);
     const arrows = sensor.channels.map((channel) => new THREE.ArrowHelper(
       new THREE.Vector3(...channel.dir).normalize(), new THREE.Vector3(), .34,
       channel.name.startsWith("横向") ? ACCENT : ALERT, .1, .06));
-    group.add(body, ...arrows);
+    group.add(body, glow, ...arrows);
     const tag = document.createElement("button");
     tag.type = "button";
     tag.className = "sensor-tag";
     tag.textContent = `${sensor.id} · 示意`;
     tag.addEventListener("click", () => onSelect(sensor));
     layer.append(tag);
-    return {sensor, node, body, arrows, tag};
+    return {sensor, node, body, glow, arrows, tag};
   });
   const point = new THREE.Vector3();
   return {
@@ -115,6 +122,7 @@ export function createSensors(rig, scene, camera, data, layer, onSelect) {
       for (const marker of markers) {
         marker.node.getWorldPosition(point);
         marker.body.position.copy(point);
+        marker.glow.position.copy(point);
         marker.arrows.forEach((arrow) => arrow.position.copy(point));
         point.project(camera);
         const offscreen = Math.abs(point.x) > 1 || Math.abs(point.y) > 1 || point.z > 1;
@@ -142,5 +150,28 @@ export function createSensors(rig, scene, camera, data, layer, onSelect) {
         item.marker.tag.style.top = item.y + "px";
       }
     },
+    setGlow(value) {
+      glowLevel = value;
+      for (const marker of markers) {
+        marker.glow.visible = value > 0;
+        marker.glow.material.opacity = value * .75;
+        marker.glow.scale.setScalar(.45 + value * .7);
+      }
+    },
+    get glowLevel() { return glowLevel; },
   };
+}
+
+/* one baked radial halo texture shared by all sensor glow sprites */
+function makeGlowTexture() {
+  const pad = document.createElement("canvas");
+  pad.width = pad.height = 128;
+  const ctx = pad.getContext("2d");
+  const gradient = ctx.createRadialGradient(64, 64, 2, 64, 64, 62);
+  gradient.addColorStop(0, "rgba(255,255,255,.9)");
+  gradient.addColorStop(.35, "rgba(255,255,255,.32)");
+  gradient.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, 128, 128);
+  return new THREE.CanvasTexture(pad);
 }
