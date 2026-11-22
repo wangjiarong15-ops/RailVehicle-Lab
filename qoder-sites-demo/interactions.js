@@ -31,17 +31,20 @@ export function createInspector(rig, camera, canvas, onSelect) {
         : ghost && group === "构架" ? tinted(original, "ghost") : original;
     }
   }
-  function pick(event) {
-    if (!down || Math.hypot(event.clientX - down[0], event.clientY - down[1]) > 6) return;
-    down = null;
+  function raycastId(clientX, clientY) {
     camera.updateMatrixWorld();
     const rect = canvas.getBoundingClientRect();
-    cursor.set(2 * (event.clientX - rect.left) / rect.width - 1,
-      1 - 2 * (event.clientY - rect.top) / rect.height);
+    cursor.set(2 * (clientX - rect.left) / rect.width - 1,
+      1 - 2 * (clientY - rect.top) / rect.height);
     ray.setFromCamera(cursor, camera);
     const hit = ray.intersectObjects(rig.objects, false)
       .find(({object}) => object.userData.group !== "轨道参照" && isShown(object));
-    const id = hit?.object.userData.partId ?? null;
+    return hit?.object.userData.partId ?? null;
+  }
+  function pick(event) {
+    if (!down || Math.hypot(event.clientX - down[0], event.clientY - down[1]) > 6) return;
+    down = null;
+    const id = raycastId(event.clientX, event.clientY);
     selected = id;
     apply();
     onSelect(id);
@@ -59,6 +62,7 @@ export function createInspector(rig, camera, canvas, onSelect) {
     apply,
     get selected() { return selected; },
     select(partId) { selected = partId; apply(); },
+    hover(clientX, clientY) { return raycastId(clientX, clientY); },
     isolate(partId) { isolated = partId; apply(); },
     showAll() { isolated = null; apply(); },
     setGhost(value) { ghost = value; apply(); },
@@ -100,15 +104,35 @@ export function createSensors(rig, scene, camera, data, layer, onSelect) {
     },
     update(width, height) {
       if (!group.visible) return;
+      const placed = [];
       for (const marker of markers) {
         marker.node.getWorldPosition(point);
         marker.body.position.copy(point);
-        marker.arrows.forEach((arrow, index) => arrow.position.copy(point));
+        marker.arrows.forEach((arrow) => arrow.position.copy(point));
         point.project(camera);
         const offscreen = Math.abs(point.x) > 1 || Math.abs(point.y) > 1 || point.z > 1;
         marker.tag.hidden = offscreen;
-        marker.tag.style.left = (point.x + 1) * width / 2 + "px";
-        marker.tag.style.top = (1 - point.y) * height / 2 + "px";
+        if (offscreen) continue;
+        placed.push({
+          marker,
+          x: (point.x + 1) * width / 2,
+          y: (1 - point.y) * height / 2,
+          w: marker.tag.offsetWidth || 70,
+          h: marker.tag.offsetHeight || 24,
+        });
+      }
+      // nudge overlapping labels apart so测点 tags stay readable
+      for (let i = 0; i < placed.length; i++) {
+        for (let j = i + 1; j < placed.length; j++) {
+          const a = placed[i], b = placed[j];
+          const overlapX = Math.abs(a.x - b.x) < (a.w + b.w) / 2;
+          const overlapY = Math.abs(a.y - b.y) < (a.h + b.h) / 2 + 4;
+          if (overlapX && overlapY) b.y = a.y + (a.h + b.h) / 2 + 8;
+        }
+      }
+      for (const item of placed) {
+        item.marker.tag.style.left = item.x + "px";
+        item.marker.tag.style.top = item.y + "px";
       }
     },
   };

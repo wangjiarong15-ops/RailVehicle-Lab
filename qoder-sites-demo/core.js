@@ -8,12 +8,14 @@ export async function loadViewerData() {
   return response.json();
 }
 
-export async function loadBogie() {
+export async function loadBogie(onStage = () => {}) {
   const manager = new THREE.LoadingManager();
   manager.setURLModifier(() => { throw new Error("模型必须为自包含 GLB"); });
   const signal = AbortSignal.timeout(20000);
+  onStage("正在下载三维模型…");
   const asset = await fetch("./bogie.glb", {signal});
   if (!asset.ok) throw new Error(`bogie.glb 请求失败：${asset.status}`);
+  onStage("正在解析装配结构…");
   const {scene} = await new GLTFLoader(manager).parseAsync(await asset.arrayBuffer(), "");
   const root = new THREE.Group();
   root.rotation.x = Math.PI / 2; // glTF 导出的 Y-up 转回工程 Z-up 坐标系

@@ -29,7 +29,7 @@ export function createAnalysisWorkspace({elements, rig, inspector, partIdsForGro
   });
   let dataset = null, state = initialReplayState(), selectedEvent = null;
   let importErrors = [], sourceKind = "demo-1", lastNow = null, lastScene = null;
-  let envelope = [0, 0, 0], scrubbing = false, loadedOnce = false;
+  let envelope = [0, 0, 0], scrubbing = false, loadedOnce = false, lastImport = null;
   const readoutCache = {};
 
   /* ---------- dataset construction ---------- */
@@ -38,6 +38,7 @@ export function createAnalysisWorkspace({elements, rig, inspector, partIdsForGro
     const validation = validateCsv(content);
     if (validation.errors.length || !validation.rows.length) {
       importErrors = validation.errors.length ? validation.errors : ["CSV 中没有可导入的数据行。"];
+      if (window.innerWidth <= 720) openDrawer();
       renderSource();
       return false;
     }
@@ -80,12 +81,15 @@ export function createAnalysisWorkspace({elements, rig, inspector, partIdsForGro
     const response = await fetch(`./assets/demo-run-${index + 1}.csv`);
     if (!response.ok) throw new Error(`演示数据请求失败：${response.status}`);
     const content = await response.text();
-    return buildDataset(content, {name: `虚构演示批次 ${index + 1}（非实测）`, fictional: true, kind: `demo-${index + 1}`});
+    const ok = buildDataset(content, {name: `虚构演示批次 ${index + 1}（非实测）`, fictional: true, kind: `demo-${index + 1}`});
+    if (ok) el.source.value = `demo-${index + 1}`;
+    return ok;
   }
 
   async function importFile(file) {
     if (file.size > MAX_CSV_SIZE_BYTES) {
       importErrors = ["CSV 文件超过 50 MB 大小上限。"];
+      if (window.innerWidth <= 720) openDrawer();
       renderSource();
       return;
     }
@@ -94,11 +98,13 @@ export function createAnalysisWorkspace({elements, rig, inspector, partIdsForGro
       content = new TextDecoder("utf-8", {fatal: true}).decode(await file.arrayBuffer());
     } catch {
       importErrors = ["CSV 文件必须使用 UTF-8 编码（可包含 BOM）。"];
+      if (window.innerWidth <= 720) openDrawer();
       renderSource();
       return;
     }
     const ok = buildDataset(content, {name: file.name, fictional: false, kind: "import"});
     if (ok) {
+      lastImport = dataset;
       let option = el.source.querySelector('option[value="import"]');
       if (!option) {
         option = document.createElement("option");
@@ -220,11 +226,13 @@ export function createAnalysisWorkspace({elements, rig, inspector, partIdsForGro
   function renderAll() { renderSource(); renderStats(); renderEvents(); renderDetail(); }
 
   function renderSource() {
-    const badge = dataset
-      ? (dataset.fictional
-        ? '<span class="badge fiction">虚构演示 · 非实测</span>'
-        : '<span class="badge local">本地导入 · 未上传</span>')
-      : "";
+    const badge = importErrors.length
+      ? '<span class="badge danger">校验未通过 · 未加载</span>'
+      : dataset
+        ? (dataset.fictional
+          ? '<span class="badge fiction">虚构演示 · 非实测</span>'
+          : '<span class="badge local">本地导入 · 未上传</span>')
+        : "";
     el.dataBadge.innerHTML = badge;
     let html = "";
     if (importErrors.length) {
@@ -256,16 +264,20 @@ export function createAnalysisWorkspace({elements, rig, inspector, partIdsForGro
   function renderStats() {
     if (!dataset) { el.secStatsBody.innerHTML = '<p class="note">载入数据后显示统计。</p>'; return; }
     const result = dataset.analysis, threshold = dataset.threshold;
-    const accelRow = (label, stats, exceed) => `
-      <div><dt>${label}</dt><dd>均值 ${num(stats.mean)} · RMS ${num(stats.rms)} m/s²<br>
-      峰值 ${num(stats.peak_signed)} m/s²（${zulu(stats.peak_timestamp)}）<br>
-      超阈值 ${exceed.count} 点 · ${num(exceed.percentage, 1)}%</dd></div>`;
-    el.secStatsBody.innerHTML = `<dl class="kv">
-      <div><dt>速度</dt><dd>均值 ${num(result.speed.mean, 2)} · 范围 ${num(result.speed.minimum, 2)}–${num(result.speed.maximum, 2)} km/h</dd></div>
-      ${accelRow("横向加速度", result.lateral_accel, result.threshold.lateral)}
-      ${accelRow("垂向加速度", result.vertical_accel, result.threshold.vertical)}
-      <div><dt>任一通道超阈值</dt><dd>${result.threshold.either.count} 点 · ${num(result.threshold.either.percentage, 1)}%</dd></div>
-    </dl>
+    const card = (cls, label, value, unit, sub) => `
+      <div class="stat-card ${cls}"><span class="stat-label">${label}</span>
+        <strong class="mono">${value}</strong><span class="stat-unit">${unit}</span>
+        <span class="stat-sub">${sub}</span></div>`;
+    el.secStatsBody.innerHTML = `<div class="stat-cards">
+      ${card("speed", "速度", num(result.speed.mean, 2), "km/h 均值",
+        `范围 ${num(result.speed.minimum, 2)}–${num(result.speed.maximum, 2)}`)}
+      ${card("lateral", "横向加速度", num(result.lateral_accel.peak_signed), "m/s² 峰值",
+        `RMS ${num(result.lateral_accel.rms)} · 超阈值 ${result.threshold.lateral.count} 点`)}
+      ${card("vertical", "垂向加速度", num(result.vertical_accel.peak_signed), "m/s² 峰值",
+        `RMS ${num(result.vertical_accel.rms)} · 超阈值 ${result.threshold.vertical.count} 点`)}
+      ${card("either", "任一通道超阈值", result.threshold.either.count, "点",
+        `${num(result.threshold.either.percentage, 1)}% · 阈值 ${num(threshold)}`)}
+    </div>
     <p class="note">以上由当前样本直接计算，不调用 AI。阈值 |a| > ${num(threshold)} m/s² 由用户设置；统计异常和未超阈值均不构成故障、运行安全或法规结论。</p>`;
   }
 
@@ -411,6 +423,11 @@ export function createAnalysisWorkspace({elements, rig, inspector, partIdsForGro
     const value = el.source.value;
     if (value === "import") {
       if (dataset?.kind === "import") return;
+      if (lastImport) {
+        buildDataset(lastImport.content, {name: lastImport.name, fictional: false, kind: "import"});
+        el.source.value = "import";
+        return;
+      }
       el.csvFile.click();
       return;
     }

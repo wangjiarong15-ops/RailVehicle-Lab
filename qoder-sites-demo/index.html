@@ -16,7 +16,7 @@
   </script>
 </head>
 <body>
-  <div id="app" data-workspace="inspect">
+  <div id="app" data-workspace="home">
     <nav id="rail" aria-label="一级导航">
       <div class="brand">
         <span class="mark" aria-hidden="true">
@@ -31,17 +31,35 @@
         </div>
       </div>
       <div class="rail-nav" role="tablist" aria-label="工作区">
-        <button type="button" role="tab" data-ws="inspect" aria-selected="true">
+        <button type="button" role="tab" data-ws="home" aria-selected="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
-            <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/>
+            <path d="M4 11l8-7 8 7"/><path d="M6 9.5V20h12V9.5"/><path d="M10 20v-6h4v6"/>
           </svg>
-          <span>三维检视</span><em>零部件 · 传感器 · 教学动画</em>
+          <span>工作台</span><em>定位 · 快速开始 · 能力边界</em>
         </button>
         <button type="button" role="tab" data-ws="analysis" aria-selected="false">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
             <path d="M4 4v16h16"/><path d="M7 14l3.5-4 3 2.5L19 6"/><circle cx="15.5" cy="9.5" r="1.4" fill="currentColor" stroke="none"/>
           </svg>
           <span>运行分析</span><em>CSV · 异常事件 · 同步回放</em>
+        </button>
+        <button type="button" role="tab" data-ws="inspect" aria-selected="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+            <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/>
+          </svg>
+          <span>三维转向架</span><em>零部件 · 传感器标记</em>
+        </button>
+        <button type="button" role="tab" data-ws="motion" aria-selected="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+            <path d="M3 12h3l2.5-6 4 12L15 12h6"/><circle cx="12" cy="12" r="9" opacity=".35"/>
+          </svg>
+          <span>教学仿真</span><em>工况示意 · 动画控制</em>
+        </button>
+        <button type="button" role="tab" data-ws="about" aria-selected="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+            <circle cx="12" cy="12" r="9"/><path d="M12 10.5V17"/><circle cx="12" cy="7.6" r="1.1" fill="currentColor" stroke="none"/>
+          </svg>
+          <span>项目说明</span><em>架构 · 双版本 · 证据口径</em>
         </button>
       </div>
       <div class="rail-foot">
@@ -52,11 +70,14 @@
 
     <div id="main">
       <header id="topbar">
-        <div class="bar-context" id="bar-inspect">
+        <div class="bar-context" id="bar-content">
+          <strong id="content-title">工作台</strong>
+          <span class="bar-sub" id="content-sub">无需 Python · 无需账号 · 无需 API 密钥</span>
+        </div>
+        <div class="bar-context" id="bar-inspect" hidden>
           <nav id="modes" role="tablist" aria-label="功能模式">
             <button type="button" role="tab" data-mode="parts" aria-selected="true">零部件</button>
             <button type="button" role="tab" data-mode="sensors" aria-selected="false">传感器标记</button>
-            <button type="button" role="tab" data-mode="motion" aria-selected="false">教学动画</button>
           </nav>
         </div>
         <div class="bar-context" id="bar-analysis" hidden>
@@ -82,15 +103,176 @@
         <button type="button" id="panel-toggle" aria-controls="panel" aria-expanded="false">信息面板</button>
       </header>
 
+      <div id="demo-guide" hidden role="region" aria-label="三分钟演示导览">
+        <div class="guide-head">
+          <span class="guide-index mono" id="guide-index">1 / 7</span>
+          <strong id="guide-title">了解系统定位</strong>
+        </div>
+        <p id="guide-text"></p>
+        <div class="guide-actions">
+          <button type="button" id="guide-prev">上一步</button>
+          <button type="button" id="guide-next" class="primary">下一步</button>
+          <button type="button" id="guide-reset">重置演示</button>
+          <button type="button" id="guide-exit">退出导览</button>
+        </div>
+      </div>
+
       <main id="workspace">
         <section id="center">
+          <section id="home" class="content-page" aria-label="工作台首页">
+            <div class="home-hero">
+              <div class="hero-copy">
+                <span class="eyebrow">轨道车辆智能分析 · 浏览器在线参赛版</span>
+                <h1>把转向架的<span class="hl-a">三维结构</span>与<span class="hl-b">运行数据证据</span>放在同一块屏幕上。</h1>
+                <p class="lead">RailVehicle-Lab 面向轨道车辆转向架的工程教学与运行数据分析。在线版在浏览器本地解析运行 CSV，把超阈值异常定位到原始数据行号，并用三维教学回放解释相关结构——全程无需 Python、账号或 API 密钥。</p>
+                <div class="hero-cta">
+                  <button type="button" id="home-demo" class="cta-primary">体验示例数据</button>
+                  <button type="button" id="home-guide" class="cta-guide">开始三分钟演示</button>
+                  <button type="button" id="home-import" class="cta-ghost">导入我的 CSV</button>
+                </div>
+                <div class="hero-chips">
+                  <span class="badge fiction">默认示例为虚构教学数据 · 非实测</span>
+                  <span class="badge local">本地计算 · 无云端上传</span>
+                </div>
+              </div>
+              <div class="hero-visual" aria-hidden="true">
+                <svg viewBox="0 0 320 240" fill="none">
+                  <defs>
+                    <linearGradient id="hg-frame" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0" stop-color="#82bbf6"/><stop offset="1" stop-color="#50d3c3"/>
+                    </linearGradient>
+                    <radialGradient id="hg-glow" cx=".5" cy=".45" r=".6">
+                      <stop offset="0" stop-color="rgba(80,211,195,.28)"/><stop offset="1" stop-color="rgba(80,211,195,0)"/>
+                    </radialGradient>
+                  </defs>
+                  <rect width="320" height="240" fill="url(#hg-glow)"/>
+                  <g stroke="#1d3048" stroke-width="1">
+                    <path d="M0 60h320M0 120h320M0 180h320M60 0v240M160 0v240M260 0v240"/>
+                  </g>
+                  <g class="hg-scan"><rect x="0" y="0" width="320" height="26" fill="rgba(130,187,246,.10)"/></g>
+                  <rect x="70" y="70" width="180" height="46" rx="8" stroke="url(#hg-frame)" stroke-width="2.5" fill="rgba(130,187,246,.08)"/>
+                  <path d="M96 116v22M224 116v22M160 116v18" stroke="#50d3c3" stroke-width="2"/>
+                  <path d="M92 138h8M220 138h8" stroke="#fca549" stroke-width="2"/>
+                  <circle cx="96" cy="160" r="24" stroke="#82bbf6" stroke-width="2.5" fill="rgba(130,187,246,.06)"/>
+                  <circle cx="224" cy="160" r="24" stroke="#82bbf6" stroke-width="2.5" fill="rgba(130,187,246,.06)"/>
+                  <circle cx="96" cy="160" r="6" stroke="#50d3c3" stroke-width="2"/>
+                  <circle cx="224" cy="160" r="6" stroke="#50d3c3" stroke-width="2"/>
+                  <path d="M40 196h240" stroke="#34485e" stroke-width="2"/>
+                  <path d="M60 196l-8 12M120 196l-8 12M180 196l-8 12M240 196l-8 12" stroke="#1d3048" stroke-width="2"/>
+                  <g class="hg-pulse"><circle cx="160" cy="93" r="5" fill="#ff7a6b"/></g>
+                  <path d="M160 93l40-34h44" stroke="#ff7a6b" stroke-width="1.4" stroke-dasharray="3 3"/>
+                  <text x="248" y="52" fill="#fca549" font-size="11" font-family="Consolas,monospace">|a| &gt; 阈值</text>
+                  <text x="76" y="62" fill="#7d92a8" font-size="10" font-family="Consolas,monospace">构架 · 一系悬挂 · 轮对</text>
+                </svg>
+              </div>
+            </div>
+
+            <div class="home-grid">
+              <section class="home-card">
+                <h2>三步开始体验</h2>
+                <ol class="start-list">
+                  <li><b>1</b><div><strong>载入示例或你的 CSV</strong><span>示例为明确标记的虚构教学数据；导入仅在浏览器本地解析。</span></div><button type="button" data-go="demo">体验示例</button></li>
+                  <li><b>2</b><div><strong>点击一项异常事件</strong><span>时间轴与曲线游标自动定位到起始样本，并显示原始 CSV 行号。</span></div><button type="button" data-go="event">看异常定位</button></li>
+                  <li><b>3</b><div><strong>观察三维教学回放与证据</strong><span>相关结构高亮、预设教学动画同步；证据面板给出规则与工程局限。</span></div><button type="button" data-go="evidence">看证据说明</button></li>
+                </ol>
+              </section>
+
+              <section class="home-card wide">
+                <h2>能力边界：在线演示 vs 本地工程完整版</h2>
+                <table class="cap-table">
+                  <thead><tr><th>能力</th><th>在线参赛版</th><th>本地完整版（Python/Streamlit）</th></tr></thead>
+                  <tbody>
+                    <tr><td>三维零件检视 / 传感器示意 / 教学动画</td><td class="yes">支持</td><td class="yes">支持</td></tr>
+                    <tr><td>CSV 本地解析 · 统计与阈值异常事件</td><td class="yes">支持</td><td class="yes">支持</td></tr>
+                    <tr><td>原始行号证据 · 统一时间轴三维同步回放</td><td class="yes">支持</td><td class="yes">支持</td></tr>
+                    <tr><td>传感器登记台账 · 增益/偏置/坐标转换（B 类）</td><td class="no">未应用</td><td class="yes">支持</td></tr>
+                    <tr><td>数据库持久化 · 校准检查 · 工程 intake</td><td class="no">无</td><td class="yes">支持</td></tr>
+                    <tr><td>批量 / 车队对比 · 工程报告导出 · ML/AI 辅助</td><td class="no">无</td><td class="yes">支持</td></tr>
+                  </tbody>
+                </table>
+                <p class="note">在线版刻意不伪造本地版才有的登记、校准与报告能力；界面所有统计均由浏览器内真实计算得出。</p>
+              </section>
+
+              <section class="home-card">
+                <h2>证据与诚实性口径</h2>
+                <div class="categories">
+                  <div class="cat on"><b>A</b><span>原始测量数据：在线版为明确标记的虚构演示值，或用户本地导入（不上传）。</span></div>
+                  <div class="cat off"><b>B</b><span>登记配置转换：在线版无传感器台账，未做增益/偏置/坐标转换。</span></div>
+                  <div class="cat on"><b>C</b><span>三维示意运动：预设教学动画随事件同步，非加速度积分重建的实车运动。</span></div>
+                </div>
+                <p class="note">统计异常仅表示 |a| 超过用户设定阈值，不构成零件损坏、运行安全或法规结论。<button type="button" class="link-btn" data-go="about">阅读完整项目说明 →</button></p>
+              </section>
+            </div>
+          </section>
+
+          <section id="about" class="content-page" hidden aria-label="项目说明">
+            <header class="about-head">
+              <span class="eyebrow">项目说明</span>
+              <h1>RailVehicle-Lab：可溯源的转向架工程教学与分析平台</h1>
+              <p class="lead">同一套工程模型契约与异常判定规则，驱动浏览器在线参赛版与本地 Python/Streamlit 工程完整版。在线版把"数据 → 证据 → 三维解释"的闭环搬到评委无需安装任何环境即可操作的公网页面。</p>
+            </header>
+            <div class="about-grid">
+              <section class="home-card">
+                <h2>它解决什么问题</h2>
+                <p>传统运行数据分析里，曲线上的一个尖峰很难回答"对应哪一行原始数据、关联哪个结构、是否足以构成结论"。RailVehicle-Lab 把异常事件锚定到原始 CSV 行号与 UTC 时间戳，给出判定规则、峰值观测表与相关结构示意，并明确声明证据不足以支撑诊断结论。</p>
+                <p>教学侧则用真实 GLB 装配模型展示零部件、传感器测点方向与工况示意动画，帮助理解转向架机械结构，而非用虚构几何冒充工程模型。</p>
+              </section>
+              <section class="home-card">
+                <h2>技术架构（在线版）</h2>
+                <ul class="arch-list">
+                  <li><code>core.js</code><span>加载自包含 GLB 与 viewer-data 契约，重建 layer/holder/spin/link 装配 rig。</span></li>
+                  <li><code>interactions.js</code><span>射线拾取零件、高亮/隔离/透明、传感器测点与方向箭头投影。</span></li>
+                  <li><code>analysis.js</code><span>CSV 校验、统计、阈值事件、回放状态机与场景判定（与原 Python 规则同口径）。</span></li>
+                  <li><code>charts.js</code><span>Canvas 三通道曲线、超阈值点、事件带、游标与拖拽寻址。</span></li>
+                  <li><code>workspace.js</code><span>数据源/统计/事件/证据面板与统一时间轴，驱动曲线与三维同步。</span></li>
+                  <li><code>app.js</code><span>工作区导航、相机/视角、单一渲染循环与移动端抽屉。</span></li>
+                </ul>
+                <p class="note">纯前端 ES Modules + 本地 vendored Three.js r180，无后端、无 CDN、无新增运行时依赖。</p>
+              </section>
+              <section class="home-card wide">
+                <h2>Python 完整版与 Qoder Sites 版的区别</h2>
+                <table class="cap-table">
+                  <thead><tr><th>维度</th><th>本地完整版</th><th>在线参赛版</th></tr></thead>
+                  <tbody>
+                    <tr><td>运行环境</td><td>Python + Streamlit + 本地数据库</td><td>静态站点 + 浏览器本地计算</td></tr>
+                    <tr><td>数据登记 / 校准（B 类）</td><td>engineering_intake / calibration_check</td><td>未应用（无台账）</td></tr>
+                    <tr><td>持久化 / 报告</td><td>db / analysis_report / fleet_report</td><td>无持久化，会话内计算</td></tr>
+                    <tr><td>异常判定口径</td><td>anomaly / event_anchor</td><td>analysis.js 同口径移植，基线测试对齐</td></tr>
+                    <tr><td>三维模型</td><td>同一 bogie.glb 契约</td><td>同一 bogie.glb 契约</td></tr>
+                  </tbody>
+                </table>
+              </section>
+              <section class="home-card">
+                <h2>真实限制与后续路线</h2>
+                <ul class="plain-list">
+                  <li>三维运动为预设教学示意（类别 C），未做加速度积分重建；缺乏积分初始条件与校准数据。</li>
+                  <li>在线版无传感器登记台账，未做增益/偏置/坐标转换。</li>
+                  <li>统计异常不等于故障诊断；不构成运行安全或法规结论。</li>
+                  <li>路线：登记台账接入、校准流程在线化、更多批次对比与报告导出（先在本地完整版验证）。</li>
+                </ul>
+              </section>
+              <section class="home-card">
+                <h2>资源与复现</h2>
+                <ul class="plain-list">
+                  <li>公网参赛版：<span class="mono">https://railvehicle-bogie-d1j7uxpvtu6.qoder.zone/</span></li>
+                  <li>源码仓库：<span class="mono">github.com/wangjiarong15-ops/RailVehicle-Lab</span>（分支 codex/project-evolution）</li>
+                  <li>本地完整版：<code>streamlit run app.py</code>（需 Python 环境，见仓库 README）。</li>
+                  <li>规则基线：<code>qoder-sites-demo/tests/expected.json</code> 由原 Python 规则生成，浏览器测试逐一对齐。</li>
+                </ul>
+              </section>
+            </div>
+          </section>
+
           <section id="stage">
             <canvas id="scene" aria-label="三维转向架视图，可拖拽旋转、滚轮缩放"></canvas>
             <div id="sensor-layer" hidden aria-label="传感器测点"></div>
             <div id="scene-chip" hidden role="status"></div>
             <p id="hint">左键拖拽旋转 · 滚轮缩放 · 右键平移 · 点击零件查看详情</p>
             <div id="loading" role="status">正在载入三维模型…</div>
-            <div id="error" role="alert" hidden>三维视图不可用：模型或 WebGL 加载失败。</div>
+            <div id="error" role="alert" hidden>
+              <span id="error-text">三维视图不可用：模型或 WebGL 加载失败。</span>
+              <button type="button" id="error-retry">重试加载</button>
+            </div>
           </section>
 
           <section id="charts" hidden aria-label="运行曲线">
@@ -184,6 +366,7 @@
       </footer>
     </div>
   </div>
+
   <div id="drawer-scrim" aria-hidden="true"></div>
   <script type="module" src="./app.js"></script>
 </body>

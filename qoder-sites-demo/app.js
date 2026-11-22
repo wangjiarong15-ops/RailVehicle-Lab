@@ -4,18 +4,28 @@ import {RoomEnvironment} from "three/addons/environments/RoomEnvironment.js";
 import {loadBogie, loadViewerData, buildRig} from "./core.js";
 import {createInspector, createSensors} from "./interactions.js";
 import {createAnalysisWorkspace} from "./workspace.js";
+import {createDemoGuide} from "./demo-guide.js";
 
 const canvas = document.querySelector("#scene");
 const stage = document.querySelector("#stage");
 const panelBody = document.querySelector("#panel-body");
 const loading = document.querySelector("#loading");
 const errorBox = document.querySelector("#error");
+const errorText = document.querySelector("#error-text");
 const hint = document.querySelector("#hint");
 const motionControls = document.querySelector("#motion-controls");
 const sensorLayer = document.querySelector("#sensor-layer");
 const app = document.querySelector("#app");
 const barInspect = document.querySelector("#bar-inspect");
 const barAnalysis = document.querySelector("#bar-analysis");
+const barContent = document.querySelector("#bar-content");
+const contentTitle = document.querySelector("#content-title");
+const contentSub = document.querySelector("#content-sub");
+const homeSection = document.querySelector("#home");
+const aboutSection = document.querySelector("#about");
+const panel = document.querySelector("#panel");
+const panelToggle = document.querySelector("#panel-toggle");
+const toolbar = document.querySelector("#toolbar");
 const analysisPanel = document.querySelector("#analysis-panel");
 const chartsSection = document.querySelector("#charts");
 const timeline = document.querySelector("#timeline");
@@ -36,6 +46,8 @@ controls.enableDamping = true;
 controls.dampingFactor = .08;
 controls.minDistance = 2;
 controls.maxDistance = 30;
+let userMoved = false;
+controls.addEventListener("start", () => { userMoved = true; });
 
 const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
@@ -48,10 +60,20 @@ grid.material.transparent = true; grid.material.opacity = .5;
 scene.add(grid);
 
 const viewAnim = {from: null, to: null, t: 1, radius: 5, center: new THREE.Vector3(0, 0, .8)};
+function homeSpot(scale = 1) {
+  const r = viewAnim.radius;
+  return new THREE.Vector3(r * 1.4, -r * 1.5, r * .85).multiplyScalar(scale);
+}
+function aspectScale() {
+  const {clientWidth: w, clientHeight: h} = stage;
+  if (!w || !h) return 1;
+  const aspect = w / h;
+  return aspect < 1 ? Math.min(1 / aspect, 1.6) : 1;
+}
 function setView(name) {
   const r = viewAnim.radius, c = viewAnim.center;
   const spots = {
-    home: new THREE.Vector3(r * 1.4, -r * 1.5, r * .85),
+    home: homeSpot(aspectScale()),
     side: new THREE.Vector3(0.05, -r * 2.6, r * .25),
     front: new THREE.Vector3(r * 2.6, 0.05, r * .25),
     top: new THREE.Vector3(0.05, 0.05, r * 2.8),
@@ -76,8 +98,8 @@ function focusOn(box) {
   controls.target.copy(center);
 }
 
-let rig = null, inspector = null, sensors = null, data = null, analysis = null;
-let mode = "parts", playing = false, scenario = "normal", workspaceName = "inspect";
+let rig = null, inspector = null, sensors = null, data = null, analysis = null, guide = null;
+let mode = "parts", playing = false, scenario = "normal", workspaceName = "home";
 
 function describePart(id) {
   const entry = rig.parts.get(id);
@@ -124,9 +146,7 @@ function setMode(next) {
   if (next !== "parts") inspector.select(null);
   if (next !== "motion") { playing = false; updatePlay(); }
   applyScenarioAlerts();
-  if (next === "motion") showPanel(defaultPanel());
-  else if (next === "sensors") showPanel(defaultPanel());
-  else showPanel(defaultPanel());
+  showPanel(defaultPanel());
 }
 
 function updatePlay() {
@@ -148,9 +168,24 @@ function setWorkspace(name) {
   document.querySelectorAll("#rail [data-ws]").forEach((b) =>
     b.setAttribute("aria-selected", String(b.dataset.ws === name)));
   const isAnalysis = name === "analysis";
-  barInspect.hidden = isAnalysis;
+  const isContent = name === "home" || name === "about";
+  const is3D = !isContent;
+  barContent.hidden = !isContent;
+  if (isContent) {
+    contentTitle.textContent = name === "home" ? "工作台" : "项目说明";
+    contentSub.textContent = name === "home"
+      ? "无需 Python · 无需账号 · 无需 API 密钥"
+      : "架构 · 双版本区别 · 证据口径";
+  }
+  barInspect.hidden = name !== "inspect";
   barAnalysis.hidden = !isAnalysis;
-  panelBody.hidden = isAnalysis;
+  homeSection.hidden = name !== "home";
+  aboutSection.hidden = name !== "about";
+  stage.hidden = !is3D;
+  toolbar.hidden = isContent;
+  panel.hidden = isContent;
+  panelToggle.hidden = isContent;
+  panelBody.hidden = isAnalysis || isContent;
   analysisPanel.hidden = !isAnalysis;
   chartsSection.hidden = !isAnalysis;
   timeline.hidden = !isAnalysis;
@@ -163,7 +198,10 @@ function setWorkspace(name) {
     analysis?.enter();
   } else {
     analysis?.leave();
-    if (inspector) { setMode(mode); applyScenarioAlerts(); }
+    sensors?.setVisible(false);
+    if (name === "motion") { setMode("motion"); applyScenarioAlerts(); }
+    else if (name === "inspect") { setMode(mode === "motion" ? "parts" : mode); applyScenarioAlerts(); }
+    else motionControls.hidden = true;
   }
   resize();
 }
@@ -198,75 +236,104 @@ const envelopes = {normal: [0, 0, 0], lateral: [.075, 0, 0], vertical: [0, .065,
 const envelope = [0, 0, 0];
 let phase = 0;
 
-/* ---- boot ---- */
-Promise.all([loadViewerData(), loadBogie()]).then(([viewerData, root]) => {
-  data = viewerData;
-  rig = buildRig(root, data);
-  scene.add(root);
-  const box = new THREE.Box3().setFromObject(root);
-  const size = box.getSize(new THREE.Vector3());
-  viewAnim.radius = Math.max(size.x, size.y, size.z) * .8;
-  viewAnim.center = new THREE.Vector3(0, 0, size.z * .4);
-  controls.target.copy(viewAnim.center);
-  camera.position.copy(viewAnim.center).add(new THREE.Vector3(
-    viewAnim.radius * 1.4, -viewAnim.radius * 1.5, viewAnim.radius * .85));
-  controls.update();
+/* ---- boot (retryable) ---- */
+function start() {
+  if (rig) return;
+  loading.hidden = false;
+  errorBox.hidden = true;
+  Promise.all([loadViewerData(), loadBogie((stage) => { loading.textContent = stage; })])
+    .then(([viewerData, root]) => {
+      data = viewerData;
+      rig = buildRig(root, data);
+      scene.add(root);
+      const box = new THREE.Box3().setFromObject(root);
+      const size = box.getSize(new THREE.Vector3());
+      viewAnim.radius = Math.max(size.x, size.y, size.z) * .8;
+      viewAnim.center = new THREE.Vector3(0, 0, size.z * .4);
+      controls.target.copy(viewAnim.center);
+      camera.position.copy(viewAnim.center).add(homeSpot(aspectScale()));
+      controls.update();
 
-  inspector = createInspector(rig, camera, canvas, onSelectPart);
-  scene.updateMatrixWorld(true);
-  sensors = createSensors(rig, scene, camera, data, sensorLayer, (sensor) => {
-    showPanel(describeSensor(sensor));
-    if (window.innerWidth <= 720) openDrawer();
-  });
-  analysis = createAnalysisWorkspace({
-    elements: {
-      curveCanvas: document.querySelector("#curve-canvas"),
-      scrub: document.querySelector("#scrub"),
-      threshold: document.querySelector("#threshold"),
-      source: document.querySelector("#data-source"),
-      csvFile: document.querySelector("#csv-file"),
-      importButton: document.querySelector("#import-csv"),
-      reset: document.querySelector("#analysis-reset"),
-      dataBadge: document.querySelector("#data-badge"),
-      secSourceBody: document.querySelector("#sec-source-body"),
-      secStatsBody: document.querySelector("#sec-stats-body"),
-      secEventsBody: document.querySelector("#sec-events-body"),
-      secDetailBody: document.querySelector("#sec-detail-body"),
-      secDetail: document.querySelector("#sec-detail"),
-      eventCount: document.querySelector("#event-count"),
-      play: document.querySelector("#tl-play"),
-      back: document.querySelector("#tl-back"),
-      forward: document.querySelector("#tl-forward"),
-      tlReset: document.querySelector("#tl-reset"),
-      rate: document.querySelector("#tl-rate"),
-      tlTime: document.querySelector("#tl-time"),
-      tlElapsed: document.querySelector("#tl-elapsed"),
-      tlSample: document.querySelector("#tl-sample"),
-      tlRow: document.querySelector("#tl-row"),
-      sceneChip,
-    },
-    rig, inspector,
-    partIdsForGroups: (groups) => [...rig.parts.values()]
-      .filter((entry) => groups.includes(entry.spec.group)).map((entry) => entry.id),
-    focusGroup: (group) => {
-      const entry = [...rig.parts.values()].find((item) => item.spec.group === group);
-      if (!entry) return;
-      inspector.select(entry.id);
-      focusOn(inspector.boxOf(entry.id));
-    },
-    focusPart: (id) => focusOn(inspector.boxOf(id)),
-    describePart,
-    openDrawer,
-  });
-  showPanel(defaultPanel());
-  loading.hidden = true;
-  if (workspaceName === "analysis") setWorkspace("analysis");
-}).catch((cause) => {
-  console.error(cause);
-  loading.hidden = true;
-  errorBox.hidden = false;
-  errorBox.textContent = `三维视图不可用：${cause?.message ?? "加载失败"}`;
+      inspector = createInspector(rig, camera, canvas, onSelectPart);
+      scene.updateMatrixWorld(true);
+      sensors = createSensors(rig, scene, camera, data, sensorLayer, (sensor) => {
+        showPanel(describeSensor(sensor));
+        if (window.innerWidth <= 720) openDrawer();
+      });
+      analysis = createAnalysisWorkspace({
+        elements: {
+          curveCanvas: document.querySelector("#curve-canvas"),
+          scrub: document.querySelector("#scrub"),
+          threshold: document.querySelector("#threshold"),
+          source: document.querySelector("#data-source"),
+          csvFile: document.querySelector("#csv-file"),
+          importButton: document.querySelector("#import-csv"),
+          reset: document.querySelector("#analysis-reset"),
+          dataBadge: document.querySelector("#data-badge"),
+          secSourceBody: document.querySelector("#sec-source-body"),
+          secStatsBody: document.querySelector("#sec-stats-body"),
+          secEventsBody: document.querySelector("#sec-events-body"),
+          secDetailBody: document.querySelector("#sec-detail-body"),
+          secDetail: document.querySelector("#sec-detail"),
+          eventCount: document.querySelector("#event-count"),
+          play: document.querySelector("#tl-play"),
+          back: document.querySelector("#tl-back"),
+          forward: document.querySelector("#tl-forward"),
+          tlReset: document.querySelector("#tl-reset"),
+          rate: document.querySelector("#tl-rate"),
+          tlTime: document.querySelector("#tl-time"),
+          tlElapsed: document.querySelector("#tl-elapsed"),
+          tlSample: document.querySelector("#tl-sample"),
+          tlRow: document.querySelector("#tl-row"),
+          sceneChip,
+        },
+        rig, inspector,
+        partIdsForGroups: (groups) => [...rig.parts.values()]
+          .filter((entry) => groups.includes(entry.spec.group)).map((entry) => entry.id),
+        focusGroup: (group) => {
+          const entry = [...rig.parts.values()].find((item) => item.spec.group === group);
+          if (!entry) return;
+          inspector.select(entry.id);
+          focusOn(inspector.boxOf(entry.id));
+        },
+        focusPart: (id) => focusOn(inspector.boxOf(id)),
+        describePart,
+        openDrawer,
+      });
+      showPanel(defaultPanel());
+      loading.hidden = true;
+      setWorkspace(workspaceName);
+    }).catch((cause) => {
+      console.error(cause);
+      loading.hidden = true;
+      errorBox.hidden = false;
+      errorText.textContent = `三维视图不可用：${cause?.message ?? "加载失败"}`;
+    });
+}
+document.querySelector("#error-retry").addEventListener("click", start);
+start();
+
+/* ---- guided demo + home quick starts ---- */
+guide = createDemoGuide({go: setWorkspace, getAnalysis: () => analysis, openDrawer});
+async function enterWithDemo() {
+  if (analysis) await analysis.loadDemo(0);
+  setWorkspace("analysis");
+}
+document.querySelector("#home-demo").addEventListener("click", enterWithDemo);
+document.querySelector("#home-guide").addEventListener("click", () => guide.start());
+document.querySelector("#home-import").addEventListener("click", () => {
+  setWorkspace("analysis");
+  document.querySelector("#import-csv").click();
 });
+document.querySelectorAll("#home [data-go]").forEach((b) => b.addEventListener("click", async () => {
+  const go = b.dataset.go;
+  if (go === "about") { setWorkspace("about"); return; }
+  await enterWithDemo();
+  if (go === "event" || go === "evidence") {
+    document.querySelector("#sec-events-body .event-item")?.click();
+    if (go === "evidence") document.querySelector("#sec-detail").open = true;
+  }
+}));
 
 /* ---- toolbar wiring ---- */
 document.querySelectorAll("#toolbar [data-view]").forEach((b) =>
@@ -304,12 +371,23 @@ drawerToggle.addEventListener("click", () => {
 drawerScrim.addEventListener("click", closeDrawer);
 window.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawer(); });
 
+/* ---- hover feedback for pickable parts ---- */
+let hoverAt = null;
+canvas.addEventListener("pointermove", (event) => { hoverAt = [event.clientX, event.clientY]; });
+canvas.addEventListener("pointerleave", () => { hoverAt = null; canvas.style.cursor = ""; });
+
 /* ---- resize & loop ---- */
 function resize() {
   const {clientWidth: w, clientHeight: h} = stage;
+  if (!w || !h) return;
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
+  if (rig && !userMoved) {
+    camera.position.copy(viewAnim.center).add(homeSpot(aspectScale()));
+    controls.target.copy(viewAnim.center);
+    controls.update();
+  }
 }
 new ResizeObserver(resize).observe(stage);
 resize();
@@ -325,12 +403,15 @@ renderer.setAnimationLoop((now) => {
   if (rig) {
     if (workspaceName === "analysis" && analysis) {
       analysis.tick(now / 1000);
-    } else {
+    } else if (workspaceName === "inspect" || workspaceName === "motion") {
       const target = mode === "motion" ? envelopes[scenario] : [0, 0, 0];
       for (let i = 0; i < 3; i++) envelope[i] += (target[i] - envelope[i]) * (1 - Math.exp(-dt * 5));
       if (playing && data) phase += dt * Math.PI * 2 / data.motion.period * Number(document.querySelector("#rate").value);
       rig.pose(phase,
         envelope[0] * Math.sin(phase), envelope[1] * Math.sin(phase), envelope[2] * Math.cos(phase));
+    }
+    if (hoverAt && inspector && workspaceName === "inspect" && mode === "parts") {
+      canvas.style.cursor = inspector.hover(hoverAt[0], hoverAt[1]) ? "pointer" : "";
     }
     sensors?.update(stage.clientWidth, stage.clientHeight);
   }
@@ -343,6 +424,8 @@ window.__railLab = {
   get analysis() { return analysis; },
   get rig() { return rig; },
   get inspector() { return inspector; },
+  get guide() { return guide; },
   get workspace() { return workspaceName; },
-  setWorkspace, renderer, scene, camera,
+  get mode() { return mode; },
+  setWorkspace, setMode, renderer, scene, camera,
 };
