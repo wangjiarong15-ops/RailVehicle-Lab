@@ -294,11 +294,15 @@ document.querySelector("#scenario").addEventListener("change", (e) => {
 
 /* ---- mobile drawer ---- */
 const drawerToggle = document.querySelector("#panel-toggle");
+const drawerScrim = document.querySelector("#drawer-scrim");
 function openDrawer() { document.body.classList.add("drawer-open"); drawerToggle.setAttribute("aria-expanded", "true"); }
+function closeDrawer() { document.body.classList.remove("drawer-open"); drawerToggle.setAttribute("aria-expanded", "false"); }
 drawerToggle.addEventListener("click", () => {
   const open = document.body.classList.toggle("drawer-open");
   drawerToggle.setAttribute("aria-expanded", String(open));
 });
+drawerScrim.addEventListener("click", closeDrawer);
+window.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawer(); });
 
 /* ---- resize & loop ---- */
 function resize() {
