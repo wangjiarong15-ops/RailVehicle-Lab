@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>RailVehicle-Lab · 三维转向架演示</title>
+  <title>RailVehicle-Lab · 转向架工程演示</title>
   <link rel="stylesheet" href="./styles.css">
   <script type="importmap">
     {"imports": {
@@ -15,61 +15,173 @@
   </script>
 </head>
 <body>
-  <div id="app">
-    <header id="topbar">
+  <div id="app" data-workspace="inspect">
+    <nav id="rail" aria-label="一级导航">
       <div class="brand">
-        <span class="mark"></span>
+        <span class="mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+            <circle cx="12" cy="10" r="6.2"/><circle cx="12" cy="10" r="2.1"/>
+            <path d="M3 20h18M6 20l3-4M18 20l-3-4"/>
+          </svg>
+        </span>
         <div class="brand-text">
           <strong>RailVehicle-Lab</strong>
-          <span>三维转向架交互演示</span>
+          <span>转向架工程演示</span>
         </div>
       </div>
-      <nav id="modes" role="tablist" aria-label="功能模式">
-        <button type="button" role="tab" data-mode="parts" aria-selected="true">零部件</button>
-        <button type="button" role="tab" data-mode="sensors" aria-selected="false">传感器标记</button>
-        <button type="button" role="tab" data-mode="motion" aria-selected="false">教学动画</button>
-      </nav>
-      <button type="button" id="panel-toggle" aria-controls="panel" aria-expanded="false">信息面板</button>
-    </header>
-
-    <main id="workspace">
-      <section id="stage">
-        <canvas id="scene" aria-label="三维转向架视图，可拖拽旋转、滚轮缩放"></canvas>
-        <div id="sensor-layer" hidden aria-label="传感器测点"></div>
-        <p id="hint">左键拖拽旋转 · 滚轮缩放 · 右键平移 · 点击零件查看详情</p>
-        <div id="loading" role="status">正在载入三维模型…</div>
-        <div id="error" role="alert" hidden>三维视图不可用：模型或 WebGL 加载失败。</div>
-      </section>
-      <aside id="panel" aria-label="信息面板">
-        <div id="panel-body"></div>
-      </aside>
-    </main>
-
-    <footer id="toolbar">
-      <div class="group" role="group" aria-label="视角切换">
-        <button type="button" data-view="home" class="primary">整体</button>
-        <button type="button" data-view="side">侧视</button>
-        <button type="button" data-view="front">正视</button>
-        <button type="button" data-view="top">俯视</button>
-        <button type="button" id="reset-view">重置视角</button>
-        <button type="button" id="auto-rotate" aria-pressed="false">自动旋转</button>
+      <div class="rail-nav" role="tablist" aria-label="工作区">
+        <button type="button" role="tab" data-ws="inspect" aria-selected="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+            <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/>
+          </svg>
+          <span>三维检视</span><em>零部件 · 传感器 · 教学动画</em>
+        </button>
+        <button type="button" role="tab" data-ws="analysis" aria-selected="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+            <path d="M4 4v16h16"/><path d="M7 14l3.5-4 3 2.5L19 6"/><circle cx="15.5" cy="9.5" r="1.4" fill="currentColor" stroke="none"/>
+          </svg>
+          <span>运行分析</span><em>CSV · 异常事件 · 同步回放</em>
+        </button>
       </div>
-      <div class="group" id="motion-controls" role="group" aria-label="动画控制" hidden>
-        <select id="scenario" aria-label="动画场景">
-          <option value="normal">正常运行</option>
-          <option value="lateral">横向振动示意</option>
-          <option value="vertical">垂向振动示意</option>
-          <option value="fault">悬挂异常示意</option>
-        </select>
-        <button type="button" id="play" aria-pressed="false">播放</button>
-        <button type="button" id="anim-reset">重置动画</button>
-        <select id="rate" aria-label="播放速度">
-          <option value=".25">0.25×</option><option value=".5">0.5×</option>
-          <option value="1" selected>1×</option><option value="2">2×</option>
-        </select>
+      <div class="rail-foot">
+        <span><i class="live-dot"></i>本地计算 · 无云端上传</span>
+        <span>Three.js r180 · 本地模型与库</span>
       </div>
-      <div class="group legend"><span><i class="dot"></i>Three.js r180 · 本地模型与库</span></div>
-    </footer>
+    </nav>
+
+    <div id="main">
+      <header id="topbar">
+        <div class="bar-context" id="bar-inspect">
+          <nav id="modes" role="tablist" aria-label="功能模式">
+            <button type="button" role="tab" data-mode="parts" aria-selected="true">零部件</button>
+            <button type="button" role="tab" data-mode="sensors" aria-selected="false">传感器标记</button>
+            <button type="button" role="tab" data-mode="motion" aria-selected="false">教学动画</button>
+          </nav>
+        </div>
+        <div class="bar-context" id="bar-analysis" hidden>
+          <label class="field">数据源
+            <select id="data-source" aria-label="数据源">
+              <option value="demo-1">虚构演示批次 1</option>
+              <option value="demo-2">虚构演示批次 2</option>
+            </select>
+          </label>
+          <button type="button" id="import-csv">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+              <path d="M12 16V4m0 0l-4 4m4-4l4 4"/><path d="M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"/>
+            </svg>
+            导入 CSV
+          </button>
+          <input type="file" id="csv-file" accept=".csv,text/csv" hidden>
+          <label class="field">阈值 |a| &gt;
+            <input id="threshold" type="number" min="0" step="0.1" value="1" aria-label="加速度绝对值阈值"> m/s²
+          </label>
+          <button type="button" id="analysis-reset">重置</button>
+          <span id="data-badge"></span>
+        </div>
+        <button type="button" id="panel-toggle" aria-controls="panel" aria-expanded="false">信息面板</button>
+      </header>
+
+      <main id="workspace">
+        <section id="center">
+          <section id="stage">
+            <canvas id="scene" aria-label="三维转向架视图，可拖拽旋转、滚轮缩放"></canvas>
+            <div id="sensor-layer" hidden aria-label="传感器测点"></div>
+            <div id="scene-chip" hidden role="status"></div>
+            <p id="hint">左键拖拽旋转 · 滚轮缩放 · 右键平移 · 点击零件查看详情</p>
+            <div id="loading" role="status">正在载入三维模型…</div>
+            <div id="error" role="alert" hidden>三维视图不可用：模型或 WebGL 加载失败。</div>
+          </section>
+
+          <section id="charts" hidden aria-label="运行曲线">
+            <div class="chart-head">
+              <strong>运行曲线</strong>
+              <span>点击 / 拖动曲线定位时间 · 红点为超阈值样本 · 虚线为 ±阈值</span>
+            </div>
+            <div class="chart-body"><canvas id="curve-canvas" aria-label="速度、横向与垂向加速度曲线"></canvas></div>
+          </section>
+
+          <footer id="timeline" hidden aria-label="回放时间轴">
+            <div class="tl-row">
+              <div class="transport" role="group" aria-label="回放控制">
+                <button type="button" id="tl-back" title="上一样本" aria-label="上一样本">
+                  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5h2v14H7zM18 5v14l-8-7z"/></svg>
+                </button>
+                <button type="button" id="tl-play" aria-pressed="false">
+                  <svg class="icon-play" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15l13-7.5z"/></svg>
+                  <svg class="icon-pause" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" hidden><path d="M6.5 5h4v14h-4zM13.5 5h4v14h-4z"/></svg>
+                  <span class="label">播放</span>
+                </button>
+                <button type="button" id="tl-forward" title="下一样本" aria-label="下一样本">
+                  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M15 5h2v14h-2zM6 5v14l8-7z"/></svg>
+                </button>
+                <button type="button" id="tl-reset" title="回到起点" aria-label="回到起点">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M4 10a8 8 0 111.7 6.7"/><path d="M4 4v6h6"/></svg>
+                </button>
+                <select id="tl-rate" aria-label="回放倍速">
+                  <option value="0.25">0.25×</option><option value="0.5">0.5×</option>
+                  <option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option>
+                </select>
+              </div>
+              <div class="readout" aria-live="off">
+                <span id="tl-time" class="mono">—</span>
+                <span id="tl-elapsed">—</span>
+                <span id="tl-sample">—</span>
+                <span id="tl-row">—</span>
+              </div>
+            </div>
+            <input id="scrub" type="range" min="0" max="119" step="0.01" value="0" aria-label="统一时间轴">
+          </footer>
+        </section>
+
+        <aside id="panel" aria-label="信息面板">
+          <div id="panel-body"></div>
+          <div id="analysis-panel" hidden>
+            <details class="panel-sec" id="sec-source" open>
+              <summary>数据源与类别</summary>
+              <div class="sec-body" id="sec-source-body"></div>
+            </details>
+            <details class="panel-sec" id="sec-stats" open>
+              <summary>统计摘要</summary>
+              <div class="sec-body" id="sec-stats-body"></div>
+            </details>
+            <details class="panel-sec" id="sec-events" open>
+              <summary>异常事件 <span class="count" id="event-count">0</span></summary>
+              <div class="sec-body" id="sec-events-body"></div>
+            </details>
+            <details class="panel-sec" id="sec-detail" open>
+              <summary>证据 / 部件详情</summary>
+              <div class="sec-body" id="sec-detail-body"></div>
+            </details>
+          </div>
+        </aside>
+      </main>
+
+      <footer id="toolbar">
+        <div class="group" role="group" aria-label="视角切换">
+          <button type="button" data-view="home" class="primary">整体</button>
+          <button type="button" data-view="side">侧视</button>
+          <button type="button" data-view="front">正视</button>
+          <button type="button" data-view="top">俯视</button>
+          <button type="button" id="reset-view">重置视角</button>
+          <button type="button" id="auto-rotate" aria-pressed="false">自动旋转</button>
+        </div>
+        <div class="group" id="motion-controls" role="group" aria-label="动画控制" hidden>
+          <select id="scenario" aria-label="动画场景">
+            <option value="normal">正常运行</option>
+            <option value="lateral">横向振动示意</option>
+            <option value="vertical">垂向振动示意</option>
+            <option value="fault">悬挂异常示意</option>
+          </select>
+          <button type="button" id="play" aria-pressed="false">播放</button>
+          <button type="button" id="anim-reset">重置动画</button>
+          <select id="rate" aria-label="播放速度">
+            <option value=".25">0.25×</option><option value=".5">0.5×</option>
+            <option value="1" selected>1×</option><option value="2">2×</option>
+          </select>
+        </div>
+        <div class="group legend"><span><i class="dot"></i>教学演示 · 非实车测量与诊断</span></div>
+      </footer>
+    </div>
   </div>
   <script type="module" src="./app.js"></script>
 </body>

@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>布局验收 harness</title>
+  <style>
+    body { margin: 0; background: #222; font: 12px monospace; color: #eee; }
+    #frame { border: 0; display: block; background: #0b1521; }
+    #log { padding: 8px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <iframe id="frame" title="app"></iframe>
+  <div id="log">loading…</div>
+  <script type="module">
+    const params = new URLSearchParams(location.search);
+    const W = Number(params.get("w") || 1366);
+    const H = Number(params.get("h") || 768);
+    const WS = params.get("ws") || "analysis";
+    const frame = document.querySelector("#frame");
+    frame.width = W; frame.height = H;
+    frame.style.width = W + "px"; frame.style.height = H + "px";
+    frame.src = "../index.html";
+
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    async function ready(doc) {
+      for (let i = 0; i < 120; i++) {
+        const lab = frame.contentWindow.__railLab;
+        if (lab?.rig && lab?.analysis) return lab;
+        await sleep(50);
+      }
+      throw new Error("app not ready");
+    }
+    function measure(doc, lab) {
+      const win = frame.contentWindow;
+      const rect = (sel) => {
+        const el = doc.querySelector(sel);
+        if (!el) return null;
+        const b = el.getBoundingClientRect();
+        return {x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height),
+          hidden: el.hidden || win.getComputedStyle(el).display === "none"};
+      };
+      const de = doc.documentElement;
+      const overflowX = de.scrollWidth - de.clientWidth;
+      const controls = [...doc.querySelectorAll("#topbar button, #topbar select, #topbar input, #toolbar button, #toolbar select, #timeline button, #timeline select, #rail button, #scrub")]
+        .filter((el) => !el.hidden && win.getComputedStyle(el).display !== "none" && el.getBoundingClientRect().width > 0);
+      const offscreen = controls.filter((el) => {
+        const b = el.getBoundingClientRect();
+        return b.right > W + 1 || b.bottom > H + 1 || b.left < -1 || b.top < -1;
+      }).map((el) => el.id || el.dataset.view || el.dataset.ws || el.dataset.mode || el.textContent.trim().slice(0, 8));
+      const panel = rect("#panel");
+      const panelToggle = rect("#panel-toggle");
+      const drawerOpen = doc.body.classList.contains("drawer-open");
+      return {
+        viewport: [W, H], workspace: lab.workspace,
+        overflowX,
+        rail: rect("#rail"), topbar: rect("#topbar"), toolbar: rect("#toolbar"),
+        stage: rect("#stage"), charts: rect("#charts"), timeline: rect("#timeline"), panel,
+        panelToggleVisible: panelToggle && !panelToggle.hidden && panelToggle.w > 0,
+        drawerOpen,
+        panelOffscreen: panel ? panel.x >= W - 1 : null,
+        controlCount: controls.length, offscreenControls: offscreen,
+        stageHasSize: rect("#stage").w > 50 && rect("#stage").h > 50,
+        chartsHasSize: WS === "analysis" ? (rect("#charts").w > 50 && rect("#charts").h > 40) : null,
+        timelineHasSize: WS === "analysis" ? rect("#timeline").h > 30 : null,
+        curveCanvas: (() => { const c = doc.querySelector("#curve-canvas"); return c ? [c.width, c.height] : null; })(),
+      };
+    }
+    frame.addEventListener("load", async () => {
+      try {
+        const doc = frame.contentDocument;
+        const lab = await ready(doc);
+        const link = doc.querySelector('link[rel="stylesheet"]');
+        link.href = "./styles.css?v=" + Date.now();
+        await sleep(400);
+        if (WS === "analysis") {
+          doc.querySelector('#rail [data-ws="analysis"]').click();
+          for (let i = 0; i < 80 && !lab.analysis.dataset; i++) await sleep(50);
+          lab.analysis.resize();
+          lab.analysis.seek(31);
+        }
+        // wait for the app height to settle to the iframe viewport (dvh can resolve transiently)
+        for (let i = 0; i < 60; i++) {
+          const h = doc.querySelector("#app").getBoundingClientRect().height;
+          if (Math.abs(h - H) <= 2) break;
+          lab.setWorkspace(lab.workspace);
+          await sleep(50);
+        }
+        await sleep(150);
+        const result = measure(doc, lab);
+        // mobile drawer open check
+        if (W <= 720) {
+          doc.querySelector("#panel-toggle").click();
+          await sleep(300);
+          result.drawerOpenAfterToggle = doc.body.classList.contains("drawer-open");
+          result.panelAfterToggle = (() => { const b = doc.querySelector("#panel").getBoundingClientRect(); return {x: Math.round(b.x), w: Math.round(b.width), visible: b.x < W - 1}; })();
+          doc.querySelector("#panel-toggle").click();
+          await sleep(300);
+        }
+        window.__layout = {done: true, ...result};
+        window.__remeasure = () => { const r = measure(doc, lab); window.__layout = {done: true, ...r}; return r; };
+        document.querySelector("#log").textContent = JSON.stringify(window.__layout, null, 1);
+      } catch (cause) {
+        window.__layout = {done: true, error: String(cause?.message ?? cause)};
+        document.querySelector("#log").textContent = "ERROR " + cause?.stack;
+      }
+    });
+  </script>
+</body>
+</html>

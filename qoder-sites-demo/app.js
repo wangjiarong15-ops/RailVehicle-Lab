@@ -3,6 +3,7 @@ import {OrbitControls} from "three/addons/controls/OrbitControls.js";
 import {RoomEnvironment} from "three/addons/environments/RoomEnvironment.js";
 import {loadBogie, loadViewerData, buildRig} from "./core.js";
 import {createInspector, createSensors} from "./interactions.js";
+import {createAnalysisWorkspace} from "./workspace.js";
 
 const canvas = document.querySelector("#scene");
 const stage = document.querySelector("#stage");
@@ -12,6 +13,13 @@ const errorBox = document.querySelector("#error");
 const hint = document.querySelector("#hint");
 const motionControls = document.querySelector("#motion-controls");
 const sensorLayer = document.querySelector("#sensor-layer");
+const app = document.querySelector("#app");
+const barInspect = document.querySelector("#bar-inspect");
+const barAnalysis = document.querySelector("#bar-analysis");
+const analysisPanel = document.querySelector("#analysis-panel");
+const chartsSection = document.querySelector("#charts");
+const timeline = document.querySelector("#timeline");
+const sceneChip = document.querySelector("#scene-chip");
 
 const renderer = new THREE.WebGLRenderer({canvas, antialias: true});
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -68,8 +76,8 @@ function focusOn(box) {
   controls.target.copy(center);
 }
 
-let rig = null, inspector = null, sensors = null, data = null;
-let mode = "parts", playing = false, scenario = "normal";
+let rig = null, inspector = null, sensors = null, data = null, analysis = null;
+let mode = "parts", playing = false, scenario = "normal", workspaceName = "inspect";
 
 function describePart(id) {
   const entry = rig.parts.get(id);
@@ -115,6 +123,7 @@ function setMode(next) {
     : "选择场景后播放，观察构架与轮对的简化运动";
   if (next !== "parts") inspector.select(null);
   if (next !== "motion") { playing = false; updatePlay(); }
+  applyScenarioAlerts();
   if (next === "motion") showPanel(defaultPanel());
   else if (next === "sensors") showPanel(defaultPanel());
   else showPanel(defaultPanel());
@@ -126,7 +135,43 @@ function updatePlay() {
   button.setAttribute("aria-pressed", String(playing));
 }
 
+function applyScenarioAlerts() {
+  if (!rig || !inspector) return;
+  const dampers = mode === "motion" && scenario === "fault"
+    ? [...rig.parts.keys()].filter((id) => id.startsWith("damper_")) : [];
+  inspector.setAlerts(dampers);
+}
+
+function setWorkspace(name) {
+  workspaceName = name;
+  app.dataset.workspace = name;
+  document.querySelectorAll("#rail [data-ws]").forEach((b) =>
+    b.setAttribute("aria-selected", String(b.dataset.ws === name)));
+  const isAnalysis = name === "analysis";
+  barInspect.hidden = isAnalysis;
+  barAnalysis.hidden = !isAnalysis;
+  panelBody.hidden = isAnalysis;
+  analysisPanel.hidden = !isAnalysis;
+  chartsSection.hidden = !isAnalysis;
+  timeline.hidden = !isAnalysis;
+  sceneChip.hidden = !isAnalysis;
+  if (isAnalysis) {
+    sensors?.setVisible(false);
+    motionControls.hidden = true;
+    if (inspector) { inspector.showAll(); inspector.setGhost(false); inspector.select(null); }
+    hint.textContent = "点击曲线或拖动时间轴定位 · 点击异常事件查看证据 · 三维运动为预设教学示意";
+    analysis?.enter();
+  } else {
+    analysis?.leave();
+    if (inspector) { setMode(mode); applyScenarioAlerts(); }
+  }
+  resize();
+}
+document.querySelectorAll("#rail [data-ws]").forEach((b) =>
+  b.addEventListener("click", () => setWorkspace(b.dataset.ws)));
+
 function onSelectPart(id) {
+  if (workspaceName === "analysis") { analysis?.showPart(id); return; }
   if (mode !== "parts") return;
   if (!id) { showPanel(defaultPanel()); return; }
   showPanel(describePart(id));
@@ -173,8 +218,49 @@ Promise.all([loadViewerData(), loadBogie()]).then(([viewerData, root]) => {
     showPanel(describeSensor(sensor));
     if (window.innerWidth <= 720) openDrawer();
   });
+  analysis = createAnalysisWorkspace({
+    elements: {
+      curveCanvas: document.querySelector("#curve-canvas"),
+      scrub: document.querySelector("#scrub"),
+      threshold: document.querySelector("#threshold"),
+      source: document.querySelector("#data-source"),
+      csvFile: document.querySelector("#csv-file"),
+      importButton: document.querySelector("#import-csv"),
+      reset: document.querySelector("#analysis-reset"),
+      dataBadge: document.querySelector("#data-badge"),
+      secSourceBody: document.querySelector("#sec-source-body"),
+      secStatsBody: document.querySelector("#sec-stats-body"),
+      secEventsBody: document.querySelector("#sec-events-body"),
+      secDetailBody: document.querySelector("#sec-detail-body"),
+      secDetail: document.querySelector("#sec-detail"),
+      eventCount: document.querySelector("#event-count"),
+      play: document.querySelector("#tl-play"),
+      back: document.querySelector("#tl-back"),
+      forward: document.querySelector("#tl-forward"),
+      tlReset: document.querySelector("#tl-reset"),
+      rate: document.querySelector("#tl-rate"),
+      tlTime: document.querySelector("#tl-time"),
+      tlElapsed: document.querySelector("#tl-elapsed"),
+      tlSample: document.querySelector("#tl-sample"),
+      tlRow: document.querySelector("#tl-row"),
+      sceneChip,
+    },
+    rig, inspector,
+    partIdsForGroups: (groups) => [...rig.parts.values()]
+      .filter((entry) => groups.includes(entry.spec.group)).map((entry) => entry.id),
+    focusGroup: (group) => {
+      const entry = [...rig.parts.values()].find((item) => item.spec.group === group);
+      if (!entry) return;
+      inspector.select(entry.id);
+      focusOn(inspector.boxOf(entry.id));
+    },
+    focusPart: (id) => focusOn(inspector.boxOf(id)),
+    describePart,
+    openDrawer,
+  });
   showPanel(defaultPanel());
   loading.hidden = true;
+  if (workspaceName === "analysis") setWorkspace("analysis");
 }).catch((cause) => {
   console.error(cause);
   loading.hidden = true;
@@ -198,10 +284,7 @@ document.querySelector("#play").addEventListener("click", () => { playing = !pla
 document.querySelector("#anim-reset").addEventListener("click", () => { phase = 0; });
 document.querySelector("#scenario").addEventListener("change", (e) => {
   scenario = e.target.value;
-  if (!rig) return;
-  const dampers = scenario === "fault"
-    ? [...rig.parts.keys()].filter((id) => id.startsWith("damper_")) : [];
-  inspector.setAlerts(dampers);
+  applyScenarioAlerts();
   showPanel(scenario === "fault"
     ? `<h2>悬挂异常示意</h2><p class="group">预设动画 · 非诊断结论</p>
        <p>高亮一系减振器，叠加横向、垂向与摇头的简化运动，用于说明悬挂衰减异常时的车体姿态表现。</p>
@@ -235,14 +318,27 @@ renderer.setAnimationLoop((now) => {
     viewAnim.t = Math.min(1, viewAnim.t + dt * 2.2);
     camera.position.lerpVectors(viewAnim.from, viewAnim.to, ease(viewAnim.t));
   }
-  const target = mode === "motion" ? envelopes[scenario] : [0, 0, 0];
-  for (let i = 0; i < 3; i++) envelope[i] += (target[i] - envelope[i]) * (1 - Math.exp(-dt * 5));
-  if (playing && data) phase += dt * Math.PI * 2 / data.motion.period * Number(document.querySelector("#rate").value);
   if (rig) {
-    rig.pose(phase,
-      envelope[0] * Math.sin(phase), envelope[1] * Math.sin(phase), envelope[2] * Math.cos(phase));
+    if (workspaceName === "analysis" && analysis) {
+      analysis.tick(now / 1000);
+    } else {
+      const target = mode === "motion" ? envelopes[scenario] : [0, 0, 0];
+      for (let i = 0; i < 3; i++) envelope[i] += (target[i] - envelope[i]) * (1 - Math.exp(-dt * 5));
+      if (playing && data) phase += dt * Math.PI * 2 / data.motion.period * Number(document.querySelector("#rate").value);
+      rig.pose(phase,
+        envelope[0] * Math.sin(phase), envelope[1] * Math.sin(phase), envelope[2] * Math.cos(phase));
+    }
     sensors?.update(stage.clientWidth, stage.clientHeight);
   }
   controls.update();
   renderer.render(scene, camera);
 });
+
+/* test hook: deterministic inspection from the acceptance harness */
+window.__railLab = {
+  get analysis() { return analysis; },
+  get rig() { return rig; },
+  get inspector() { return inspector; },
+  get workspace() { return workspaceName; },
+  setWorkspace, renderer, scene, camera,
+};
