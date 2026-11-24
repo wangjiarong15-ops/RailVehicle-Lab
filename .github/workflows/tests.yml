@@ -35,6 +35,16 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[ml,signal,test]"
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Check cross-version contract
+        run: |
+          python -m scripts.build_phase8_contract
+          node scripts/check_phase8_contract.mjs
+
       - name: Run test suite
         run: python -m pytest -q
 

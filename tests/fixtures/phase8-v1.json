@@ -1,0 +1,1215 @@
+{
+  "schema": "rail.phase8.cross-version.v1",
+  "source_kind": "synthetic",
+  "vehicle_codes": [
+    "DEMO-001"
+  ],
+  "csv_contract": {
+    "fields": [
+      "timestamp",
+      "vehicle_id",
+      "speed_kmh",
+      "lateral_accel",
+      "vertical_accel"
+    ],
+    "max_speed_kmh": 600.0,
+    "max_abs_acceleration_m_s2": 100.0,
+    "threshold_m_s2": 1.0
+  },
+  "glb_sha256": "2a15eac852c2ee1a1ea2b3eb01090de29ad18569838178a6b689828566b120dc",
+  "assembly": {
+    "version": 1,
+    "units": "m",
+    "coordinates": "X longitudinal, Y transverse, Z up",
+    "dimensions": {
+      "wheelbase": 2.6,
+      "axle_height": 0.42,
+      "wheel_centres": 1.76,
+      "tread_radius": 0.42,
+      "flange_radius": 0.456,
+      "axlebox_centres": 2.4,
+      "side_beam_centres": 2.32,
+      "frame_length": 3.72,
+      "side_beam_width": 0.235
+    },
+    "parts": {
+      "side_beam_l": {
+        "label": "左侧 侧梁",
+        "group": "构架",
+        "parent": "frame",
+        "origin": [
+          0,
+          -1.16,
+          0.98
+        ],
+        "offset": [
+          0,
+          -0.14,
+          0.48
+        ]
+      },
+      "air_spring_l": {
+        "label": "左侧 空气弹簧",
+        "group": "二系悬挂",
+        "parent": "frame",
+        "origin": [
+          0,
+          -1.16,
+          1.14
+        ],
+        "offset": [
+          0,
+          -0.12,
+          0.92
+        ]
+      },
+      "side_beam_r": {
+        "label": "右侧 侧梁",
+        "group": "构架",
+        "parent": "frame",
+        "origin": [
+          0,
+          1.16,
+          0.98
+        ],
+        "offset": [
+          0,
+          0.14,
+          0.48
+        ]
+      },
+      "air_spring_r": {
+        "label": "右侧 空气弹簧",
+        "group": "二系悬挂",
+        "parent": "frame",
+        "origin": [
+          0,
+          1.16,
+          1.14
+        ],
+        "offset": [
+          0,
+          0.12,
+          0.92
+        ]
+      },
+      "cross_members": {
+        "label": "横梁组件",
+        "group": "构架",
+        "parent": "frame",
+        "origin": [
+          0,
+          0,
+          1.0
+        ],
+        "offset": [
+          0,
+          0,
+          0.48
+        ]
+      },
+      "reference_track": {
+        "label": "轨道参照",
+        "group": "轨道参照",
+        "parent": "fixed",
+        "origin": [
+          0,
+          0,
+          0
+        ],
+        "offset": [
+          0,
+          0,
+          0
+        ]
+      },
+      "axle_a": {
+        "label": "A 轴 车轴",
+        "group": "轮对",
+        "parent": "wheel",
+        "origin": [
+          -1.3,
+          0,
+          0.42
+        ],
+        "offset": [
+          -0.28,
+          0,
+          0
+        ],
+        "spin": [
+          -1.3,
+          0,
+          0.42
+        ]
+      },
+      "motor_a": {
+        "label": "A 轴 牵引电机",
+        "group": "电机与传动",
+        "parent": "frame",
+        "origin": [
+          -0.8710000000000001,
+          0,
+          0.63
+        ],
+        "offset": [
+          0.27,
+          0,
+          0.44
+        ]
+      },
+      "gearbox_a": {
+        "label": "A 轴 齿轮箱",
+        "group": "电机与传动",
+        "parent": "wheel",
+        "origin": [
+          -1.3,
+          0.43,
+          0.47
+        ],
+        "offset": [
+          -0.25,
+          0.09,
+          0.31
+        ]
+      },
+      "wheel_a_l": {
+        "label": "A 轴 左侧 车轮",
+        "group": "轮对",
+        "parent": "wheel",
+        "origin": [
+          -1.3,
+          -0.88,
+          0.42
+        ],
+        "offset": [
+          -0.28,
+          -0.1,
+          0
+        ],
+        "spin": [
+          -1.3,
+          0,
+          0.42
+        ]
+      },
+      "axlebox_a_l": {
+        "label": "A 轴 左侧 轴箱",
+        "group": "轴箱",
+        "parent": "wheel",
+        "origin": [
+          -1.3,
+          -1.2,
+          0.42
+        ],
+        "offset": [
+          -0.28,
+          -0.46,
+          0.03
+        ]
+      },
+      "spring_seat_lower_a_l": {
+        "label": "A 轴 左侧 下弹簧座",
+        "group": "一系悬挂",
+        "parent": "wheel",
+        "origin": [
+          -1.3,
+          -1.2,
+          0.625
+        ],
+        "offset": [
+          -0.2,
+          -0.3,
+          0.24
+        ]
+      },
+      "spring_seat_upper_a_l": {
+        "label": "A 轴 左侧 上弹簧座",
+        "group": "一系悬挂",
+        "parent": "frame",
+        "origin": [
+          -1.3,
+          -1.16,
+          0.826
+        ],
+        "offset": [
+          -0.2,
+          -0.3,
+          0.52
+        ]
+      },
+      "disc_a_l": {
+        "label": "A 轴 左侧 制动盘",
+        "group": "制动装置",
+        "parent": "wheel",
+        "origin": [
+          -1.3,
+          -0.64,
+          0.42
+        ],
+        "offset": [
+          -0.43,
+          -0.15,
+          0.12
+        ],
+        "spin": [
+          -1.3,
+          0,
+          0.42
+        ]
+      },
+      "caliper_a_l": {
+        "label": "A 轴 左侧 制动卡钳",
+        "group": "制动装置",
+        "parent": "wheel",
+        "origin": [
+          -1.3,
+          -0.64,
+          0.658
+        ],
+        "offset": [
+          -0.43,
+          -0.15,
+          0.34
+        ]
+      },
+      "wheel_a_r": {
+        "label": "A 轴 右侧 车轮",
+        "group": "轮对",
+        "parent": "wheel",
+        "origin": [
+          -1.3,
+          0.88,
+          0.42
+        ],
+        "offset": [
+          -0.28,
+          0.1,
+          0
+        ],
+        "spin": [
+          -1.3,
+          0,
+          0.42
+        ]
+      },
+      "axlebox_a_r": {
+        "label": "A 轴 右侧 轴箱",
+        "group": "轴箱",
+        "parent": "wheel",
+        "origin": [
+          -1.3,
+          1.2,
+          0.42
+        ],
+        "offset": [
+          -0.28,
+          0.46,
+          0.03
+        ]
+      },
+      "spring_seat_lower_a_r": {
+        "label": "A 轴 右侧 下弹簧座",
+        "group": "一系悬挂",
+        "parent": "wheel",
+        "origin": [
+          -1.3,
+          1.2,
+          0.625
+        ],
+        "offset": [
+          -0.2,
+          0.3,
+          0.24
+        ]
+      },
+      "spring_seat_upper_a_r": {
+        "label": "A 轴 右侧 上弹簧座",
+        "group": "一系悬挂",
+        "parent": "frame",
+        "origin": [
+          -1.3,
+          1.16,
+          0.826
+        ],
+        "offset": [
+          -0.2,
+          0.3,
+          0.52
+        ]
+      },
+      "disc_a_r": {
+        "label": "A 轴 右侧 制动盘",
+        "group": "制动装置",
+        "parent": "wheel",
+        "origin": [
+          -1.3,
+          0.64,
+          0.42
+        ],
+        "offset": [
+          -0.43,
+          0.15,
+          0.12
+        ],
+        "spin": [
+          -1.3,
+          0,
+          0.42
+        ]
+      },
+      "caliper_a_r": {
+        "label": "A 轴 右侧 制动卡钳",
+        "group": "制动装置",
+        "parent": "wheel",
+        "origin": [
+          -1.3,
+          0.64,
+          0.658
+        ],
+        "offset": [
+          -0.43,
+          0.15,
+          0.34
+        ]
+      },
+      "axle_b": {
+        "label": "B 轴 车轴",
+        "group": "轮对",
+        "parent": "wheel",
+        "origin": [
+          1.3,
+          0,
+          0.42
+        ],
+        "offset": [
+          0.28,
+          0,
+          0
+        ],
+        "spin": [
+          1.3,
+          0,
+          0.42
+        ]
+      },
+      "motor_b": {
+        "label": "B 轴 牵引电机",
+        "group": "电机与传动",
+        "parent": "frame",
+        "origin": [
+          0.8710000000000001,
+          0,
+          0.63
+        ],
+        "offset": [
+          -0.27,
+          0,
+          0.44
+        ]
+      },
+      "gearbox_b": {
+        "label": "B 轴 齿轮箱",
+        "group": "电机与传动",
+        "parent": "wheel",
+        "origin": [
+          1.3,
+          0.43,
+          0.47
+        ],
+        "offset": [
+          0.25,
+          0.09,
+          0.31
+        ]
+      },
+      "wheel_b_l": {
+        "label": "B 轴 左侧 车轮",
+        "group": "轮对",
+        "parent": "wheel",
+        "origin": [
+          1.3,
+          -0.88,
+          0.42
+        ],
+        "offset": [
+          0.28,
+          -0.1,
+          0
+        ],
+        "spin": [
+          1.3,
+          0,
+          0.42
+        ]
+      },
+      "axlebox_b_l": {
+        "label": "B 轴 左侧 轴箱",
+        "group": "轴箱",
+        "parent": "wheel",
+        "origin": [
+          1.3,
+          -1.2,
+          0.42
+        ],
+        "offset": [
+          0.28,
+          -0.46,
+          0.03
+        ]
+      },
+      "spring_seat_lower_b_l": {
+        "label": "B 轴 左侧 下弹簧座",
+        "group": "一系悬挂",
+        "parent": "wheel",
+        "origin": [
+          1.3,
+          -1.2,
+          0.625
+        ],
+        "offset": [
+          0.2,
+          -0.3,
+          0.24
+        ]
+      },
+      "spring_seat_upper_b_l": {
+        "label": "B 轴 左侧 上弹簧座",
+        "group": "一系悬挂",
+        "parent": "frame",
+        "origin": [
+          1.3,
+          -1.16,
+          0.826
+        ],
+        "offset": [
+          0.2,
+          -0.3,
+          0.52
+        ]
+      },
+      "disc_b_l": {
+        "label": "B 轴 左侧 制动盘",
+        "group": "制动装置",
+        "parent": "wheel",
+        "origin": [
+          1.3,
+          -0.64,
+          0.42
+        ],
+        "offset": [
+          0.43,
+          -0.15,
+          0.12
+        ],
+        "spin": [
+          1.3,
+          0,
+          0.42
+        ]
+      },
+      "caliper_b_l": {
+        "label": "B 轴 左侧 制动卡钳",
+        "group": "制动装置",
+        "parent": "wheel",
+        "origin": [
+          1.3,
+          -0.64,
+          0.658
+        ],
+        "offset": [
+          0.43,
+          -0.15,
+          0.34
+        ]
+      },
+      "wheel_b_r": {
+        "label": "B 轴 右侧 车轮",
+        "group": "轮对",
+        "parent": "wheel",
+        "origin": [
+          1.3,
+          0.88,
+          0.42
+        ],
+        "offset": [
+          0.28,
+          0.1,
+          0
+        ],
+        "spin": [
+          1.3,
+          0,
+          0.42
+        ]
+      },
+      "axlebox_b_r": {
+        "label": "B 轴 右侧 轴箱",
+        "group": "轴箱",
+        "parent": "wheel",
+        "origin": [
+          1.3,
+          1.2,
+          0.42
+        ],
+        "offset": [
+          0.28,
+          0.46,
+          0.03
+        ]
+      },
+      "spring_seat_lower_b_r": {
+        "label": "B 轴 右侧 下弹簧座",
+        "group": "一系悬挂",
+        "parent": "wheel",
+        "origin": [
+          1.3,
+          1.2,
+          0.625
+        ],
+        "offset": [
+          0.2,
+          0.3,
+          0.24
+        ]
+      },
+      "spring_seat_upper_b_r": {
+        "label": "B 轴 右侧 上弹簧座",
+        "group": "一系悬挂",
+        "parent": "frame",
+        "origin": [
+          1.3,
+          1.16,
+          0.826
+        ],
+        "offset": [
+          0.2,
+          0.3,
+          0.52
+        ]
+      },
+      "disc_b_r": {
+        "label": "B 轴 右侧 制动盘",
+        "group": "制动装置",
+        "parent": "wheel",
+        "origin": [
+          1.3,
+          0.64,
+          0.42
+        ],
+        "offset": [
+          0.43,
+          0.15,
+          0.12
+        ],
+        "spin": [
+          1.3,
+          0,
+          0.42
+        ]
+      },
+      "caliper_b_r": {
+        "label": "B 轴 右侧 制动卡钳",
+        "group": "制动装置",
+        "parent": "wheel",
+        "origin": [
+          1.3,
+          0.64,
+          0.658
+        ],
+        "offset": [
+          0.43,
+          0.15,
+          0.34
+        ]
+      },
+      "coupling_a": {
+        "label": "A 轴 传动连接",
+        "group": "电机与传动",
+        "parent": "links",
+        "origin": [
+          -1.1700000000000002,
+          0.38,
+          0.55
+        ],
+        "offset": [
+          -0.2,
+          0.38,
+          0.38
+        ],
+        "link": 0
+      },
+      "coil_a_l": {
+        "label": "A 轴 左侧 一系螺旋弹簧",
+        "group": "一系悬挂",
+        "parent": "links",
+        "origin": [
+          -1.3,
+          -1.2,
+          0.625
+        ],
+        "offset": [
+          -0.2,
+          -0.38,
+          0.38
+        ],
+        "link": 1
+      },
+      "damper_a_l": {
+        "label": "A 轴 左侧 减振器",
+        "group": "一系悬挂",
+        "parent": "links",
+        "origin": [
+          -1.1300000000000001,
+          -1.2,
+          0.55
+        ],
+        "offset": [
+          -0.2,
+          -0.38,
+          0.38
+        ],
+        "link": 2
+      },
+      "guide_a_l": {
+        "label": "A 轴 左侧 导向件",
+        "group": "一系悬挂",
+        "parent": "links",
+        "origin": [
+          -1.4300000000000002,
+          -1.2,
+          0.48
+        ],
+        "offset": [
+          -0.2,
+          -0.38,
+          0.38
+        ],
+        "link": 3
+      },
+      "stay_a_l": {
+        "label": "A 轴 左侧 卡钳支撑",
+        "group": "制动装置",
+        "parent": "links",
+        "origin": [
+          -1.3,
+          -0.64,
+          0.693
+        ],
+        "offset": [
+          -0.2,
+          -0.38,
+          0.38
+        ],
+        "link": 4
+      },
+      "coil_a_r": {
+        "label": "A 轴 右侧 一系螺旋弹簧",
+        "group": "一系悬挂",
+        "parent": "links",
+        "origin": [
+          -1.3,
+          1.2,
+          0.625
+        ],
+        "offset": [
+          -0.2,
+          0.38,
+          0.38
+        ],
+        "link": 5
+      },
+      "damper_a_r": {
+        "label": "A 轴 右侧 减振器",
+        "group": "一系悬挂",
+        "parent": "links",
+        "origin": [
+          -1.1300000000000001,
+          1.2,
+          0.55
+        ],
+        "offset": [
+          -0.2,
+          0.38,
+          0.38
+        ],
+        "link": 6
+      },
+      "guide_a_r": {
+        "label": "A 轴 右侧 导向件",
+        "group": "一系悬挂",
+        "parent": "links",
+        "origin": [
+          -1.4300000000000002,
+          1.2,
+          0.48
+        ],
+        "offset": [
+          -0.2,
+          0.38,
+          0.38
+        ],
+        "link": 7
+      },
+      "stay_a_r": {
+        "label": "A 轴 右侧 卡钳支撑",
+        "group": "制动装置",
+        "parent": "links",
+        "origin": [
+          -1.3,
+          0.64,
+          0.693
+        ],
+        "offset": [
+          -0.2,
+          0.38,
+          0.38
+        ],
+        "link": 8
+      },
+      "coupling_b": {
+        "label": "B 轴 传动连接",
+        "group": "电机与传动",
+        "parent": "links",
+        "origin": [
+          1.1700000000000002,
+          0.38,
+          0.55
+        ],
+        "offset": [
+          0.2,
+          0.38,
+          0.38
+        ],
+        "link": 9
+      },
+      "coil_b_l": {
+        "label": "B 轴 左侧 一系螺旋弹簧",
+        "group": "一系悬挂",
+        "parent": "links",
+        "origin": [
+          1.3,
+          -1.2,
+          0.625
+        ],
+        "offset": [
+          0.2,
+          -0.38,
+          0.38
+        ],
+        "link": 10
+      },
+      "damper_b_l": {
+        "label": "B 轴 左侧 减振器",
+        "group": "一系悬挂",
+        "parent": "links",
+        "origin": [
+          1.47,
+          -1.2,
+          0.55
+        ],
+        "offset": [
+          0.2,
+          -0.38,
+          0.38
+        ],
+        "link": 11
+      },
+      "guide_b_l": {
+        "label": "B 轴 左侧 导向件",
+        "group": "一系悬挂",
+        "parent": "links",
+        "origin": [
+          1.17,
+          -1.2,
+          0.48
+        ],
+        "offset": [
+          0.2,
+          -0.38,
+          0.38
+        ],
+        "link": 12
+      },
+      "stay_b_l": {
+        "label": "B 轴 左侧 卡钳支撑",
+        "group": "制动装置",
+        "parent": "links",
+        "origin": [
+          1.3,
+          -0.64,
+          0.693
+        ],
+        "offset": [
+          0.2,
+          -0.38,
+          0.38
+        ],
+        "link": 13
+      },
+      "coil_b_r": {
+        "label": "B 轴 右侧 一系螺旋弹簧",
+        "group": "一系悬挂",
+        "parent": "links",
+        "origin": [
+          1.3,
+          1.2,
+          0.625
+        ],
+        "offset": [
+          0.2,
+          0.38,
+          0.38
+        ],
+        "link": 14
+      },
+      "damper_b_r": {
+        "label": "B 轴 右侧 减振器",
+        "group": "一系悬挂",
+        "parent": "links",
+        "origin": [
+          1.47,
+          1.2,
+          0.55
+        ],
+        "offset": [
+          0.2,
+          0.38,
+          0.38
+        ],
+        "link": 15
+      },
+      "guide_b_r": {
+        "label": "B 轴 右侧 导向件",
+        "group": "一系悬挂",
+        "parent": "links",
+        "origin": [
+          1.17,
+          1.2,
+          0.48
+        ],
+        "offset": [
+          0.2,
+          0.38,
+          0.38
+        ],
+        "link": 16
+      },
+      "stay_b_r": {
+        "label": "B 轴 右侧 卡钳支撑",
+        "group": "制动装置",
+        "parent": "links",
+        "origin": [
+          1.3,
+          0.64,
+          0.693
+        ],
+        "offset": [
+          0.2,
+          0.38,
+          0.38
+        ],
+        "link": 17
+      }
+    },
+    "layers": [
+      "frame",
+      "wheel",
+      "fixed",
+      "links"
+    ]
+  },
+  "cases": {
+    "ordinary": {
+      "csv": "timestamp,vehicle_id,speed_kmh,lateral_accel,vertical_accel\n2026-10-08T09:30:00,DEMO-001,0,0.1,-0.2\n2026-10-08T09:30:01Z,DEMO-001,600,100,-100\n",
+      "expected": {
+        "valid": true,
+        "source_row_count": 2,
+        "missing_by_field": {},
+        "naive_timestamp_rows": 1,
+        "sampling": {
+          "sample_count": 2,
+          "unique_timestamp_count": 2,
+          "duplicate_timestamp_rows": 0,
+          "interval_min_seconds": 1.0,
+          "interval_median_seconds": 1.0,
+          "interval_max_seconds": 1.0
+        },
+        "sha256": "281f38638214caaf084aa03e67d84866dce9577e2790e6131c05e65562548d98",
+        "analysis": {
+          "sample_count": 2,
+          "speed": {
+            "maximum": 600.0,
+            "minimum": 0.0,
+            "mean": 300.0
+          },
+          "lateral_accel": {
+            "maximum": 100.0,
+            "minimum": 0.1,
+            "mean": 50.05,
+            "rms": 70.71071347398497,
+            "peak_absolute": 100.0,
+            "peak_signed": 100.0,
+            "peak_timestamp": "2026-10-08 09:30:01+00:00"
+          },
+          "vertical_accel": {
+            "maximum": -0.2,
+            "minimum": -100.0,
+            "mean": -50.1,
+            "rms": 70.71081953986958,
+            "peak_absolute": 100.0,
+            "peak_signed": -100.0,
+            "peak_timestamp": "2026-10-08 09:30:01+00:00"
+          },
+          "threshold": {
+            "value": 1.0,
+            "lateral": {
+              "count": 1,
+              "percentage": 50.0
+            },
+            "vertical": {
+              "count": 1,
+              "percentage": 50.0
+            },
+            "either": {
+              "count": 1,
+              "percentage": 50.0
+            }
+          }
+        },
+        "anomalies": {
+          "threshold": 1.0,
+          "points": [
+            {
+              "timestamp": "2026-10-08 09:30:01+00:00",
+              "field": "lateral_accel",
+              "type": "横向加速度统计异常",
+              "value": 100.0,
+              "absolute_value": 100.0
+            },
+            {
+              "timestamp": "2026-10-08 09:30:01+00:00",
+              "field": "vertical_accel",
+              "type": "垂向加速度统计异常",
+              "value": -100.0,
+              "absolute_value": 100.0
+            }
+          ],
+          "events": [
+            {
+              "type": "横向加速度统计异常",
+              "field": "lateral_accel",
+              "start_timestamp": "2026-10-08 09:30:01+00:00",
+              "end_timestamp": "2026-10-08 09:30:01+00:00",
+              "duration_seconds": 0.0,
+              "sample_count": 1,
+              "maximum_absolute_value": 100.0,
+              "maximum_signed_value": 100.0,
+              "maximum_timestamp": "2026-10-08 09:30:01+00:00"
+            },
+            {
+              "type": "垂向加速度统计异常",
+              "field": "vertical_accel",
+              "start_timestamp": "2026-10-08 09:30:01+00:00",
+              "end_timestamp": "2026-10-08 09:30:01+00:00",
+              "duration_seconds": 0.0,
+              "sample_count": 1,
+              "maximum_absolute_value": 100.0,
+              "maximum_signed_value": -100.0,
+              "maximum_timestamp": "2026-10-08 09:30:01+00:00"
+            }
+          ]
+        },
+        "csv_lines": [
+          2,
+          3
+        ],
+        "offsets": [
+          0.0,
+          1.0
+        ],
+        "gap_cutoff": 3.0,
+        "midpoint_scene": "正常运行"
+      }
+    },
+    "physical_lines_and_clock": {
+      "csv": "﻿timestamp,vehicle_id,speed_kmh,lateral_accel,vertical_accel,note\r\n2026-10-08T09:30:20Z,DEMO-001,72,1.2,0,\"one\r\ntwo\"\r\n\r\n2026-10-08T17:30:00+08:00,DEMO-001,72,1,-1,\"a,b\"\r\n2026-10-08T09:30:01.000001Z,DEMO-001,73,1.0000000000000002,-1.2,\"a\"\"b\"\r\n2026-10-08T09:30:01.000001Z,DEMO-001,73,-1.2,1.2,duplicate\r\n2026-10-08T09:30:02.000001Z,DEMO-001,73,0.9999999999999999,1,edge\r\n",
+      "expected": {
+        "valid": true,
+        "source_row_count": 5,
+        "missing_by_field": {},
+        "naive_timestamp_rows": 0,
+        "sampling": {
+          "sample_count": 5,
+          "unique_timestamp_count": 4,
+          "duplicate_timestamp_rows": 1,
+          "interval_min_seconds": 1.0,
+          "interval_median_seconds": 1.000001,
+          "interval_max_seconds": 17.999999
+        },
+        "sha256": "906fa9b0e322661838458b3cac5653f0458ff33541f4a97baaa8597aca58a551",
+        "analysis": {
+          "sample_count": 5,
+          "speed": {
+            "maximum": 73.0,
+            "minimum": 72.0,
+            "mean": 72.6
+          },
+          "lateral_accel": {
+            "maximum": 1.2,
+            "minimum": -1.2,
+            "mean": 0.6,
+            "rms": 1.0844353369380766,
+            "peak_absolute": 1.2,
+            "peak_signed": -1.2,
+            "peak_timestamp": "2026-10-08 09:30:01.000001+00:00"
+          },
+          "vertical_accel": {
+            "maximum": 1.2,
+            "minimum": -1.2,
+            "mean": 0.0,
+            "rms": 0.9879271228182775,
+            "peak_absolute": 1.2,
+            "peak_signed": -1.2,
+            "peak_timestamp": "2026-10-08 09:30:01.000001+00:00"
+          },
+          "threshold": {
+            "value": 1.0,
+            "lateral": {
+              "count": 3,
+              "percentage": 60.0
+            },
+            "vertical": {
+              "count": 2,
+              "percentage": 40.0
+            },
+            "either": {
+              "count": 3,
+              "percentage": 60.0
+            }
+          }
+        },
+        "anomalies": {
+          "threshold": 1.0,
+          "points": [
+            {
+              "timestamp": "2026-10-08 09:30:01.000001+00:00",
+              "field": "lateral_accel",
+              "type": "横向加速度统计异常",
+              "value": 1.0000000000000002,
+              "absolute_value": 1.0000000000000002
+            },
+            {
+              "timestamp": "2026-10-08 09:30:01.000001+00:00",
+              "field": "lateral_accel",
+              "type": "横向加速度统计异常",
+              "value": -1.2,
+              "absolute_value": 1.2
+            },
+            {
+              "timestamp": "2026-10-08 09:30:01.000001+00:00",
+              "field": "vertical_accel",
+              "type": "垂向加速度统计异常",
+              "value": -1.2,
+              "absolute_value": 1.2
+            },
+            {
+              "timestamp": "2026-10-08 09:30:01.000001+00:00",
+              "field": "vertical_accel",
+              "type": "垂向加速度统计异常",
+              "value": 1.2,
+              "absolute_value": 1.2
+            },
+            {
+              "timestamp": "2026-10-08 09:30:20+00:00",
+              "field": "lateral_accel",
+              "type": "横向加速度统计异常",
+              "value": 1.2,
+              "absolute_value": 1.2
+            }
+          ],
+          "events": [
+            {
+              "type": "横向加速度统计异常",
+              "field": "lateral_accel",
+              "start_timestamp": "2026-10-08 09:30:01.000001+00:00",
+              "end_timestamp": "2026-10-08 09:30:01.000001+00:00",
+              "duration_seconds": 0.0,
+              "sample_count": 2,
+              "maximum_absolute_value": 1.2,
+              "maximum_signed_value": -1.2,
+              "maximum_timestamp": "2026-10-08 09:30:01.000001+00:00"
+            },
+            {
+              "type": "垂向加速度统计异常",
+              "field": "vertical_accel",
+              "start_timestamp": "2026-10-08 09:30:01.000001+00:00",
+              "end_timestamp": "2026-10-08 09:30:01.000001+00:00",
+              "duration_seconds": 0.0,
+              "sample_count": 2,
+              "maximum_absolute_value": 1.2,
+              "maximum_signed_value": -1.2,
+              "maximum_timestamp": "2026-10-08 09:30:01.000001+00:00"
+            },
+            {
+              "type": "横向加速度统计异常",
+              "field": "lateral_accel",
+              "start_timestamp": "2026-10-08 09:30:20+00:00",
+              "end_timestamp": "2026-10-08 09:30:20+00:00",
+              "duration_seconds": 0.0,
+              "sample_count": 1,
+              "maximum_absolute_value": 1.2,
+              "maximum_signed_value": 1.2,
+              "maximum_timestamp": "2026-10-08 09:30:20+00:00"
+            }
+          ]
+        },
+        "csv_lines": [
+          5,
+          6,
+          7,
+          8,
+          2
+        ],
+        "offsets": [
+          0.0,
+          1.000001,
+          1.000001,
+          2.000001,
+          20.0
+        ],
+        "gap_cutoff": 3.0000029999999995,
+        "midpoint_scene": "正常运行"
+      }
+    },
+    "missing_and_nonfinite": {
+      "csv": "timestamp,vehicle_id,speed_kmh,lateral_accel,vertical_accel\n2026-10-08T09:30:01Z,DEMO-001,,NaN,101\n",
+      "expected": {
+        "valid": false,
+        "source_row_count": 1,
+        "missing_by_field": {
+          "speed_kmh": 1
+        },
+        "naive_timestamp_rows": 0
+      }
+    },
+    "outside_speed": {
+      "csv": "timestamp,vehicle_id,speed_kmh,lateral_accel,vertical_accel\n2026-10-08T09:30:01Z,DEMO-001,601,0,0\n",
+      "expected": {
+        "valid": false,
+        "source_row_count": 1,
+        "missing_by_field": {},
+        "naive_timestamp_rows": 0
+      }
+    },
+    "wrong_vehicle": {
+      "csv": "timestamp,vehicle_id,speed_kmh,lateral_accel,vertical_accel\n2026-10-08T09:30:01Z,OTHER,10,0,0\n",
+      "expected": {
+        "valid": false,
+        "source_row_count": 1,
+        "missing_by_field": {},
+        "naive_timestamp_rows": 0
+      }
+    }
+  }
+}
