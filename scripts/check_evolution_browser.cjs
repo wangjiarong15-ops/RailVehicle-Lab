@@ -185,9 +185,18 @@ async function audit(browser, width, height) {
     await plot.evaluate(node=>node.scrollIntoView({block:"center",behavior:"instant"}));
     const point = plot.locator(".scatterlayer .trace").first().locator("path.point").nth(15);
     await point.waitFor();
-    const box = await point.boundingBox();
-    await page.mouse.click(box.x+box.width/2,box.y+box.height/2);
-    await page.locator(".st-key-bogie_status_card").getByText(/第 16\/120 条/).waitFor();
+    const selected = page.locator(".st-key-bogie_status_card").getByText(/第 16\/120 条/);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      // Streamlit can scroll the new page during its first layout pass. Resolve the
+      // actual Plotly point at click time, then require a visible sample transition.
+      await point.click({force:true});
+      try {
+        await selected.waitFor({timeout:5000});
+        break;
+      } catch (error) {
+        if (attempt === 1) throw error;
+      }
+    }
     await frame.locator("#browse-parts").click();
     await frame.locator("#part-query").fill("coil_a_l");
     await frame.locator(".part-row:visible").first().click();

@@ -74,7 +74,10 @@ base.searchParams.set("embed_options","dark_theme");
       ].join(","))].join("\n");
     const sourceHash=createHash("sha256").update(csv).digest("hex");
     await runUpload.setInputFiles({name:"fictional-integrated.csv",mimeType:"text/csv",buffer:Buffer.from(csv)});
-    await page.getByText("工程数据接入（可选）",{exact:true}).click();
+    await page.getByText("按车辆检查采样质量（待导入）",{exact:true}).waitFor();
+    await page.locator('[data-testid="stApp"][data-test-script-state="notRunning"]').waitFor();
+    const intakeHeading=page.getByText("工程数据接入（可选）",{exact:true});
+    await intakeHeading.click();
     await page.getByText("本次导入附带工程元数据",{exact:true}).click();
     const engineeringUpload=page.getByTestId("stFileUploader").filter({hasText:"工程元数据 JSON"}).locator("input");
     const manifest={
@@ -87,16 +90,22 @@ base.searchParams.set("embed_options","dark_theme");
       },
     };
     const importButton=page.getByRole("button",{name:"导入到 SQLite",exact:true});
-    await page.getByText("请上传工程元数据 JSON。",{exact:true}).waitFor();
+    async function showIntakeMessage(message) {
+      const expected=page.getByText(message);
+      await expected.waitFor({state:"attached"});
+      if (!await intakeHeading.evaluate(node=>node.closest("details").open)) await intakeHeading.click();
+      await expected.waitFor();
+    }
+    await showIntakeMessage(/^请上传工程元数据 JSON。$/);
     assert(await importButton.isDisabled());
     async function loadManifest(name, data) {
       await engineeringUpload.setInputFiles({name,mimeType:"application/json",buffer:Buffer.from(JSON.stringify(data))});
     }
     await loadManifest("fictional-wrong-unit.json",{...manifest,units:{...manifest.units,lateral_accel:"g"}});
-    await page.getByText(/CSV 单位须为速度 km\/h/).waitFor();
+    await showIntakeMessage(/CSV 单位须为速度 km\/h/);
     assert(await importButton.isDisabled());
     await loadManifest("fictional-engineering.json",manifest);
-    await page.getByText(/工程接入元数据已核对/).waitFor();
+    await showIntakeMessage(/工程接入元数据已核对/);
     await page.getByText(/时钟漂移证据不足/).waitFor();
     await page.screenshot({path:resolve(out,"engineering-intake.png")});
     await click("导入到 SQLite");

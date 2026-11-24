@@ -1,0 +1,54 @@
+# Phase 8 交付记录
+
+开发基线是 `95ccd2a0`，分支为 `codex/phase8-engineering-validation`。[基线审计](phase8-audit.md) · [双版本技术契约](phase8-contract.md) · [工程验收操作](engineering-validation/README.md)
+
+## 功能变化
+
+| 开发前 | Phase 8 实现 | 主要文件 |
+| --- | --- | --- |
+| 两端各自保存分析口径，在线版自带旧夹具 | Python 生成版本化虚构数据，JS 直接运行 RC1 计算，与启动状态、异常、采样和 54 部件装配结果对照。CI 在现有测试矩阵执行 | `scripts/build_phase8_contract.py`、`scripts/check_phase8_contract.mjs`、`tests/fixtures/phase8-v1.json`、`.github/workflows/tests.yml` |
+| 工程导入可声明测点、时基与单位，显示采样问题 | 新增额外重复行比例、正间隔对应的采样率估计和声明量程候选计数，继续支持旧批次 | `rail_vehicle/engineering_intake.py`、`rail_vehicle/pages/engineering_intake.py` |
+| 单自由度仿真可向当前构架测量轴投影 | 加入配对参考 CSV、RMSE、MAE、绝对峰值误差、Pearson 相关系数和可追溯 JSON。批次、轴向或仿真变化时重新配对 | `rail_vehicle/verification_residuals.py`、`rail_vehicle/pages/suspension_lab.py` |
+| 构架单自由度及双轴浮沉与点头 | 增加一系与二系耦合、阻尼投影、频率响应及二系刚度对照。复用 54 部件模型、三维时间轴与一系动画 | `rail_vehicle/two_stage_suspension.py`、`rail_vehicle/pages/suspension_lab.py` |
+| Copilot 将样本显示为当前时间窗序号 | CSV 有物理行时随源读值显示，保留 UTC 排序和当前数据来源提示 | `rail_vehicle/copilot/tools.py` |
+| 先跳出三维页面核查证据，再返回时偶发清空部件筛选 | 用独立会话键保留用户的部件选择。支持保留一个部件或显式隐藏所有部件 | `rail_vehicle/pages/bogie.py`、`tests/test_bogie_ui.py` |
+
+数据库结构沿用既有版本，工程质量结果随原有 JSON 保留。参考对比结果由用户本地导出，记录包括双方摘要、批次、通道、配置及解算器版本。标定状态、原始读数、换算读数、仿真和教学效果按各自来源解释。
+
+## 数值模型及校验
+
+以静平衡为零位。令 `y(t)` 为轮座支承高度，`zf` 为构架浮沉，`zb` 为等效车体浮沉。轮座输入为波长 3 m 的正弦不平顺，两轴同步。初始位移与速度设为零。参数使用 kg、m、s、N/m 和 N·s/m。
+
+```text
+F1 = k1(y − zf) + c1(dy/dt − dzf/dt)
+F2 = k2(zb − zf) + c2(dzb/dt − dzf/dt)
+mf d²zf/dt² = F1 + F2
+mb d²zb/dt² = −F2
+```
+
+固定步长 RK4 以 1 ms 计算，6 s 工况每 10 ms 输出一次，共 601 点。一系行程为 `zf − y`，二系行程为 `zb − zf`。无阻尼固有频率由质量归一化刚度矩阵得到，模态阻尼比取阻尼矩阵沿无阻尼模态的对角投影。频响求解 `(K + iωC − ω²M)z = B(ω)y`。三维视窗用计算的一系行程驱动构架，轮座为基准，显示行程限制在 ±40 mm。数值表和曲线使用未截断的计算值。等效车体和二系行程由曲线表达。模型暂未引入轮轨接触、非线性空气弹簧、侧滚及车体俯仰。
+
+默认参数计算得到约 0.803 Hz 和 3.864 Hz 两个模态。2 Hz 输入下，构架和车体的稳态位移增益约 0.716 和 0.281。测试覆盖等质量等刚度解析模态、零输入、频响的静态单位增益、两个弹簧行程，以及与 SciPy DOP853 独立积分的默认工况位移对照，601 点的绝对容差为 0.3 nm。该容差用于检验软件数值一致性。默认工况求解 7 次的中位数为 34.45 ms，使用本机 Python，未计入 Streamlit 与绘图。
+
+## 已有验收证据
+
+- Python 全量回归为 700 项通过、324 个子测试通过，0 项失败。包含旧数据库兼容、标定复核、离线 Copilot、模拟 AI 服务以及新增力学与工程验证。依赖一致性、Python 编译、JavaScript 语法和 Git 差异检查均通过。
+- 交叉验证覆盖 5 组 CSV、54 个部件，两份本地 GLB 的 SHA-256 一致。装配校验报告 58 个网格、47,948 个三角形、1,457,452 字节。
+- 本机 Edge 跑通 RC1 浏览器测试 56/56。1366×768、1920×1080、390×844 均验证了模型和示例回放。由导航到三维就绪实测约 1.1–1.8 s。完整版在软件 WebGL 下记录约 13 fps 连续三维播放，同一场景约 30 次绘制调用，数据仅用作当前机器的复测基点。
+- 完整版 8 组 Edge 套件分批通过。范围包括两种桌面尺寸、双主题 18 路由、分析和 PDF、异常定位、GLB 回退、两级悬挂时间轴、配置版本核验、参考残差导出及模拟 AI 限流和中止。首轮修复了新表单重跑丢文件和三维部件筛选丢失，后续修正了导入与曲线点击前的测试等待条件。
+- 核对已发布在线版的入口脚本、分析脚本、核心渲染、CSS 和装配 JSON，内容与本地一致。公网 HTML 的哈希与本地不同，当前证据不足以确认整个部署与标签逐字节相同。参赛文案应注明使用的验收快照，参赛材料由项目所有者确认与发布。
+- PyInstaller 6.22.3 从干净源码 `9a7646fa` 构建目录式 Windows x64 候选。清单校验记录 7,971 个文件，打包检查拒绝数据库、CSV、日志、密钥文件和私人配置路径。本机隔离启动通过健康检查，Edge 可加载随包的 GLB。冻结公测 ZIP SHA-256 仍为 `8b1e46b9b1eb31a120fa53ce547d9a6a705575fcd747ce046369f0efabc91c6f`。
+
+截图和日志保存在 `tmp/phase8-verified-browser/run-xe796z4r/`、`tmp/phase8-evidence-final/run-4c91oxi6/`（仿真）、`tmp/phase8-evidence-final/run-voxhfdnj/`（工程验证）、`tmp/phase8-rc1-browser/`（RC1）和 `tmp/phase8-portable-candidate/`（候选包）。这些本地产物使用虚构数据，未加入 Git。
+
+## 提交与剩余验收
+
+- `6c1484f` 双版本契约、夹具、RC1 审计和独立浏览器复测脚本。
+- `9a7646f` 工程残差、两级悬挂、Copilot 行号、部件筛选修复与回归。
+- 工程验证需要有使用授权的现场或台架采集记录、设备量程和滤波设置、丢包计数、跨设备共同时间基准、安装方向和标定不确定度，以及独立参考和试验责任方确定的验收限。
+- V1.0 仍需在这些证据上验证工程精度，并在另一台干净 Windows 设备验证安装外路径、升级、保存和退出。可用真实 Provider 授权后单测限流、流式和离线恢复行为的差异。对于多自由度教学模型，当前只完成二系刚度的同激励对照，尚待引入批量参数敏感性及实测对齐。
+- 完整版在小视窗展开「视角与部件」仍可能将模型推到首屏以下。当前记录为软件渲染复测基点，硬件 GPU、长时运行和渲染性能提升幅度需要单独基准。公网 RC1 的 GLB 复下载受当前链路速度限制，完整部署的源码映射待有发布清单后确认。
+
+## 依赖安全
+
+首次用 `pip-audit` 对本机 Python 环境执行公告扫描，工具在旧版 Pillow 与 certifi 报出 44 条匹配。应用依赖声明提高了 certifi 下限，Python 3.11 及以上使用支持 Pillow 13 的 Streamlit 1.67 系列或后续兼容版本。Python 3.10 的安装路径仍兼容旧版 Streamlit，Pillow 13 要求 Python 3.11 及以上。发布环境应采用已通过复扫的依赖组合。[Pillow 13 发布元数据](https://pypi.org/project/Pillow/13.0.0/) · [certifi 修复版元数据](https://pypi.org/project/certifi/2026.10.18/) · [Streamlit 发布元数据](https://pypi.org/project/streamlit/1.67.0/)

@@ -4,7 +4,7 @@
 
 V0.5 工程验证准备包含单车 CSV 接入声明、数据质量筛查、标定复核和现场验收清单。[工程验证工具包](docs/engineering-validation/README.md)
 
-Phase 8 增加两端交叉验证、参考轴向残差导出及一系与二系耦合浮沉计算。工程试验和独立实测证据仍待采集。[双版本技术契约](docs/phase8-contract.md) · [Phase 8 审计](docs/phase8-audit.md)
+Phase 8 增加两端交叉验证、参考轴向残差导出及一系与二系耦合浮沉计算。工程试验和独立实测证据仍待采集。[双版本技术契约](docs/phase8-contract.md) · [Phase 8 审计](docs/phase8-audit.md) · [验收记录](docs/phase8-delivery.md)
 
 ## 采样数据质量检查
 
