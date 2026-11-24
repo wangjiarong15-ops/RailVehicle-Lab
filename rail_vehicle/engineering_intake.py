@@ -43,13 +43,18 @@ def validate_manifest(manifest):
     normalized = {}
     for channel, sensor in sensors.items():
         required = {"sensor_id", "part_id", "position_frame", "position_m", "axis"}
-        if not isinstance(sensor, dict) or sensor.keys() != required:
+        if not isinstance(sensor, dict) or not required <= sensor.keys() or sensor.keys() - required - {"full_scale_m_s2"}:
             raise ValueError(f"{channel} 缺少传感器编号、部件、坐标系、位置或局部正方向。")
         if (not isinstance(sensor["sensor_id"], str) or not re.fullmatch(r"[\w.-]{1,64}", sensor["sensor_id"])
                 or sensor["part_id"] not in tuple(PARTS) or sensor["position_frame"] not in ("vehicle", "model")
                 or sensor["axis"] not in AXES):
             raise ValueError(f"{channel} 的传感器编号、部件、坐标系或局部正方向无效。")
         normalized[channel] = {**sensor, "position_m": vector(sensor["position_m"])}
+        if "full_scale_m_s2" in sensor:
+            full_scale = number(sensor["full_scale_m_s2"])
+            if full_scale <= 0:
+                raise ValueError(f"{channel} 的声明满量程须为正数。")
+            normalized[channel]["full_scale_m_s2"] = full_scale
     first, second = normalized.values()
     if first["sensor_id"] == second["sensor_id"] and first["axis"][-1] == second["axis"][-1]:
         raise ValueError("同一传感器的两个通道须使用不同的局部轴。")
@@ -87,9 +92,23 @@ def assess_intake(validation, manifest):
     if validation.naive_timestamp_rows:
         raise ValueError(f"工程 CSV 中有 {validation.naive_timestamp_rows} 行时间戳缺少显式时区。")
     period = 1 / manifest["sample_rate_hz"]
-    quality = review_sampling_timestamps((row["timestamp"] for row in validation.iter_rows()),
+    full_scales = {channel: spec.get("full_scale_m_s2") for channel, spec in manifest["sensors"].items()}
+    counts = {channel: 0 if scale is not None else None for channel, scale in full_scales.items()}
+
+    def timestamps():
+        for row in validation.iter_rows():
+            for channel, scale in full_scales.items():
+                if scale is not None and abs(row[channel]) >= scale:
+                    counts[channel] += 1
+            yield row["timestamp"]
+
+    quality = review_sampling_timestamps(timestamps(),
                                          expected_interval_seconds=period, detail_limit=20,
                                          flag_short_intervals=True)
+    quality["duplicate_row_fraction"] = quality["duplicate_timestamp_rows"] / quality["sample_count"]
+    median = quality["interval_median_seconds"]
+    quality["median_implied_rate_hz"] = 1 / median if median else None
+    quality["full_scale_candidate_counts"] = counts
     return {"manifest": manifest, "quality": quality, "missing_by_field": dict(validation.missing_by_field),
             "clock_drift_evidence": "insufficient", "independent_measurement": "pending"}
 

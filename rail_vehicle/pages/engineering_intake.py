@@ -14,6 +14,15 @@ def _show_quality(intake):
                f"长间隔 {quality['long_gap_count']} 处 · 短间隔 {quality['short_interval_count']} 处 · "
                f"倒序 {quality['out_of_order_pairs']} 处")
     st.caption("筛查以声明采样周期为基准，小于 0.5 倍记为短间隔，大于 3 倍记为长间隔。")
+    if "duplicate_row_fraction" in quality:
+        rate = quality.get("median_implied_rate_hz")
+        estimate = f"{rate:.3g} Hz" if rate is not None else "未知（无正间隔）"
+        fraction = quality["duplicate_row_fraction"]
+        st.caption(f"正间隔中位数对应采样率 {estimate} · 重复时间戳额外行比例 {fraction:.1%}。")
+    for channel, count in quality.get("full_scale_candidate_counts", {}).items():
+        label = {"lateral_accel": "横向加速度", "vertical_accel": "垂向加速度"}[channel]
+        status = "未声明量程" if count is None else f"{count} 条达到或超过声明量程的候选记录"
+        st.caption(f"{label} · {status}")
 
 
 def import_preflight(validation, *, revision):

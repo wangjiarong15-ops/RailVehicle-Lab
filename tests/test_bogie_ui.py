@@ -150,6 +150,22 @@ class BogiePageTests(unittest.TestCase):
             self.assertFalse(app.exception)
             self.assertFalse(any(button.key == action for button in app.button))
 
+    def test_part_filter_survives_leaving_the_view(self):
+        with patch.dict(os.environ, {"RAIL_PUBLIC_DEMO": "true"}):
+            app = AppTest.from_string(
+                "import streamlit as st\n"
+                "from rail_vehicle.pages.bogie import render\n"
+                "if st.checkbox('查看模型', value=True):\n"
+                "    render()\n"
+            ).run()
+            for chosen in (["轮对"], []):
+                app.multiselect(key="bogie_visible_parts").set_value(chosen).run()
+                app.checkbox[0].set_value(False).run()
+                self.assertFalse(app.multiselect)
+                app.checkbox[0].set_value(True).run()
+                self.assertFalse(app.exception)
+                self.assertEqual(app.multiselect(key="bogie_visible_parts").value, chosen)
+
 
 if __name__ == "__main__":
     unittest.main()

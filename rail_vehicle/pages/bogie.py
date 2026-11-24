@@ -86,10 +86,15 @@ def _reset_camera():
     st.session_state["bogie_camera_revision"] = st.session_state.get("bogie_camera_revision", 0) + 1
 
 
+def _remember_visible_parts():
+    st.session_state["bogie_saved_visible_parts"] = list(st.session_state["bogie_visible_parts"])
+
+
 def _apply_preset():
     view, parts, _ = _PRESETS[st.session_state["bogie_inspection_preset"]]
     st.session_state.update(bogie_view=view, bogie_visible_parts=list(parts),
                             bogie_focus="无", bogie_isolate=False)
+    _remember_visible_parts()
     _reset_camera()
 
 
@@ -101,8 +106,9 @@ def _inspection_controls(source, comparison):
     st.button("复位当前视角", key="bogie_camera_reset", on_click=_reset_camera, width="stretch")
     selected = st.selectbox("手动高亮部件", ["无", *PARTS], key="bogie_focus")
     focus = None if selected == "无" else selected
-    st.session_state.setdefault("bogie_visible_parts", list(PARTS))
-    parts = st.multiselect("显示部件", PARTS, key="bogie_visible_parts")
+    saved_parts = st.session_state.get("bogie_saved_visible_parts", list(PARTS))
+    parts = st.multiselect("显示部件", PARTS, default=saved_parts, key="bogie_visible_parts",
+                           on_change=_remember_visible_parts)
     isolate = st.toggle("仅显示当前部件", key="bogie_isolate", disabled=focus is None) and focus is not None
     labels = st.toggle("显示部件标注", key="bogie_labels")
     exploded = st.toggle("分解示意", key="bogie_exploded", disabled=source != TEACH) and source == TEACH

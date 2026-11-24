@@ -167,6 +167,16 @@ async function audit(browser, width, height) {
     assert.equal(await seek.inputValue(),axlePaused);
     await frame.locator("#sim-reset").click();
     assert.equal(await seek.inputValue(),"0");
+    await chooseCase("一系与二系耦合浮沉");
+    await frame.locator("#axle-controls").waitFor({state:"hidden"});
+    const twoStage = page.getByText("一系与二系计算行程",{exact:true});
+    await twoStage.waitFor();
+    await seek.focus();
+    await page.keyboard.press("End");
+    assert.equal(await seek.inputValue(),"600");
+    await twoStage.evaluate(node=>node.scrollIntoView({block:"center",behavior:"instant"}));
+    await page.getByTestId("stVegaLiteChart").first().waitFor();
+    await capture("phase8-two-stage-response");
     await sidebar.getByRole("button",{name:/联动分析$/}).click();
     await source.getByText("内置虚构演示",{exact:true}).click();
     await frame.locator("#axle-labels").waitFor({state:"hidden"});

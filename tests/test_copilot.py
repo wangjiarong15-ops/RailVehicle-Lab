@@ -137,6 +137,16 @@ def test_compare_report_read_and_isolate(work):
     assert run(work, "拆解转向架并介绍各个部件").results[0]["result"].rows
 
 
+def test_sample_window_keeps_source_csv_lines_after_utc_sorting():
+    csv = (b"timestamp,vehicle_id,speed_kmh,lateral_accel,vertical_accel\n"
+           b"2026-10-08T09:30:01Z,DEMO-001,72,1,0\n"
+           b"\n2026-10-08T09:30:00Z,DEMO-001,73,-1,0\n")
+    data = csv_datasets(csv, "fictional.csv", 1)["DEMO-001"]
+    output = run(Work(data), "查看第1至2行").results[0]["result"]
+    assert "会话 CSV 附件" in output.text
+    assert [(row["序号"], row["CSV 原始行号"], row["lateral_accel"]) for row in output.rows] == [(1, 4, -1), (2, 2, 1)]
+
+
 def test_csv_attachment_uses_validator_and_separate_vehicles():
     content = demo_csv_content(0)
     v = csv_datasets(content.encode() if isinstance(content, str) else content, "附件.csv", 1)

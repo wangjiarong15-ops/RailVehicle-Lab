@@ -279,6 +279,31 @@ base.searchParams.set("embed_options","dark_theme");
     assert(projection.axis_accel_m_s2.every(v=>v===0)); // +Y is orthogonal to the calculated +Z acceleration.
     await page.getByText("沿登记测量轴的计算响应",{exact:true}).scrollIntoViewIfNeeded();
     await page.screenshot({path:resolve(out,"sensor-projection.png")});
+    const residual = page.getByText("参考轴向数据与仿真残差",{exact:true});
+    await residual.click();
+    await choose("参考来源类别","虚构参考信号");
+    await input("参考记录编号或说明").fill("合成参考测点");
+    await input("相对时间零点与配对依据").fill("共同虚构时间零点");
+    await input("相对时间零点与配对依据").press("Tab");
+    const referenceFile = page.getByTestId("stFileUploader").filter({hasText:"已配对的参考 CSV"}).locator("input");
+    const header = "model_time_s,reference_axis_m_s2\n";
+    await referenceFile.setInputFiles({name:"invalid-pairs.csv",mimeType:"text/csv",
+      buffer:Buffer.from(header+"0,1\n0.005,1\n0.02,1\n")});
+    await page.getByText("invalid-pairs.csv",{exact:true}).waitFor();
+    await click("计算残差");
+    await page.getByText(/第 3 行需要输出网格/).waitFor();
+    await referenceFile.setInputFiles({name:"synthetic-pairs.csv",mimeType:"text/csv",
+      buffer:Buffer.from(header+"0,1\n0.01,1\n0.02,1\n")});
+    await page.getByText("synthetic-pairs.csv",{exact:true}).waitFor();
+    await click("计算残差");
+    const comparison = await downloadJson("导出验证记录 JSON");
+    assert.equal(comparison.batch_id,batch);
+    assert.equal(comparison.configuration_version,2);
+    assert.equal(comparison.metrics.pairs,3);
+    assert.equal(comparison.metrics.rmse_m_s2,1);
+    assert.equal(comparison.independent_measurement,"pending");
+    await page.getByRole("button",{name:"导出验证记录 JSON",exact:true}).scrollIntoViewIfNeeded();
+    await page.screenshot({path:resolve(out,"phase8-residual-validation.png")});
     assert.equal(await page.getByTestId("stException").count(),0);
     assert.deepEqual(errors,[]);
     console.log("CSV import and rejection, missing evidence, wrong digest, v1/v2 mismatch, 20 ms rejection, PDF, refresh, exact replay, offline Copilot and 601 calculated projections passed.");

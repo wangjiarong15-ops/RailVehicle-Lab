@@ -138,9 +138,11 @@ def sample_window(w, first, count):
         raise ValueError("起始样本超出当前数据范围。")
     chosen = w.stats["samples"][first - 1 : first - 1 + count]
     return Output(
-        f"当前范围内第 {first} 至 {first + len(chosen) - 1} 行，按 UTC 时间排序。",
+        f"{SOURCE_LABELS[w.data.source]} · 当前范围内第 {first} 至 {first + len(chosen) - 1} 个样本，"
+        "按 UTC 时刻排序，读数保留源通道值。CSV 原始行号缺失时留空。",
         rows=[
-            {"序号": i, **{k: r[k] for k in ("timestamp", "speed_kmh", "lateral_accel", "vertical_accel")}}
+            {"序号": i, "CSV 原始行号": r.get("csv_line"),
+             **{k: r[k] for k in ("timestamp", "speed_kmh", "lateral_accel", "vertical_accel")}}
             for i, r in enumerate(chosen, first)
         ],
     )

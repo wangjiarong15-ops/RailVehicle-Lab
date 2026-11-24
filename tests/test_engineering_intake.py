@@ -37,6 +37,9 @@ def test_persists_matched_declaration_and_quality_without_certifying(intake_file
     assert (quality["baseline_seconds"], quality["short_interval_count"], quality["long_gap_count"],
             quality["duplicate_timestamp_rows"]) == (1, 1, 1, 1)
     assert intake["clock_drift_evidence"] == "insufficient"
+    assert quality["duplicate_row_fraction"] == 0.25
+    assert quality["median_implied_rate_hz"] == pytest.approx(0.4)
+    assert quality["full_scale_candidate_counts"] == {"lateral_accel": None, "vertical_accel": None}
     with pytest.raises(ValueError, match="SHA-256"):
         import_run_data("wrong.csv", validation, database, engineering_manifest={**manifest, "source_sha256": "0" * 64})
     assert not list_import_batches(database)
@@ -106,3 +109,16 @@ def test_invalid_axis_and_duplicate_keys(intake_files):
         load_manifest(json.dumps(changed).encode())
     with pytest.raises(ValueError, match="有效的 UTF-8"):
         load_manifest(b'{"schema": "first", "schema": "second"}')
+
+
+def test_declared_scale_preserves_inclusive_boundary_and_unknown_channel(intake_files):
+    source, manifest = intake_files
+    source = source.replace(b"0.1,0.2", b"-0.1,0.2", 1)
+    manifest["source_sha256"] = sha256(source).hexdigest()
+    manifest["sensors"]["lateral_accel"]["full_scale_m_s2"] = 0.1
+    parsed = load_manifest(json.dumps(manifest).encode())
+    result = assess_intake(validate_run_csv(source, [VEHICLE]), parsed)
+    assert result["quality"]["full_scale_candidate_counts"] == {"lateral_accel": 4, "vertical_accel": None}
+    manifest["sensors"]["lateral_accel"]["full_scale_m_s2"] = 0
+    with pytest.raises(ValueError):
+        load_manifest(json.dumps(manifest).encode())
