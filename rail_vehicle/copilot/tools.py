@@ -25,6 +25,7 @@ from rail_vehicle.sensor_store import active_channels, channel_inventory
 from rail_vehicle.sensor_evidence import scope_evidence
 from rail_vehicle.timestamp_utils import parse_iso_timestamp
 from rail_vehicle.vibration import analyze_vibration, VibrationUnavailableError
+from rail_vehicle.vehicle_dynamics import TRACKS, VehicleCase, bogie_playback, compare_vehicle_cases, summary
 
 
 @dataclass
@@ -249,7 +250,8 @@ def inspect(w, group, view, display, motion):
 
 
 def cases(w):
-    return Output("当前可执行的简化计算工况。", rows=[{"编号": k, "工况": v} for k, v in SCENARIOS.items()])
+    labels = {**SCENARIOS, **{f"vehicle.{key}": f"整车 · {value}" for key, value in TRACKS.items()}}
+    return Output("当前可执行的简化计算工况。", rows=[{"编号": k, "工况": v} for k, v in labels.items()])
 
 
 def transport(w, action, seconds):
@@ -311,10 +313,10 @@ def report(w):
     notes = []
     for entry in w.report_items:
         tool, output = entry["tool"], entry["result"]
-        if tool not in ("quality", "vibration", "review", "compare", "simulate", "knowledge"):
+        if tool not in ("quality", "vibration", "review", "compare", "simulate", "simulate_vehicle", "knowledge"):
             continue
         lines = [output.text]
-        if tool == "compare":
+        if tool in ("compare", "simulate_vehicle"):
             lines.extend(" · ".join(f"{key} {value}" for key, value in row.items()) for row in output.rows)
         if tool == "knowledge":
             lines.extend(f"{c['title']} [{c['id']}] · {c['source']}" for c in output.citations)
@@ -334,6 +336,21 @@ def report(w):
 
 
 AXES = {"lateral": "横向", "vertical": "垂向"}
+
+
+def vehicle_comparison(w, track, speed, secondary_factor):
+    baseline, changed = compare_vehicle_cases(VehicleCase(track=track), speed_m_s=speed,
+                                              secondary_factor=secondary_factor)
+    rows = [{"工况": name, "速度 m/s": result["case"]["speed_m_s"],
+             "二系刚度 kN/m": result["case"]["vehicle"]["secondary_k_n_m"]/1000, **summary(result)}
+            for name, result in (("教学基准", baseline), ("教学对照", changed))]
+    provenance = [{key: result[key] for key in ("model", "evidence_id", "configuration_sha256", "case",
+                                               "parameter_source", "substeps")} for result in (baseline, changed)]
+    return Output(f"整车垂向模型 · {TRACKS[track]} · 车体加速度 RMS "
+                  f"{rows[0]['body_rms_m_s2']:.3g} → {rows[1]['body_rms_m_s2']:.3g} m/s²。"
+                  "双方使用同一空间轨面。参数为教学假设，工程结论待试验复核。",
+                  rows=rows, provenance={"simulation_comparison": provenance},
+                  scene={"simulation": bogie_playback(changed, "front")})
 
 
 def enum(values):
@@ -413,6 +430,9 @@ TOOLS = {
             "amplitude": number(0, 8),
         },
     ),
+    "simulate_vehicle": Tool("计算整车垂向与点头工况对照", vehicle_comparison,
+                            {"track": enum(TRACKS), "speed": number(2, 70),
+                             "secondary_factor": number(.25, 2)}),
     "report": Tool("生成当前范围 PDF", report),
 }
 
@@ -438,7 +458,7 @@ def validate_plan(plan):
     return plan
 
 
-UNBOUND_TOOLS = frozenset({"knowledge", "inspect", "cases", "simulate", "transport"})
+UNBOUND_TOOLS = frozenset({"knowledge", "inspect", "cases", "simulate", "simulate_vehicle", "transport"})
 
 
 def execute(w, plan, *, cancelled=lambda: False, deadline=None):

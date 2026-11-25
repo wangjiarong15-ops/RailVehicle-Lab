@@ -8,6 +8,7 @@ from rail_vehicle.bogie import PARTS
 from rail_vehicle.bogie_viewer import render_webgl, webgl_available
 from rail_vehicle.deployment import public_demo_enabled
 from rail_vehicle.pages.sensors import read_snapshot
+from rail_vehicle.pages.vehicle_lab import render_vehicle_lab
 from rail_vehicle.replay import ReplayState
 from rail_vehicle.sensor_evidence import project_frame_response
 from rail_vehicle.suspension import SCENARIOS, SuspensionCase, simulate
@@ -26,8 +27,11 @@ def _calculate(case):
 
 
 def render_lab(main):
-    labels = {**SCENARIOS, "two_stage": "一系与二系耦合浮沉"}
+    labels = {**SCENARIOS, "two_stage": "一系与二系耦合浮沉", "vehicle": "整车垂向与点头（10 自由度）"}
     scenario = st.selectbox("计算工况", list(labels), index=1, format_func=labels.get, key="sim_case")
+    if scenario == "vehicle":
+        render_vehicle_lab(main)
+        return
     two_stage = scenario == "two_stage"
     speed = st.slider("初速（m/s）", 1, 10, 6)
     with st.expander("悬挂参数"):

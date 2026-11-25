@@ -37,6 +37,13 @@ CATALOG = tuple(
         "受迫响应取决于激励频率、刚度、质量与阻尼。比较刚度时应固定其他参数和支承输入，同时观察行程与加速度。",
     ),
     Passage(
+        "dynamics.vehicle_vertical",
+        "整车浮沉、点头与固有模态",
+        "RailVehicle-Lab · docs/phase9-dynamics.md",
+        "小角度下，车体前后支承垂向运动是浮沉加上纵向偏距乘点头角。固有频率由质量与刚度矩阵决定。"
+        "在不同速度下通过同一空间轨面时，激励频率与轴间时延同时变化。轮轨采用静平衡附近的线性刚度。",
+    ),
+    Passage(
         "model.track",
         "轮轨接触与双轴点头",
         "RailVehicle-Lab · docs/project-evolution.md",

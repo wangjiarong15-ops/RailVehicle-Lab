@@ -13,6 +13,7 @@ dependencies = [
     "streamlit>=1.67,<2.0; python_version >= '3.11'",
     "Pillow>=13.0.0; python_version >= '3.11'",
     "certifi>=2026.10.18",
+    "numpy>=1.24,<3.0",
     "plotly>=5.18,<7.0",
     "reportlab>=4.2,<5.0",
     "jsonschema>=4.22,<5.0",
@@ -23,7 +24,7 @@ dependencies = [
 [project.optional-dependencies]
 knowledge = ["pypdf>=6,<7"]
 ml = ["scikit-learn>=1.6,<2.0"]
-signal = ["numpy>=1.24,<3.0", "scipy>=1.10,<2.0"]
+signal = ["scipy>=1.10,<2.0"]
 test = ["pytest>=8,<10"]
 
 [tool.setuptools.packages.find]

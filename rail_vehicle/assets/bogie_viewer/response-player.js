@@ -35,10 +35,15 @@ export function responsePlayer(invalidate) {
       (c.pitch_rad[index]*1000).toFixed(2) + " mrad" : "行程 " + mm(front) + " mm";
     get("sim-values").textContent = (index/result.sample_hz).toFixed(2) + " s　" + readout +
       "　构架加速度 " + c.accel_m_s2[index].toFixed(3) + " m/s²" +
-      (Math.max(Math.abs(front), Math.abs(rear)) > .04 ? "　显示行程限于 ±40 mm" : "");
+      (result.vehicle_model ? "　构架 " + mm(c.frame_m[index]) + " mm　轮对 B/A " +
+        mm(c.front_wheel_m[index]) + "/" + mm(c.rear_wheel_m[index]) + " mm　二系 " +
+        mm(c.secondary_m[index]) + " mm　动画 " + displayGain().toFixed(2) + "×" :
+        Math.max(Math.abs(front), Math.abs(rear)) > .04 ? "　显示行程限于 ±40 mm" : "");
   }
   slider.oninput = () => { pause(); seek(Number(slider.value)); };
   get("sim-reset").onclick = () => { pause(); seek(0); };
+  get("sim-prev").onclick = () => { pause(); seek(index-1); };
+  get("sim-next").onclick = () => { pause(); seek(index+1); };
   play.onclick = () => {
     if (running) { pause(); return; }
     if (index === Number(slider.max)) seek(0);
@@ -81,7 +86,25 @@ export function responsePlayer(invalidate) {
   }
   get("front-crest").onclick = () => seekCrest(false);
   get("rear-crest").onclick = () => seekCrest(true);
+  function displayGain() {
+    const c = result.channels;
+    return Math.min(result.parameters.gain, .04/Math.max(Math.abs(c.front_wheel_m[index]),
+      Math.abs(c.rear_wheel_m[index]), Math.abs(c.frame_m[index]),
+      Math.abs(c.front_travel_m[index]), Math.abs(c.rear_travel_m[index]), 1e-12));
+  }
   return {
+    partResponse(id) {
+      if (!result?.vehicle_model || !id) return "";
+      const c = result.channels;
+      const end = id.match(/_[ab](?:_|$)/)?.[0][1];
+      const prefix = end === "b" ? "front" : "rear";
+      if (id.startsWith("air_spring")) return "二系行程 " + (1000*c.secondary_m[index]).toFixed(2) + " mm";
+      if (end && /^(coil|damper|spring_seat)_/.test(id))
+        return "一系行程 " + (1000*c[prefix+"_travel_m"][index]).toFixed(2) + " mm";
+      if (end && /^(wheel|axle|axlebox)_/.test(id))
+        return "轮对垂向 " + (1000*c[prefix+"_wheel_m"][index]).toFixed(2) + " mm";
+      return "";
+    },
     command(action, seconds) {
       if (!result || !["play", "pause", "reset"].includes(action)) return;
       if (action !== "play" || Number.isFinite(seconds)) pause();
@@ -97,6 +120,9 @@ export function responsePlayer(invalidate) {
       pause();
       slider.max = result.channels.travel_m.length-1;
       get("axle-controls").hidden = !result.channels.front_travel_m;
+      get("sim-step").hidden = !result.vehicle_model;
+      get("front-crest").hidden = get("rear-crest").hidden = Boolean(result.vehicle_model);
+      get("response-duration").textContent = "0 – " + Number(slider.max)/result.sample_hz + " s";
       axleSignal.value = "travel";
       drawSeries();
       seek(0);
@@ -111,6 +137,14 @@ export function responsePlayer(invalidate) {
         if (next === +slider.max) pause();
       }
       const c = result.channels;
+      if (result.vehicle_model) {
+        const front = c.front_wheel_m[index], rear = c.rear_wheel_m[index];
+        // Preserve the relative geometry with one common display scale.
+        const visibleGain = displayGain();
+        panel.dataset.displayGain = visibleGain.toFixed(4);
+        return {running, settling:false, angle:c.wheel_rad[index], vertical:c.frame_m[index]*visibleGain,
+          pitch:c.pitch_rad[index]*visibleGain, lateral:0, yaw:0, wheelOffsets:[front*visibleGain, rear*visibleGain]};
+      }
       const front = limitTravel((c.front_travel_m ?? c.travel_m)[index]);
       const rear = limitTravel((c.rear_travel_m ?? c.travel_m)[index]);
       return {running, settling:false, angle:c.wheel_rad[index], vertical:(front+rear)/2,

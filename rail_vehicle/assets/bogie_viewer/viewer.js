@@ -408,8 +408,12 @@ export async function mount() {
     rig.controls.update();
     if (!(dirty || pose.running || pose.settling)) return;
     angle = pose.angle;
-    assembly.pose(angle, pose.lateral, pose.vertical, pose.yaw, pose.pitch);
-    const nextShadowPose = [pose.lateral, pose.vertical, pose.yaw, pose.pitch ?? 0].map((value) => value.toFixed(3)).join(",");
+    assembly.pose(angle, pose.lateral, pose.vertical, pose.yaw, pose.pitch, pose.wheelOffsets);
+    const partResponse = player.partResponse(selection);
+    const partOutput = document.getElementById("simulation-part-response");
+    if (partOutput.textContent !== partResponse) partOutput.textContent = partResponse;
+    const nextShadowPose = [pose.lateral, pose.vertical, pose.yaw, pose.pitch ?? 0, ...(pose.wheelOffsets ?? [])]
+      .map((value) => value.toFixed(3)).join(",");
     // The rotating steel parts are axially symmetric. Reuse their shadow in normal running.
     if (shadowDirty || shadowPose !== nextShadowPose) {
       renderer.shadowMap.needsUpdate = true;
@@ -436,6 +440,10 @@ export async function mount() {
       visibleComponents,
       axleAngle: assembly.partNodes.get("axle_a")?.parent.rotation.y.toFixed(4) ?? "",
       framePitch: -assembly.frame.rotation.y,
+      wheelVertical: ["b", "a"].map(end => {
+        const rotor = assembly.partNodes.get("axle_" + end)?.parent;
+        return rotor?.parent.position.z ?? 0;
+      }).join(","),
       axleboxAngle: assembly.partNodes.get("axlebox_a_l")?.parent.rotation.y.toFixed(4) ?? "",
       discAngle: assembly.partNodes.get("disc_a_l")?.parent.rotation.y.toFixed(4) ?? "",
       pose: [pose.lateral, pose.vertical, pose.yaw].map((value) => value.toFixed(4)).join(","),

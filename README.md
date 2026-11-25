@@ -6,6 +6,8 @@ V0.5 工程验证准备包含单车 CSV 接入声明、数据质量筛查、标�
 
 Phase 8 增加两端交叉验证、参考轴向残差导出及一系与二系耦合浮沉计算。工程试验和独立实测证据仍待采集。[双版本技术契约](docs/phase8-contract.md) · [Phase 8 审计](docs/phase8-audit.md) · [验收记录](docs/phase8-delivery.md)
 
+Phase 9 可在「动力学仿真」运行整车垂向与点头试验，保存工况，比较四种空间轨面与两级悬挂参数，并按计算时序观察单台 GLB 转向架。[模型与操作说明](docs/phase9-dynamics.md) · [发布候选与比赛审计](docs/phase9-release.md)
+
 ## 采样数据质量检查
 
 CSV 导入预览按车辆分别检查重复 UTC 时刻、原 CSV 行序中的时间倒序和长采样间隔，

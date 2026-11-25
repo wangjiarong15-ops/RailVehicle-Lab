@@ -86,6 +86,7 @@ export function createAssembly(scene, data, material, detailed) {
     }
     if (spec.parent === "links") continue;
     const holder = holderAt(parents[spec.parent], spec.offset);
+    if (spec.parent === "wheel") holder.userData.wheelEnd = spec.origin[0] > 0 ? 0 : 1;
     const parent = spec.spin ? spinAt(holder, spec.spin) : holder;
     parent.attach(node);
     partNodes.set(id, node);
@@ -151,7 +152,7 @@ export function createAssembly(scene, data, material, detailed) {
     links.push({node, a: start, b: end, segments, part});
   }
 
-  let visible = new Set(), highlight = new Set(), selected, spread = 0;
+  let visible = new Set(), highlight = new Set(), selected, spread = 0, wheelTravel = [0, 0];
   const shadowCasters = objects.filter(mesh => mesh.castShadow);
   // Keep the imported steel, rubber and paint finishes readable during inspection.
   const tinted = new Map();
@@ -179,6 +180,7 @@ export function createAssembly(scene, data, material, detailed) {
       to.addScaledVector(link.offset, spread);
     } else {
       from.applyMatrix4(wheel.matrixWorld);
+      from.z += wheelTravel[link.a.x > 0 ? 0 : 1];
       to.applyMatrix4(frame.matrixWorld);
     }
   }
@@ -224,7 +226,7 @@ export function createAssembly(scene, data, material, detailed) {
           (!args.isolated || args.isolated === id);
       }
     },
-    pose(phase, lateral, vertical, yaw, pitch = 0) {
+    pose(phase, lateral, vertical, yaw, pitch = 0, wheelOffsets) {
       // Tilt about the midpoint of the upper seats, in the two-wheel support plane.
       frame.position.set(seatHeight*Math.sin(pitch), lateral, vertical+seatHeight*(1-Math.cos(pitch)));
       frame.rotation.y = -pitch;
@@ -232,6 +234,11 @@ export function createAssembly(scene, data, material, detailed) {
       // Wheelset stays at rail height. Brake discs rotate with axles; calipers and axleboxes do not.
       wheel.position.y = lateral * data.wheelPoseGain;
       wheel.rotation.z = yaw * data.wheelPoseGain;
+      wheelTravel = detailed && wheelOffsets ? wheelOffsets : [0, 0];
+      for (const holder of wheel.children) {
+        const end = holder.userData.wheelEnd;
+        if (end !== undefined) holder.position.z = holder.userData.offset.z * spread + wheelTravel[end];
+      }
       for (const axle of spins) axle.rotation.y = phase;
       // Only the two support transforms are needed here. The renderer updates descendants.
       frame.updateWorldMatrix(true, false);

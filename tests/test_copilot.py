@@ -123,6 +123,18 @@ def test_transport_distinguishes_current_position_from_explicit_seek(work, promp
     }
 
 
+def test_offline_full_vehicle_comparison_has_reproducible_evidence():
+    turn = run(Work(None), "比较整车凸起仿真 30 m/s，二系刚度降低20%")
+    assert turn.status == "complete"
+    result = turn.results[0]["result"]
+    before, after = result.provenance["simulation_comparison"]
+    assert before["model"] == "rail.vehicle-vertical.v1"
+    assert after["case"]["speed_m_s"] == 30
+    assert after["case"]["vehicle"]["secondary_k_n_m"] == 520_000
+    assert before["evidence_id"] != after["evidence_id"]
+    assert result.scene["simulation"]["parameters"]["evidence_id"] == after["evidence_id"]
+
+
 def test_compare_report_read_and_isolate(work):
     assert len(run(work, "分析这两个数据批次的振动差异").results[0]["result"].rows) == 2
     assert len(run(work, "有哪些批次").results[0]["result"].rows) == len(work.data.batches)

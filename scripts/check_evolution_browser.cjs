@@ -107,9 +107,17 @@ async function audit(browser, width, height) {
     // The searchable combobox retains the last condition as its input value.
     // Wait for the previous calculation to settle and filter by the desired case.
     const chooseCase = async name => {
-      await page.locator('[data-testid="stApp"][data-test-script-state="notRunning"]').waitFor();
-      await caseSelect.fill(name);
-      await page.getByRole("option",{name,exact:true}).click();
+      for (let attempt = 0; attempt < 3; attempt++) {
+        await page.locator('[data-testid="stApp"][data-test-script-state="notRunning"]').waitFor();
+        await caseSelect.evaluate(node=>node.scrollIntoView({block:"center",behavior:"instant"}));
+        await caseSelect.fill(name);
+        try {
+          await page.getByRole("option",{name,exact:true}).click({timeout:3500});
+          return;
+        } catch (error) {
+          if (attempt === 2) throw error;
+        }
+      }
     };
     await chooseCase("悬挂刚度降低");
     await frame.getByText(/虚线：名义刚度/).waitFor();
@@ -177,6 +185,26 @@ async function audit(browser, width, height) {
     await twoStage.evaluate(node=>node.scrollIntoView({block:"center",behavior:"instant"}));
     await page.getByTestId("stVegaLiteChart").first().waitFor();
     await capture("phase8-two-stage-response");
+    await chooseCase("整车垂向与点头（10 自由度）");
+    await page.getByRole("heading",{name:"整车垂向与点头试验"}).waitFor();
+    await frame.locator("#sim-next").click();
+    assert.equal(await seek.inputValue(),"1");
+    await seek.fill("160");
+    await frame.getByText(/0\.80 s.*轮对 B\/A/).waitFor();
+    await frame.locator('#workbench[data-wheel-vertical]:not([data-wheel-vertical="0,0"])').waitFor();
+    const frontWheel = await root.getAttribute("data-wheel-vertical");
+    assert(frontWheel.split(",").some(value=>Math.abs(Number(value))>1e-5));
+    await frame.locator("#browse-parts").click();
+    await frame.locator("#part-query").fill("air_spring_l");
+    await frame.locator(".part-row:visible").first().click();
+    await frame.locator("#simulation-part-response").filter({hasText:/二系行程/}).waitFor();
+    await frame.locator("#browse-parts").click();
+    await frame.locator("#workbench").scrollIntoViewIfNeeded();
+    await capture("phase9-vehicle");
+    await page.getByText("后转向架",{exact:true}).click();
+    await frame.locator("#sim-next").click();
+    assert.equal(await seek.inputValue(),"1");
+    assert.equal(await root.getAttribute("data-wheel-vertical"),"0,0");
     await sidebar.getByRole("button",{name:/联动分析$/}).click();
     await source.getByText("内置虚构演示",{exact:true}).click();
     await frame.locator("#axle-labels").waitFor({state:"hidden"});

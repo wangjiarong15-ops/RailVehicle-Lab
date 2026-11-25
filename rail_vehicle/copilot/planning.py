@@ -72,6 +72,21 @@ def local_plan(prompt, previous=()):
         )
     if "工况" in text and any(k in text for k in ("哪些", "查询", "可用", "列表")):
         return [call("cases")]
+    if "整车" in text and any(k in text for k in ("对照", "比较", "计算", "仿真")):
+        args = dict(history.get("simulate_vehicle", dict(track="sine", speed=20, secondary_factor=1)))
+        for label, key in (("正弦", "sine"), ("多频", "multi"), ("凸起", "bump"), ("随机", "random")):
+            if label in text:
+                args["track"] = key
+        speed = re.search(r"([-+]?\d+(?:\.\d+)?)\s*m/s", text)
+        percent = re.search(r"([-+]?\d+(?:\.\d+)?)\s*[%％]", text)
+        if speed:
+            args["speed"] = float(speed[1])
+        if "二系刚度" in text:
+            if not percent:
+                raise ValueError("请用百分数指定二系刚度变化。")
+            change = float(percent[1])
+            args["secondary_factor"] = 1 + (-abs(change) if "降低" in text or "减少" in text else change)/100
+        return validate_plan([call("simulate_vehicle", **args)])
     if "刚度" in text or any(word in text for word in ("仿真", "双轴", "不平顺")):
         args = dict(
             history.get("simulate", dict(scenario="rough", stiffness_change=0, speed=6, amplitude=4))

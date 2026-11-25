@@ -24,10 +24,35 @@ def compare_projection(projection, reference_csv, *, reference_kind, reference_r
         raise ValueError("需要具有相对时间轴的构架仿真投影 JSON。")
     if reference_kind not in ("synthetic", "field_declared"):
         raise ValueError("请声明参考数据来源。")
+    comparison = _compare_samples(projection["axis_accel_m_s2"], projection["sample_hz"], reference_csv,
+                                  reference_kind, reference_record, alignment_record)
+    return {"schema": "rail.simulation-validation.v1", **comparison,
+            "projection_canonical_sha256": projection_digest(projection),
+            "source_sha256": projection.get("source_sha256"), "channel": projection["channel"],
+            "batch_id": projection["batch_id"], "configuration_version": projection["configuration"]["version"],
+            "parameters": projection["parameters"], "solver_version": projection.get("solver_version")}
+
+
+def compare_vehicle_reference(result, channel, reference_csv, *, reference_kind, reference_record, alignment_record):
+    from rail_vehicle.vehicle_dynamics import DOFS, MODEL
+
+    if result.get("model") != MODEL or channel not in ("body_z", "front_bogie_z", "rear_bogie_z"):
+        raise ValueError("请选择有明确垂向参考方向的整车计算通道。")
+    if reference_kind not in ("synthetic", "field_declared", "public_declared"):
+        raise ValueError("请声明参考数据来源。")
+    index = DOFS.index(channel)
+    paired = _compare_samples([row[index] for row in result["ddq"]], result["sample_hz"],
+                              reference_csv, reference_kind, reference_record, alignment_record)
+    return {"schema": "rail.vehicle-validation.v1", **paired, "channel": channel,
+            "model": MODEL, "evidence_id": result["evidence_id"], "case": result["case"],
+            "configuration_sha256": result["configuration_sha256"],
+            "response_canonical_sha256": projection_digest(result)}
+
+
+def _compare_samples(values, rate, reference_csv, reference_kind, reference_record, alignment_record):
     if not all(isinstance(record, str) and 0 < len(record.strip()) <= 200
                for record in (reference_record, alignment_record)):
         raise ValueError("请填写参考记录与时间零点配对依据。")
-    rate, values = projection["sample_hz"], projection["axis_accel_m_s2"]
     if type(rate) is not int or not 0 < rate <= 10000 or not 3 <= len(values) <= 10000:
         raise ValueError("投影采样率或长度超出核对范围。")
     if not reference_csv or len(reference_csv) > 512 * 1024:
@@ -70,16 +95,12 @@ def compare_projection(projection, reference_csv, *, reference_kind, reference_r
     peak = max(map(abs, errors))
     rmse = peak * sqrt(fsum((value / peak)**2 for value in errors) / size) if peak else 0.0
     mae = peak * (fsum(abs(value) / peak for value in errors) / size) if peak else 0.0
-    config = projection["configuration"]
     return {
-        "schema": "rail.simulation-validation.v1", "independent_measurement": "pending",
+        "independent_measurement": "pending",
         "reference_kind": reference_kind, "reference_record": reference_record.strip(),
         "alignment_record": alignment_record.strip(), "time_basis": "relative_seconds", "source": "simulation",
         "reference_sha256": sha256(reference_csv).hexdigest(),
-        "projection_canonical_sha256": projection_digest(projection),
-        "source_sha256": projection.get("source_sha256"), "channel": projection["channel"],
-        "batch_id": projection["batch_id"], "configuration_version": config["version"],
-        "parameters": projection["parameters"], "sample_hz": rate, "solver_version": projection.get("solver_version"),
+        "sample_hz": rate,
         "metrics": {"pairs": size, "rmse_m_s2": rmse, "mae_m_s2": mae, "peak_abs_error_m_s2": peak,
                     "pearson_r": _correlation(rows)},
         "pairs": rows,
