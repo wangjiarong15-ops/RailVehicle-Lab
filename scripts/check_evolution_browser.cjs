@@ -211,9 +211,13 @@ async function audit(browser, width, height) {
     await frame.locator("#workbench").scrollIntoViewIfNeeded();
     await capture("phase9-vehicle");
     await page.getByText("后转向架",{exact:true}).click();
+    await frame.getByText(/^0\.00 s.*轮对 B\/A/).waitFor();
     await frame.locator("#sim-next").click();
     assert.equal(await seek.inputValue(),"1");
-    assert.equal(await root.getAttribute("data-wheel-vertical"),"0,0");
+    const rearOffsets = (await root.getAttribute("data-wheel-vertical")).split(",").map(Number);
+    assert.equal(rearOffsets.length,2);
+    // The still-unexcited rear bogie can receive a tiny load through the carbody.
+    assert(rearOffsets.every(value=>Number.isFinite(value) && Math.abs(value)<1e-9));
     await sidebar.getByRole("button",{name:/联动分析$/}).click();
     await source.getByText("内置虚构演示",{exact:true}).click();
     await frame.locator("#axle-labels").waitFor({state:"hidden"});

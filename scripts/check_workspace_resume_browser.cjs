@@ -49,9 +49,13 @@ async function audit(browser, width, height) {
     await seconds.press("1");
     await seconds.press("5");
     await seconds.press("Tab");
+    await page.getByText(/分析样本数：.*76 条/).waitFor();
+    await page.locator('[data-testid="stApp"][data-test-script-state="notRunning"]').waitFor();
     const threshold = page.locator(".st-key-analysis_threshold input");
     await threshold.fill("1.1");
     await threshold.press("Enter");
+    await page.waitForFunction(() => Object.keys(sessionStorage).some(key =>
+      key.startsWith("rail_workspace_v1:") && JSON.parse(sessionStorage.getItem(key)).threshold === 1.1));
     await page.getByText(/分析样本数：.*76 条/).waitFor();
     await page.getByRole("button", { name: "Stop", exact: true }).waitFor({ state: "hidden" });
     await page.getByText("分析时间范围（UTC） · 调整筛选", { exact: true }).click();
