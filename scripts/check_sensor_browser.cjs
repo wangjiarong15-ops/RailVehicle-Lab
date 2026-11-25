@@ -97,12 +97,14 @@ base.searchParams.set("embed_options","dark_theme");
       await expected.waitFor();
     }
     await showIntakeMessage(/^请上传工程元数据 JSON。$/);
+    await page.getByRole("button",{name:"导入到 SQLite",exact:true}).and(page.locator("button:disabled")).waitFor();
     assert(await importButton.isDisabled());
     async function loadManifest(name, data) {
       await engineeringUpload.setInputFiles({name,mimeType:"application/json",buffer:Buffer.from(JSON.stringify(data))});
     }
     await loadManifest("fictional-wrong-unit.json",{...manifest,units:{...manifest.units,lateral_accel:"g"}});
     await showIntakeMessage(/CSV 单位须为速度 km\/h/);
+    await page.getByRole("button",{name:"导入到 SQLite",exact:true}).and(page.locator("button:disabled")).waitFor();
     assert(await importButton.isDisabled());
     await loadManifest("fictional-engineering.json",manifest);
     await showIntakeMessage(/工程接入元数据已核对/);

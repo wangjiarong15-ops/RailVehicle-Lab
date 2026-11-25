@@ -110,6 +110,7 @@ async function audit(browser, width, height) {
       for (let attempt = 0; attempt < 3; attempt++) {
         await page.locator('[data-testid="stApp"][data-test-script-state="notRunning"]').waitFor();
         await caseSelect.evaluate(node=>node.scrollIntoView({block:"center",behavior:"instant"}));
+        await caseSelect.click();
         await caseSelect.fill(name);
         try {
           await page.getByRole("option",{name,exact:true}).click({timeout:3500});
@@ -189,11 +190,19 @@ async function audit(browser, width, height) {
     await page.getByRole("heading",{name:"整车垂向与点头试验"}).waitFor();
     await frame.locator("#sim-next").click();
     assert.equal(await seek.inputValue(),"1");
-    await seek.fill("160");
-    await frame.getByText(/0\.80 s.*轮对 B\/A/).waitFor();
-    await frame.locator('#workbench[data-wheel-vertical]:not([data-wheel-vertical="0,0"])').waitFor();
-    const frontWheel = await root.getAttribute("data-wheel-vertical");
-    assert(frontWheel.split(",").some(value=>Math.abs(Number(value))>1e-5));
+    await seek.fill("142");
+    await frame.getByText(/0\.71 s.*轮对 B\/A/).waitFor();
+    await root.evaluate(node => new Promise((resolve,reject) => {
+      const deadline = performance.now()+5000;
+      function painted() {
+        const offsets = node.dataset.wheelVertical?.split(",").map(Number) ?? [];
+        // The DOM readout updates before requestAnimationFrame moves the GLB.
+        if (offsets.length === 2 && offsets.every(value=>Math.abs(value)>1e-5)) resolve();
+        else if (performance.now()>=deadline) reject(Error("整车仿真未驱动两个轮对的垂向位移"));
+        else requestAnimationFrame(painted);
+      }
+      painted();
+    }));
     await frame.locator("#browse-parts").click();
     await frame.locator("#part-query").fill("air_spring_l");
     await frame.locator(".part-row:visible").first().click();
