@@ -275,13 +275,15 @@ def _plan_form(case, key, label):
         strategy=a.selectbox("搜索策略",list(STRATEGIES),index=3,format_func=STRATEGIES.get)
         budget=b.number_input("优化求解次数预算",12,160,default.budget)
         id_budget=84
+        spectral=0.
         if task:
             id_budget=st.number_input("辨识求解次数预算",24,180,84)
+            spectral=st.number_input("频域幅值匹配权重（0 为仅时域）",0.,2.,0.,step=.25)
         submitted=st.form_submit_button(label,type="primary")
     if submitted:
         try:
             return OptimizationPlan(bounds,tuple(float(x.strip()) for x in speeds.replace("，",",").split(",")),
-                                    tuple(tracks),tuple(objectives),weights,roll,travel,budget,strategy),id_budget
+                                    tuple(tracks),tuple(objectives),weights,roll,travel,budget,strategy),id_budget,spectral
         except ValueError as exc:
             st.warning(str(exc))
     return None
@@ -339,13 +341,19 @@ def _research_report(report,public):
     st.caption(f"{SOURCES[report['source']]} · {report['evidence_id']}")
     if fit["identified"]:
         st.success(f"独立验证归一化 RMSE {fit['baseline_normalized_rmse']:.4g} → {fit['validation_normalized_rmse']:.4g}")
-        st.dataframe([{"参数":VARIABLES[k][0],"估计 SI":v,"局部 95% 下限":fit["conditional_95_interval"][k][0],
-                       "局部 95% 上限":fit["conditional_95_interval"][k][1]} for k,v in fit["identified"].items()],hide_index=True)
-        st.caption("区间使用局部线性化和 i.i.d. 残差假设，整车参数与外部激励等固定输入的误差未计入。")
+        intervals=fit["conditional_95_interval"]
+        st.dataframe([{"参数":VARIABLES[k][0],"估计 SI":v,**({"局部 95% 下限":intervals[k][0],
+                       "局部 95% 上限":intervals[k][1]} if intervals else {})}
+                      for k,v in fit["identified"].items()],hide_index=True)
+        if intervals:
+            st.caption("区间使用局部线性化和 i.i.d. 残差假设，整车参数与外部激励等固定输入的误差未计入。")
     else:
         st.warning("当前记录不足以可靠辨识。请核对输入激励、观测变化、候选范围和独立验证误差。")
     with st.expander("辨识质量与独立验证证据"):
         st.json({k:fit[k] for k in ("rank","condition","flags","evaluations","validation_baseline","validation_fitted")})
+        if spectral:=fit.get("spectral"):
+            st.caption("时域与频域残差源自同一观测，因此联合拟合暂不展示 i.i.d. 置信区间。")
+            st.json(spectral)
     if report["optimization"]:
         _optimization_result(report["optimization"],"twin_research")
     a,b,c=st.columns(3)
@@ -424,10 +432,10 @@ def _task(public,data):
     st.caption(f"{SOURCES[obs.source]} · 训练 {obs.record} · 验证 {validation.record}")
     choice=_plan_form(base,f"twin_task_config_{state.get('twin_prompt_rev',0)}","生成可审查计划")
     if choice:
-        plan,id_budget=choice
+        plan,id_budget,spectral=choice
         recipe=DEMO_RECIPE if state["twin_source"]=="虚构试验" else None
         state.pop("twin_expected",None)
-        state["twin_job"]=Research(Request(base,obs,held,validation,plan,id_budget,recipe))
+        state["twin_job"]=Research(Request(base,obs,held,validation,plan,id_budget,recipe,spectral))
         st.rerun()
 
 

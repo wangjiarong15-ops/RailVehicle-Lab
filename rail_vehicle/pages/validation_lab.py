@@ -222,14 +222,68 @@ def _uncertainty():
         st.download_button("下载不确定性证据 JSON",json_text(report),"validation-uncertainty.json",on_click="ignore")
 
 
+def _calibration():
+    from rail_vehicle.contact_calibration import NONHZ_REFERENCE, compare_fixed_grid, fit_compliance, load_reference
+
+    st.subheader("轮轨有效柔度校准")
+    st.caption("Manchester 使用 10 kN 竖向载荷。固定间隙网格的两组法向载荷归入独立对照。")
+    st.markdown(f"[Manchester 原始输出]({REFERENCE}) · [CONTACT 固定间隙网格输出]({NONHZ_REFERENCE})")
+    with st.form("viii_contact_input",border=False):
+        a,b,c,d=st.columns(4)
+        lower=a.number_input("系数下限（GN/m^1.5）",2.,199.,2.)
+        initial=b.number_input("初始系数（GN/m^1.5）",2.,200.,80.)
+        upper=c.number_input("系数上限（GN/m^1.5）",3.,200.,200.)
+        weight=d.number_input("切线残差权重",.1,10.,1.)
+        run=st.form_submit_button("运行分组校准与留出检验",type="primary")
+    try:
+        bundle=load_reference()
+        if run:
+            st.session_state.pop("viii_contact_result",None)
+            st.session_state["viii_contact_result"]=fit_compliance(
+                bundle["manchester"],initial=initial*1e9,lower=lower*1e9,upper=upper*1e9,tangent_weight=weight)
+    except (ImportError, OSError, ValueError) as exc:
+        st.warning(str(exc))
+        return
+    if report:=st.session_state.get("viii_contact_result"):
+        st.metric("拟合有效系数（GN/m^1.5）",f"{report['effective_n_m32']/1e9:.2f}")
+        rows=[]
+        for key,label in (("fit","训练"),("held_out","留出")):
+            group=report["errors"][key]
+            before,after=group["initial_rmse_relative"],group["fitted_rmse_relative"]
+            rows.append({"分组":label,"轮侧数":group["count"],"压入量 RMSE":f"{before[0]:.2%} → {after[0]:.2%}",
+                         "切线刚度 RMSE":f"{before[1]:.2%} → {after[1]:.2%}"})
+        st.dataframe(rows,hide_index=True)
+        st.caption("两轮按横移工况一起留出。拟合系数仅代表这一范围的有效柔度，主求解器继续使用原教学参数。")
+        lo,hi=report["leave_one_fit_group_out_range_n_m32"]
+        st.caption(f"逐组剔除的系数区间 {lo/1e9:.2f}–{hi/1e9:.2f} GN/m^1.5。该区间衡量样本敏感度。")
+        st.download_button("下载 CONTACT 校准证据",json_text(
+            {"fit":report,"fixed_gap_grid":compare_fixed_grid(bundle["module3"]),"reference":bundle}),
+            "contact-calibration.json","application/json",on_click="ignore")
+    with st.expander("轮侧参考：位置、载荷、压入、压力与网格面积"):
+        st.dataframe([{"工况":row["case"],"轮侧":row["side"],"横移（mm）":row["shift_mm"],
+                       "轨道坐标 Y（mm）":row["track_y_mm"],"轮侧竖向载荷（N）":row["vertical_force_n"],
+                       "接触法向力（N）":row["patch_normal_n"],"竖向压入（mm）":row["vertical_approach_mm"],
+                       "切线（N/mm）":row["tangent_n_mm"],"峰压（MPa）":row["peak_pressure_mpa"],
+                       "网格接触面积（mm²）":row["grid_area_mm2"]} for row in bundle["manchester"]],hide_index=True)
+    st.subheader("固定间隙网格的两载荷对照")
+    multi=compare_fixed_grid(bundle["module3"])
+    st.dataframe(bundle["module3"],hide_index=True,column_config={
+        "normal_n":"法向载荷（N）","approach_mm":"压入（mm）","area_mm2":"接触面积（mm²）",
+        "peak_pressure_mpa":"峰压（MPa）"})
+    st.caption(f"42.083 kN 拟合后复算 19.563 kN，压入为 {multi['held_out_fitted_mm']:.5f} mm，"
+               "参考为 0.030 mm。固定网格输出没有切线刚度，标量柔度定律也不给出接触斑和峰压。")
+
+
 def render():
     page_title("工程验证中心","对照已登记的参考、求解结果与有效时钟。")
-    selected=st.radio("工程验证任务",("基准对照","轮轨型面","不确定性","外部资料"),horizontal=True)
+    selected=st.radio("工程验证任务",("基准对照","轮轨型面","不确定性","外部资料","物理校准"),horizontal=True)
     if selected=="基准对照":
         _benchmark()
     elif selected=="轮轨型面":
         _profiles()
     elif selected=="不确定性":
         _uncertainty()
+    elif selected=="物理校准":
+        _calibration()
     else:
         _catalog()

@@ -49,6 +49,7 @@ class Request:
     plan: OptimizationPlan
     identification_budget: int = 84
     recipe: str | None = None
+    spectral_weight: float = 0.
 
     def __post_init__(self):
         parameter_bounds(self.plan.bounds)
@@ -56,6 +57,8 @@ class Request:
             raise ValueError("辨识预算须为 24 至 180 次模型计算。")
         if self.recipe is not None and (self.recipe != DEMO_RECIPE or self.observations.source != "demonstration"):
             raise ValueError("虚构任务版本无效。")
+        if type(self.spectral_weight) not in (int, float) or not 0 <= self.spectral_weight <= 2:
+            raise ValueError("频域残差权重须为 0 至 2。")
 
 
 class Research:
@@ -126,7 +129,8 @@ class Research:
                 self.stage = 1
             if self.stage == 1:
                 calibration = identify(r.case,r.observations,r.validation_case,r.validation,r.plan.bounds,
-                                       budget=r.identification_budget,checkpoint=self._checkpoint)
+                                       budget=r.identification_budget,checkpoint=self._checkpoint,
+                                       spectral_weight=r.spectral_weight)
                 self.completed.append(calibration)
                 self.stage = 2
             if self.stage == 2:
@@ -209,7 +213,8 @@ def rerun_request(archive, request=None):
     if (train.evidence() != identification["training"] or validation.evidence() != identification["validation"]
             or read_case(json_text(identification["case"])) != case or read_case(json_text(identification["validation_case"])) != held):
         raise ValueError("复算记录、元数据或模型工况与归档不一致。")
-    return Request(case,train,held,validation,OptimizationPlan(**archive["plan"]),identification["budget"],archive["recipe"])
+    return Request(case,train,held,validation,OptimizationPlan(**archive["plan"]),identification["budget"],archive["recipe"],
+                   identification.get("spectral",{}).get("weight",0.))
 
 
 def research_pdf(report):

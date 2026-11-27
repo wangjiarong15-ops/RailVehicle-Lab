@@ -6,7 +6,8 @@ from PyInstaller.utils.hooks import collect_all
 root = Path(SPECPATH)
 datas = [(str(root / "app.py"), "."), (str(root / "demo_app.py"), "."),
          (str(root / "packaging" / "portable_config.toml"), ".")]
-assets = subprocess.check_output(["git", "ls-files", "--", "rail_vehicle/assets/bogie_viewer"], cwd=str(root), text=True, encoding="utf-8").splitlines()
+assets = subprocess.check_output(["git", "ls-files", "--", "rail_vehicle/assets/bogie_viewer",
+                                  "rail_vehicle/assets/contact_validation"], cwd=str(root), text=True, encoding="utf-8").splitlines()
 for name in assets:
     asset = root / name
     datas.append((str(asset), str(asset.parent.relative_to(root))))

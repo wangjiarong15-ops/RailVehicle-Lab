@@ -18,6 +18,14 @@ FIT_CHANNELS = ("body_y_accel", "body_roll", "secondary_front_y", "secondary_rea
 SCALE = {"secondary_y_k_n_m": 180_000., "secondary_y_c_ns_m": 16_000., "antiroll_k_nm_rad": 100_000.}
 
 
+def _spectrum(stamps, values, grid):
+    uniform = np.interp(grid, stamps, values)
+    window = np.hanning(len(grid))
+    amplitude = 2*np.abs(np.fft.rfft((uniform-uniform.mean())*window))/window.sum()
+    frequency = np.fft.rfftfreq(len(grid), grid[1]-grid[0])
+    return amplitude[(frequency >= .2) & (frequency <= min(12., .4/(grid[1]-grid[0])))]
+
+
 def coefficients(case, values):
     return replace(case, transverse=replace(case.transverse, **values))
 
@@ -40,13 +48,15 @@ def parameter_bounds(bounds):
 class _TransverseExperiment:
     """Reuse the exact decoupled transverse block and its fixed excitation."""
 
-    def __init__(self, case, observations, channels, substeps=5):
+    def __init__(self, case, observations, channels, substeps=5, spectral_weight=0.):
         self.case, self.observations, self.substeps = case, observations, substeps
+        self.spectral_weight = spectral_weight
         self.dt = 1/(OUTPUT_HZ*substeps)
         nodes = np.arange(case.duration_s*OUTPUT_HZ*substeps+1)*self.dt
         self.time = nodes[::substeps]
         self.inputs = force_at(case, nodes, matrices(case)[3])[0][:,10:].copy()
         self.channels = {}
+        self.spectra = {}
         for key in channels:
             series = observations.channels[key]
             stamps = np.asarray(series.time)
@@ -55,6 +65,14 @@ class _TransverseExperiment:
             if len(obs) < 50:
                 raise ValueError(f"{key} 在配对时窗内至少需要 50 个观测点。")
             self.channels[key] = (stamps[mask], obs, max(float(np.std(obs)), CHANNELS[key][3]))
+            if spectral_weight:
+                times = stamps[mask]
+                intervals = np.diff(times)
+                dt = float(np.median(intervals))
+                if np.max(intervals) > 2.5*dt:
+                    raise ValueError(f"{key} 的缺测间隔过长，无法可靠匹配频域响应。")
+                grid = np.linspace(times[0], times[-1], max(50, 1+round((times[-1]-times[0])/dt)))
+                self.spectra[key] = (grid, _spectrum(times, obs, grid))
 
     def evaluate(self, values):
         m,c,k,_,secondary = matrices(coefficients(self.case, values))
@@ -64,19 +82,30 @@ class _TransverseExperiment:
         return {key:np.interp(stamps, self.time, bank[key]) for key,(stamps,_,_) in self.channels.items()}
 
     def error(self, predictions):
-        return np.concatenate([(predictions[key]-obs)/scale for key,(_,obs,scale) in self.channels.items()])
+        residual = [(predictions[key]-obs)/scale for key,(_,obs,scale) in self.channels.items()]
+        for key, delta in self.spectral_residual(predictions).items():
+            count = len(self.channels[key][1])
+            residual.append(delta/ self.channels[key][2]*np.sqrt(self.spectral_weight*count/len(delta)))
+        return np.concatenate(residual)
+
+    def spectral_residual(self, predictions):
+        return {key: _spectrum(self.channels[key][0], predictions[key], grid)-observed
+                for key,(grid,observed) in self.spectra.items() if len(observed)}
 
     def metrics(self, predictions):
         return {key:residual_metrics(obs, predictions[key]) for key,(_,obs,_) in self.channels.items()}
 
 
-def identify(case, observations, validation_case, validation, bounds, *, budget=84, checkpoint=lambda: None):
+def identify(case, observations, validation_case, validation, bounds, *, budget=84, checkpoint=lambda: None,
+             spectral_weight=0.):
     """Fit two bounded starts and evaluate a separate observation run on half-step integration."""
     try:
         from scipy.optimize import least_squares
     except ImportError:
         raise ValueError("参数辨识需要项目的 signal 可选依赖（SciPy）。") from None
     bounds = parameter_bounds(bounds)
+    if type(spectral_weight) not in (int,float) or not 0 <= spectral_weight <= 2:
+        raise ValueError("频域残差权重须为 0 至 2。")
     if type(budget) is not int or not 24 <= budget <= 180:
         raise ValueError("辨识预算须为 24 至 180 次模型计算。")
     if (observations.source != validation.source or observations.vehicle_ref!=validation.vehicle_ref
@@ -106,8 +135,8 @@ def identify(case, observations, validation_case, validation, bounds, *, budget=
         if reference["min_linear_contact_n"] <= 0:
             raise ValueError("工况包含非正线性接触载荷，超出当前模型的辨识适用范围。")
         contact.append({"evidence_id":reference["evidence_id"],"minimum_n":reference["min_linear_contact_n"]})
-    training = _TransverseExperiment(case, observations, common)
-    testing = _TransverseExperiment(validation_case, validation, common, substeps=10)
+    training = _TransverseExperiment(case, observations, common,spectral_weight=spectral_weight)
+    testing = _TransverseExperiment(validation_case, validation, common, substeps=10,spectral_weight=spectral_weight)
     if any(np.std(training.channels[key][1]) < CHANNELS[key][3]/4 for key in common):
         raise ValueError("观测响应缺少足够变化，请核对激励、通道分辨率或安装位置。")
     keys = tuple(bounds)
@@ -182,7 +211,7 @@ def identify(case, observations, validation_case, validation, bounds, *, budget=
     if test_rms > min(.30, max(.12, 1.06*original_rms)):
         flags.append("poor_independent_validation")
     intervals = None
-    if not flags:
+    if not flags and not spectral_weight:
         covariance = (vh.T*(1/singular**2))@vh
         halfwidth = 1.96*np.sqrt(np.diag(covariance)*(residual@residual)/(len(residual)-len(keys)))
         if np.any(halfwidth/(upper-lower) > .25):
@@ -199,5 +228,11 @@ def identify(case, observations, validation_case, validation, bounds, *, budget=
               "validation_baseline":testing.metrics(baseline_validation),"validation_fitted":testing.metrics(result_validation),
               "identified":None if flags else unpack(estimate),"conditional_95_interval":intervals,
               "solver":{"method":"bounded two-start least squares","fit_step_ms":1.,"validation_step_ms":.5}}
+    if spectral_weight:
+        def bands(predictions):
+            return {key:float(np.sqrt(np.mean(error**2))) for key,error in testing.spectral_residual(predictions).items()}
+        report["spectral"] = {"weight":spectral_weight, "band_hz":[.2,12.], "window":"Hann",
+                              "baseline_rmse_si":bands(baseline_validation), "fitted_rmse_si":bands(result_validation),
+                              "interval_scope":"time and spectrum covary; i.i.d. interval withheld"}
     report["evidence_id"] = "identification."+digest(report)[:20]
     return report

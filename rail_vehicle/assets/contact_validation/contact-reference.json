@@ -1,0 +1,1365 @@
+{
+  "revision": "5644061ade1b0214e7ce70d780066f630d05f782",
+  "manchester_sha256": "5cfafd7017b2da1034ae36fc9be45270b4fce90f8734be59951a7c57d781e80e",
+  "module3_sha256": "4da5b73d194fc47b3d9181346675a7674a532c353886bc56de89b328973750c6",
+  "manchester": [
+    {
+      "case": 1,
+      "side": "left",
+      "shift_mm": 0.0,
+      "roll_rad": 0.0,
+      "yaw_rad": 0.0,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.016,
+      "tangent_n_mm": 1054000.0,
+      "track_y_mm": -751.8726,
+      "track_z_mm": 0.1252,
+      "wheel_y_mm": -1.8726,
+      "contact_angle_rad": 0.029,
+      "patch_normal_n": 9997.0,
+      "patch_approach_mm": 0.01596,
+      "peak_pressure_mpa": 338.3,
+      "grid_area_mm2": 51.64,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 1,
+      "side": "right",
+      "shift_mm": 0.0,
+      "roll_rad": 0.0,
+      "yaw_rad": 0.0,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.016,
+      "tangent_n_mm": 1054000.0,
+      "track_y_mm": 751.8726,
+      "track_z_mm": 0.1252,
+      "wheel_y_mm": 1.8726,
+      "contact_angle_rad": -0.029,
+      "patch_normal_n": 9997.0,
+      "patch_approach_mm": 0.01596,
+      "peak_pressure_mpa": 338.3,
+      "grid_area_mm2": 51.64,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 2,
+      "side": "left",
+      "shift_mm": 0.5,
+      "roll_rad": -2.304e-05,
+      "yaw_rad": 0.0012,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.0186,
+      "tangent_n_mm": 816600.0,
+      "track_y_mm": -754.2092,
+      "track_z_mm": 0.0668,
+      "wheel_y_mm": -4.7204,
+      "contact_angle_rad": 0.0211,
+      "patch_normal_n": 10050.0,
+      "patch_approach_mm": 0.01859,
+      "peak_pressure_mpa": 395.3,
+      "grid_area_mm2": 39.56,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 2,
+      "side": "right",
+      "shift_mm": 0.5,
+      "roll_rad": -2.304e-05,
+      "yaw_rad": 0.0012,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.0195,
+      "tangent_n_mm": 998300.0,
+      "track_y_mm": 744.5026,
+      "track_z_mm": 0.4289,
+      "wheel_y_mm": -6.0075,
+      "contact_angle_rad": -0.0568,
+      "patch_normal_n": 9870.0,
+      "patch_approach_mm": 0.01948,
+      "peak_pressure_mpa": 632.5,
+      "grid_area_mm2": 45.88,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 3,
+      "side": "left",
+      "shift_mm": 1.0,
+      "roll_rad": -5.049e-05,
+      "yaw_rad": 0.0024,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.0195,
+      "tangent_n_mm": 763300.0,
+      "track_y_mm": -755.244,
+      "track_z_mm": 0.0467,
+      "wheel_y_mm": -6.2694,
+      "contact_angle_rad": 0.0176,
+      "patch_normal_n": 10050.0,
+      "patch_approach_mm": 0.01946,
+      "peak_pressure_mpa": 423.9,
+      "grid_area_mm2": 36.64000000000001,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 3,
+      "side": "right",
+      "shift_mm": 1.0,
+      "roll_rad": -5.049e-05,
+      "yaw_rad": 0.0024,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.0246,
+      "tangent_n_mm": 650400.0,
+      "track_y_mm": 741.9908,
+      "track_z_mm": 0.5753,
+      "wheel_y_mm": -9.0305,
+      "contact_angle_rad": -0.0696,
+      "patch_normal_n": 9827.0,
+      "patch_approach_mm": 0.02448,
+      "peak_pressure_mpa": 741.3,
+      "grid_area_mm2": 24.240000000000002,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 4,
+      "side": "left",
+      "shift_mm": 1.5,
+      "roll_rad": -8.103e-05,
+      "yaw_rad": 0.0036,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.0201,
+      "tangent_n_mm": 747500.0,
+      "track_y_mm": -755.9669,
+      "track_z_mm": 0.0348,
+      "wheel_y_mm": -7.5089,
+      "contact_angle_rad": 0.0152,
+      "patch_normal_n": 10050.0,
+      "patch_approach_mm": 0.02007,
+      "peak_pressure_mpa": 446.5,
+      "grid_area_mm2": 34.36000000000001,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 4,
+      "side": "right",
+      "shift_mm": 1.5,
+      "roll_rad": -8.103e-05,
+      "yaw_rad": 0.0036,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.025,
+      "tangent_n_mm": 605500.0,
+      "track_y_mm": 741.3771,
+      "track_z_mm": 0.6189,
+      "wheel_y_mm": -10.1558,
+      "contact_angle_rad": -0.0753,
+      "patch_normal_n": 9811.0,
+      "patch_approach_mm": 0.02489,
+      "peak_pressure_mpa": 754.1,
+      "grid_area_mm2": 20.560000000000002,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 5,
+      "side": "left",
+      "shift_mm": 2.0,
+      "roll_rad": -0.0001128,
+      "yaw_rad": 0.0048,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.0206,
+      "tangent_n_mm": 733100.0,
+      "track_y_mm": -756.5056,
+      "track_z_mm": 0.0271,
+      "wheel_y_mm": -8.566,
+      "contact_angle_rad": 0.0134,
+      "patch_normal_n": 10040.0,
+      "patch_approach_mm": 0.02054,
+      "peak_pressure_mpa": 465.9,
+      "grid_area_mm2": 33.2,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 5,
+      "side": "right",
+      "shift_mm": 2.0,
+      "roll_rad": -0.0001128,
+      "yaw_rad": 0.0048,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.0249,
+      "tangent_n_mm": 601700.0,
+      "track_y_mm": 740.9147,
+      "track_z_mm": 0.6548,
+      "wheel_y_mm": -11.1296,
+      "contact_angle_rad": -0.0806,
+      "patch_normal_n": 9799.0,
+      "patch_approach_mm": 0.0248,
+      "peak_pressure_mpa": 744.8,
+      "grid_area_mm2": 20.200000000000003,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 6,
+      "side": "left",
+      "shift_mm": 2.5,
+      "roll_rad": -0.0001457,
+      "yaw_rad": 0.006,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.0209,
+      "tangent_n_mm": 718200.0,
+      "track_y_mm": -756.9177,
+      "track_z_mm": 0.0219,
+      "wheel_y_mm": -9.4982,
+      "contact_angle_rad": 0.0121,
+      "patch_normal_n": 10040.0,
+      "patch_approach_mm": 0.02094,
+      "peak_pressure_mpa": 483.1,
+      "grid_area_mm2": 31.960000000000004,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 6,
+      "side": "right",
+      "shift_mm": 2.5,
+      "roll_rad": -0.0001457,
+      "yaw_rad": 0.006,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.0247,
+      "tangent_n_mm": 607200.0,
+      "track_y_mm": 740.462,
+      "track_z_mm": 0.6926,
+      "wheel_y_mm": -12.0933,
+      "contact_angle_rad": -0.0862,
+      "patch_normal_n": 9787.0,
+      "patch_approach_mm": 0.02461,
+      "peak_pressure_mpa": 730.4,
+      "grid_area_mm2": 20.400000000000002,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 7,
+      "side": "left",
+      "shift_mm": 3.0,
+      "roll_rad": -0.0001803,
+      "yaw_rad": 0.0072,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.0213,
+      "tangent_n_mm": 704400.0,
+      "track_y_mm": -757.2358,
+      "track_z_mm": 0.0182,
+      "wheel_y_mm": -10.3382,
+      "contact_angle_rad": 0.011,
+      "patch_normal_n": 10030.0,
+      "patch_approach_mm": 0.02128,
+      "peak_pressure_mpa": 498.8,
+      "grid_area_mm2": 30.640000000000004,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 7,
+      "side": "right",
+      "shift_mm": 3.0,
+      "roll_rad": -0.0001803,
+      "yaw_rad": 0.0072,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.0245,
+      "tangent_n_mm": 615800.0,
+      "track_y_mm": 739.9698,
+      "track_z_mm": 0.7367,
+      "wheel_y_mm": -13.0963,
+      "contact_angle_rad": -0.0923,
+      "patch_normal_n": 9774.0,
+      "patch_approach_mm": 0.02439,
+      "peak_pressure_mpa": 713.2,
+      "grid_area_mm2": 21.200000000000003,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 8,
+      "side": "left",
+      "shift_mm": 3.5,
+      "roll_rad": -0.0002168,
+      "yaw_rad": 0.0084,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.0216,
+      "tangent_n_mm": 696400.0,
+      "track_y_mm": -757.4801,
+      "track_z_mm": 0.0156,
+      "wheel_y_mm": -11.1063,
+      "contact_angle_rad": 0.0102,
+      "patch_normal_n": 10030.0,
+      "patch_approach_mm": 0.02158,
+      "peak_pressure_mpa": 513.4,
+      "grid_area_mm2": 29.92,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 8,
+      "side": "right",
+      "shift_mm": 3.5,
+      "roll_rad": -0.0002168,
+      "yaw_rad": 0.0084,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.0243,
+      "tangent_n_mm": 621400.0,
+      "track_y_mm": 739.4071,
+      "track_z_mm": 0.7908,
+      "wheel_y_mm": -14.17,
+      "contact_angle_rad": -0.0994,
+      "patch_normal_n": 9760.0,
+      "patch_approach_mm": 0.0241,
+      "peak_pressure_mpa": 691.6,
+      "grid_area_mm2": 21.680000000000003,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 9,
+      "side": "left",
+      "shift_mm": 4.0,
+      "roll_rad": -0.0002557,
+      "yaw_rad": 0.0096,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.0218,
+      "tangent_n_mm": 686500.0,
+      "track_y_mm": -757.6645,
+      "track_z_mm": 0.0138,
+      "wheel_y_mm": -11.8167,
+      "contact_angle_rad": 0.0096,
+      "patch_normal_n": 10030.0,
+      "patch_approach_mm": 0.02185,
+      "peak_pressure_mpa": 527.2,
+      "grid_area_mm2": 29.080000000000002,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 9,
+      "side": "right",
+      "shift_mm": 4.0,
+      "roll_rad": -0.0002557,
+      "yaw_rad": 0.0096,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.0239,
+      "tangent_n_mm": 628500.0,
+      "track_y_mm": 738.7381,
+      "track_z_mm": 0.8604,
+      "wheel_y_mm": -15.3505,
+      "contact_angle_rad": -0.1078,
+      "patch_normal_n": 9745.0,
+      "patch_approach_mm": 0.0237,
+      "peak_pressure_mpa": 664.4,
+      "grid_area_mm2": 22.44,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 10,
+      "side": "left",
+      "shift_mm": 4.5,
+      "roll_rad": -0.0002977,
+      "yaw_rad": 0.0108,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.0221,
+      "tangent_n_mm": 679900.0,
+      "track_y_mm": -757.799,
+      "track_z_mm": 0.0125,
+      "wheel_y_mm": -12.4799,
+      "contact_angle_rad": 0.0091,
+      "patch_normal_n": 10030.0,
+      "patch_approach_mm": 0.02209,
+      "peak_pressure_mpa": 540.2,
+      "grid_area_mm2": 28.480000000000004,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 10,
+      "side": "right",
+      "shift_mm": 4.5,
+      "roll_rad": -0.0002977,
+      "yaw_rad": 0.0108,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.0233,
+      "tangent_n_mm": 648600.0,
+      "track_y_mm": 737.8905,
+      "track_z_mm": 0.9567,
+      "wheel_y_mm": -16.7104,
+      "contact_angle_rad": -0.1185,
+      "patch_normal_n": 9726.0,
+      "patch_approach_mm": 0.0231,
+      "peak_pressure_mpa": 625.5,
+      "grid_area_mm2": 24.080000000000002,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 11,
+      "side": "left",
+      "shift_mm": 5.0,
+      "roll_rad": -0.0003554,
+      "yaw_rad": 0.012,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.0224,
+      "tangent_n_mm": 671300.0,
+      "track_y_mm": -757.8958,
+      "track_z_mm": 0.0116,
+      "wheel_y_mm": -13.1136,
+      "contact_angle_rad": 0.0088,
+      "patch_normal_n": 10030.0,
+      "patch_approach_mm": 0.02232,
+      "peak_pressure_mpa": 552.8,
+      "grid_area_mm2": 27.680000000000003,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 11,
+      "side": "right",
+      "shift_mm": 5.0,
+      "roll_rad": -0.0003554,
+      "yaw_rad": 0.012,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.0286,
+      "tangent_n_mm": 703500.0,
+      "track_y_mm": 727.0855,
+      "track_z_mm": 3.0041,
+      "wheel_y_mm": -28.0471,
+      "contact_angle_rad": -0.2905,
+      "patch_normal_n": 9619.0,
+      "patch_approach_mm": 0.02719,
+      "peak_pressure_mpa": 1556.0,
+      "grid_area_mm2": 15.560000000000002,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 12,
+      "side": "left",
+      "shift_mm": 5.5,
+      "roll_rad": -0.0004777,
+      "yaw_rad": 0.0132,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.0226,
+      "tangent_n_mm": 666400.0,
+      "track_y_mm": -757.9746,
+      "track_z_mm": 0.011,
+      "wheel_y_mm": -13.7601,
+      "contact_angle_rad": 0.0085,
+      "patch_normal_n": 10020.0,
+      "patch_approach_mm": 0.02255,
+      "peak_pressure_mpa": 565.8,
+      "grid_area_mm2": 27.160000000000004,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 12,
+      "side": "right",
+      "shift_mm": 5.5,
+      "roll_rad": -0.0004777,
+      "yaw_rad": 0.0132,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.031,
+      "tangent_n_mm": 479800.0,
+      "track_y_mm": 726.1169,
+      "track_z_mm": 3.3006,
+      "wheel_y_mm": -29.5701,
+      "contact_angle_rad": -0.3363,
+      "patch_normal_n": 9629.0,
+      "patch_approach_mm": 0.02926,
+      "peak_pressure_mpa": 1486.0,
+      "grid_area_mm2": 10.32,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 13,
+      "side": "left",
+      "shift_mm": 6.0,
+      "roll_rad": -0.0006272,
+      "yaw_rad": 0.0144,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.0228,
+      "tangent_n_mm": 647000.0,
+      "track_y_mm": -758.021,
+      "track_z_mm": 0.0106,
+      "wheel_y_mm": -14.3878,
+      "contact_angle_rad": 0.0084,
+      "patch_normal_n": 10020.0,
+      "patch_approach_mm": 0.02278,
+      "peak_pressure_mpa": 578.5,
+      "grid_area_mm2": 26.32,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 13,
+      "side": "right",
+      "shift_mm": 6.0,
+      "roll_rad": -0.0006272,
+      "yaw_rad": 0.0144,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.0298,
+      "tangent_n_mm": 499400.0,
+      "track_y_mm": 725.1371,
+      "track_z_mm": 3.6882,
+      "wheel_y_mm": -31.1222,
+      "contact_angle_rad": -0.4176,
+      "patch_normal_n": 9709.0,
+      "patch_approach_mm": 0.02728,
+      "peak_pressure_mpa": 1149.0,
+      "grid_area_mm2": 13.280000000000001,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 14,
+      "side": "left",
+      "shift_mm": 6.5,
+      "roll_rad": -0.004376,
+      "yaw_rad": 0.0156,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.0237,
+      "tangent_n_mm": 632800.0,
+      "track_y_mm": -758.6243,
+      "track_z_mm": 0.0061,
+      "wheel_y_mm": -17.2354,
+      "contact_angle_rad": 0.0064,
+      "patch_normal_n": 10010.0,
+      "patch_approach_mm": 0.02369,
+      "peak_pressure_mpa": 637.0,
+      "grid_area_mm2": 24.040000000000003,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 14,
+      "side": "right",
+      "shift_mm": 6.5,
+      "roll_rad": -0.004376,
+      "yaw_rad": 0.0156,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.0914,
+      "tangent_n_mm": 164500.0,
+      "track_y_mm": 718.4931,
+      "track_z_mm": 10.3654,
+      "wheel_y_mm": -40.2622,
+      "contact_angle_rad": -1.1591,
+      "patch_normal_n": 15440.0,
+      "patch_approach_mm": 0.03623,
+      "peak_pressure_mpa": 2603.0,
+      "grid_area_mm2": 9.96,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 15,
+      "side": "left",
+      "shift_mm": 7.0,
+      "roll_rad": -0.006393,
+      "yaw_rad": 0.0168,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.0242,
+      "tangent_n_mm": 622000.0,
+      "track_y_mm": -758.6092,
+      "track_z_mm": 0.0062,
+      "wheel_y_mm": -18.6704,
+      "contact_angle_rad": 0.0064,
+      "patch_normal_n": 10010.0,
+      "patch_approach_mm": 0.02412,
+      "peak_pressure_mpa": 666.7,
+      "grid_area_mm2": 23.0,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 15,
+      "side": "right",
+      "shift_mm": 7.0,
+      "roll_rad": -0.006393,
+      "yaw_rad": 0.0168,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.074,
+      "tangent_n_mm": 204700.0,
+      "track_y_mm": 719.0445,
+      "track_z_mm": 9.2525,
+      "wheel_y_mm": -41.1389,
+      "contact_angle_rad": -1.0634,
+      "patch_normal_n": 14030.0,
+      "patch_approach_mm": 0.03563,
+      "peak_pressure_mpa": 2622.0,
+      "grid_area_mm2": 8.96,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 16,
+      "side": "left",
+      "shift_mm": 7.5,
+      "roll_rad": -0.007642,
+      "yaw_rad": 0.018,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.0244,
+      "tangent_n_mm": 615900.0,
+      "track_y_mm": -758.444,
+      "track_z_mm": 0.0073,
+      "wheel_y_mm": -19.6018,
+      "contact_angle_rad": 0.007,
+      "patch_normal_n": 10010.0,
+      "patch_approach_mm": 0.02438,
+      "peak_pressure_mpa": 685.9,
+      "grid_area_mm2": 22.360000000000003,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 16,
+      "side": "right",
+      "shift_mm": 7.5,
+      "roll_rad": -0.007642,
+      "yaw_rad": 0.018,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.0658,
+      "tangent_n_mm": 227700.0,
+      "track_y_mm": 719.4632,
+      "track_z_mm": 8.5526,
+      "wheel_y_mm": -41.8043,
+      "contact_angle_rad": -1.0006,
+      "patch_normal_n": 13260.0,
+      "patch_approach_mm": 0.03524,
+      "peak_pressure_mpa": 2630.0,
+      "grid_area_mm2": 8.32,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 17,
+      "side": "left",
+      "shift_mm": 8.0,
+      "roll_rad": -0.008606,
+      "yaw_rad": 0.0192,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.0245,
+      "tangent_n_mm": 608500.0,
+      "track_y_mm": -758.2223,
+      "track_z_mm": 0.0089,
+      "wheel_y_mm": -20.3458,
+      "contact_angle_rad": 0.0077,
+      "patch_normal_n": 10020.0,
+      "patch_approach_mm": 0.02458,
+      "peak_pressure_mpa": 701.1,
+      "grid_area_mm2": 21.960000000000004,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 17,
+      "side": "right",
+      "shift_mm": 8.0,
+      "roll_rad": -0.008606,
+      "yaw_rad": 0.0192,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.0605,
+      "tangent_n_mm": 245700.0,
+      "track_y_mm": 719.8316,
+      "track_z_mm": 8.0092,
+      "wheel_y_mm": -42.3894,
+      "contact_angle_rad": -0.9501,
+      "patch_normal_n": 12720.0,
+      "patch_approach_mm": 0.03494,
+      "peak_pressure_mpa": 2634.0,
+      "grid_area_mm2": 7.960000000000001,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 18,
+      "side": "left",
+      "shift_mm": 8.5,
+      "roll_rad": -0.009408,
+      "yaw_rad": 0.0204,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.0248,
+      "tangent_n_mm": 609600.0,
+      "track_y_mm": -757.9681,
+      "track_z_mm": 0.011,
+      "wheel_y_mm": -20.9835,
+      "contact_angle_rad": 0.0086,
+      "patch_normal_n": 10020.0,
+      "patch_approach_mm": 0.02474,
+      "peak_pressure_mpa": 714.0,
+      "grid_area_mm2": 21.720000000000002,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 18,
+      "side": "right",
+      "shift_mm": 8.5,
+      "roll_rad": -0.009408,
+      "yaw_rad": 0.0204,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.0565,
+      "tangent_n_mm": 265300.0,
+      "track_y_mm": 720.1709,
+      "track_z_mm": 7.5561,
+      "wheel_y_mm": -42.9279,
+      "contact_angle_rad": -0.9065,
+      "patch_normal_n": 12310.0,
+      "patch_approach_mm": 0.03469,
+      "peak_pressure_mpa": 2638.0,
+      "grid_area_mm2": 7.6800000000000015,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 19,
+      "side": "left",
+      "shift_mm": 9.0,
+      "roll_rad": -0.0101,
+      "yaw_rad": 0.0216,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.0248,
+      "tangent_n_mm": 604200.0,
+      "track_y_mm": -757.6922,
+      "track_z_mm": 0.0135,
+      "wheel_y_mm": -21.5501,
+      "contact_angle_rad": 0.0095,
+      "patch_normal_n": 10020.0,
+      "patch_approach_mm": 0.02489,
+      "peak_pressure_mpa": 725.3,
+      "grid_area_mm2": 21.28,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 19,
+      "side": "right",
+      "shift_mm": 9.0,
+      "roll_rad": -0.0101,
+      "yaw_rad": 0.0216,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.0536,
+      "tangent_n_mm": 280800.0,
+      "track_y_mm": 720.4903,
+      "track_z_mm": 7.1643,
+      "wheel_y_mm": -43.4346,
+      "contact_angle_rad": -0.8676,
+      "patch_normal_n": 11970.0,
+      "patch_approach_mm": 0.03447,
+      "peak_pressure_mpa": 2640.0,
+      "grid_area_mm2": 7.440000000000001,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 20,
+      "side": "left",
+      "shift_mm": 9.5,
+      "roll_rad": -0.01071,
+      "yaw_rad": 0.0228,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.025,
+      "tangent_n_mm": 589900.0,
+      "track_y_mm": -757.4008,
+      "track_z_mm": 0.0164,
+      "wheel_y_mm": -22.065,
+      "contact_angle_rad": 0.0105,
+      "patch_normal_n": 10020.0,
+      "patch_approach_mm": 0.02501,
+      "peak_pressure_mpa": 735.2,
+      "grid_area_mm2": 20.8,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 20,
+      "side": "right",
+      "shift_mm": 9.5,
+      "roll_rad": -0.01071,
+      "yaw_rad": 0.0228,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.0512,
+      "tangent_n_mm": 291100.0,
+      "track_y_mm": 720.795,
+      "track_z_mm": 6.8178,
+      "wheel_y_mm": -43.9174,
+      "contact_angle_rad": -0.8321,
+      "patch_normal_n": 11680.0,
+      "patch_approach_mm": 0.03428,
+      "peak_pressure_mpa": 2641.0,
+      "grid_area_mm2": 7.240000000000001,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 21,
+      "side": "left",
+      "shift_mm": 10.0,
+      "roll_rad": -0.01126,
+      "yaw_rad": 0.024,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.0251,
+      "tangent_n_mm": 596300.0,
+      "track_y_mm": -757.0975,
+      "track_z_mm": 0.0197,
+      "wheel_y_mm": -22.5401,
+      "contact_angle_rad": 0.0115,
+      "patch_normal_n": 10020.0,
+      "patch_approach_mm": 0.02511,
+      "peak_pressure_mpa": 744.0,
+      "grid_area_mm2": 20.6,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    },
+    {
+      "case": 21,
+      "side": "right",
+      "shift_mm": 10.0,
+      "roll_rad": -0.01126,
+      "yaw_rad": 0.024,
+      "vertical_force_n": 10000.0,
+      "vertical_approach_mm": 0.0491,
+      "tangent_n_mm": 305900.0,
+      "track_y_mm": 721.088,
+      "track_z_mm": 6.5066,
+      "wheel_y_mm": -44.3815,
+      "contact_angle_rad": -0.7992,
+      "patch_normal_n": 11440.0,
+      "patch_approach_mm": 0.03411,
+      "peak_pressure_mpa": 2643.0,
+      "grid_area_mm2": 7.08,
+      "node_pitch_mm": [
+        0.2,
+        0.2
+      ],
+      "poisson": [
+        0.28,
+        0.28
+      ],
+      "shear_mpa": [
+        82000.0,
+        82000.0
+      ],
+      "effective_elastic_mpa": 113888.88888888889,
+      "patches": 1
+    }
+  ],
+  "module3": [
+    {
+      "normal_n": 19563.0,
+      "approach_mm": 0.030000000000000002,
+      "area_mm2": 56.0,
+      "peak_pressure_mpa": 523.0
+    },
+    {
+      "normal_n": 42083.0,
+      "approach_mm": 0.05,
+      "area_mm2": 97.0,
+      "peak_pressure_mpa": 675.0
+    }
+  ]
+}

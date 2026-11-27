@@ -32,7 +32,7 @@ test = ["pytest>=8,<10"]
 include = ["rail_vehicle*"]
 
 [tool.setuptools.package-data]
-rail_vehicle = ["assets/bogie_viewer/*.*", "assets/bogie_viewer/vendor/*", "assets/bogie_viewer/vendor/*/*.js"]
+rail_vehicle = ["assets/bogie_viewer/*.*", "assets/bogie_viewer/vendor/*", "assets/bogie_viewer/vendor/*/*.js", "assets/contact_validation/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
