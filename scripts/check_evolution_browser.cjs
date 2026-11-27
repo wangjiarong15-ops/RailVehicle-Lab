@@ -222,7 +222,9 @@ async function audit(browser, width, height) {
     await source.getByText("内置虚构演示",{exact:true}).click();
     await frame.locator("#axle-labels").waitFor({state:"hidden"});
     await page.locator('[data-testid="stApp"][data-test-script-state="notRunning"]').waitFor();
-    const plot = page.locator(".st-key-bogie_curves .js-plotly-plot");
+    const plotSelector = ".st-key-bogie_curves .js-plotly-plot";
+    const plot = page.locator(plotSelector);
+    await page.waitForFunction(selector => document.querySelectorAll(selector).length === 1, plotSelector);
     await plot.evaluate(node=>node.scrollIntoView({block:"center",behavior:"instant"}));
     const point = plot.locator(".scatterlayer .trace").first().locator("path.point").nth(15);
     await point.waitFor();
@@ -249,10 +251,11 @@ async function audit(browser, width, height) {
     await page.locator(".st-key-bogie_seek").getByRole("slider").focus();
     await page.keyboard.press("End");
     await page.locator(".st-key-bogie_status_card").getByText(/第 120\/120 条/).waitFor();
-    await page.waitForFunction(() => {
-      const series = document.querySelector(".st-key-bogie_curves .js-plotly-plot")?.data?.[0];
-      return series?.customdata?.at(-1) === 119;
-    });
+    await page.waitForFunction(selector => {
+      // Wait for the old chart to unmount while Streamlit replaces it on seek.
+      const plots = document.querySelectorAll(selector);
+      return plots.length === 1 && plots[0].data?.[0]?.customdata?.at(-1) === 119;
+    }, plotSelector);
     await plot.evaluate(node => node.scrollIntoView({block:"center"}));
     await capture("observations");
     await page.getByTestId("stSidebar").getByRole("button",{name:/振动与频谱$/}).click();

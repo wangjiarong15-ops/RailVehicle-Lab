@@ -548,16 +548,17 @@ def _render_dynamics_analysis(*, demo: bool = False, view=ANALYSIS) -> None:
         st.session_state[_HISTORY_BOUNDS_HINT] = (batch_identity, bounds)
 
     threshold_key = "demo_analysis_threshold" if demo else "analysis_threshold"
+    requested_threshold = None
     if restored and (restored["vehicle"], restored["batch"]) == batch_identity:
         candidate = restored["scope"]
         if candidate is None:
             start, end = restored["start"], restored["end"]
             times = (start.date(), start.time().replace(microsecond=0), end.date(), end.time().replace(microsecond=0))
             st.session_state.update(dict(zip(_time_widget_keys(*batch_identity), times)))
-            st.session_state[threshold_key] = restored["threshold"]
+            requested_threshold = restored["threshold"]
         elif candidate.matches(timestamps):
             st.session_state[ANALYSIS_REPLAY_SCOPE] = (batch_identity, candidate)
-            st.session_state[threshold_key] = restored["threshold"]
+            requested_threshold = restored["threshold"]
     if target and (target["vehicle_id"], target["batch_id"]) == batch_identity:
         candidate = target.get("scope")
         if isinstance(candidate, ReplayEvidenceScope):
@@ -569,7 +570,7 @@ def _render_dynamics_analysis(*, demo: bool = False, view=ANALYSIS) -> None:
                     return
                 st.warning("三维窗口与当前批次的观测记录不匹配，请回到三维页重新选择窗口。")
         if "threshold" in target and (candidate is None or ANALYSIS_REPLAY_SCOPE in st.session_state):
-            st.session_state[threshold_key] = target["threshold"]
+            requested_threshold = target["threshold"]
     replay_scope = None
     stored_scope = None if demo else st.session_state.get(ANALYSIS_REPLAY_SCOPE)
     if stored_scope:
@@ -617,11 +618,19 @@ def _render_dynamics_analysis(*, demo: bool = False, view=ANALYSIS) -> None:
         playback_scope = ReplayEvidenceScope.from_analysis_slice(filtered_samples, **coordinates)
 
     parameter_columns = st.columns([1, 2], vertical_alignment="bottom")
-    st.session_state.setdefault(threshold_key, 1.0)
+    threshold_default = st.session_state.get(threshold_key, 1.0)
+    if requested_threshold is not None:
+        # New sessions need a real widget default on every rerun, even if the
+        # first widget update is overtaken by the workspace restore component.
+        if threshold_key not in st.session_state or requested_threshold == threshold_default:
+            threshold_default = float(requested_threshold)
+        else:
+            st.session_state[threshold_key] = requested_threshold
+            threshold_default = None
     threshold = parameter_columns[0].number_input(
         "加速度绝对值阈值（m/s²）",
         min_value=0.0,
-        value=None,
+        value=threshold_default,
         step=0.1,
         key=threshold_key,
         help="同一阈值用于统计占比和异常识别；绝对值严格大于阈值时标为数据异常点。",
