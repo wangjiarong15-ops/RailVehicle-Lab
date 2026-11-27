@@ -16,11 +16,12 @@ from rail_vehicle.pages import ai_center
 from rail_vehicle.pages import copilot
 from rail_vehicle.pages import bogie
 from rail_vehicle.pages import twin
+from rail_vehicle.pages import validation_lab
 from rail_vehicle.pages.suspension_lab import render_lab
 from rail_vehicle.pages.data_workflow import clear_workbench_navigation, render_workbench_return, select_workspace_page
 from rail_vehicle.workspace_resume import finish_workspace, render_resume_notice, restore_workspace
 from rail_vehicle.ui import (
-    ANALYSIS, ANOMALIES, COMPARISON, COPILOT, LINKED, SIMULATION, TWIN, REPORT, apply_design, initialize_theme, page_title, render_navigation,
+    ANALYSIS, ANOMALIES, COMPARISON, COPILOT, LINKED, SIMULATION, TWIN, REPORT, VALIDATION, apply_design, initialize_theme, page_title, render_navigation,
 )
 
 
@@ -79,6 +80,8 @@ def main() -> None:
             render_lab(model, public=public_demo)
     elif page == TWIN:
         twin.render(public_demo)
+    elif page == VALIDATION:
+        validation_lab.render()
     elif page == "机器学习异常检测":
         ml_detection.render()
     elif page == "振动与平稳性分析":

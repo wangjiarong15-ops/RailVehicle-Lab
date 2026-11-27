@@ -18,6 +18,8 @@ Evolution IV 在左侧「数字孪生」加入配对观测、参数辨识、有�
 
 Evolution V 在「动力学仿真」加入 31 自由度轮轨实验，可计算独立轮对、带超高的直线与曲线、非对称悬挂及接触力，并通过 Copilot 审批跨速度与半径的对照。高级轮轨功能需安装 `signal` 可选依赖，Windows 构建包含该依赖。[方程、试验流程与验证边界](docs/evolution-v-wheel-rail.md)
 
+Evolution VI 增加「工程验证中心」及「数字孪生 → 在线采集与状态估计」。可核对公开 CONTACT 刚性首触基准、导入连续轮轨型面、复算柔性轨道组件，以及本地模拟断线恢复、滤波和离线 Copilot 假设比较。[数据契约、使用方式与验证等级](docs/evolution-vi-validation.md)
+
 ## 采样数据质量检查
 
 CSV 导入预览按车辆分别检查重复 UTC 时刻、原 CSV 行序中的时间倒序和长采样间隔，

@@ -440,7 +440,14 @@ def render(public):
     if s["twin_source"] not in choices:
         s["twin_source"]="虚构试验"
     source=st.radio("记录来源",choices,key="twin_source",horizontal=True)
-    section=st.radio("工作区",("观测与回放","工程优化中心","审批与任务"),key="twin_section",horizontal=True)
+    sections=("观测与回放","工程优化中心","审批与任务") if public else (
+        "观测与回放","工程优化中心","审批与任务","在线采集与状态估计")
+    section=st.radio("工作区",sections,key="twin_section",horizontal=True)
+    if section=="在线采集与状态估计":
+        from rail_vehicle.pages import state_lab
+
+        state_lab.render()
+        return
     demonstration_case,(demo,*files),held,(verification,*validation_files)=_demo()
     current=(demonstration_case,demo,held,verification) if source=="虚构试验" else s.get("twin_observed_input") if source=="工程记录" else None
     if section=="审批与任务":

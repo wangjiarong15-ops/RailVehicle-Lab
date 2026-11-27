@@ -29,6 +29,7 @@ SUITES = {
     "evolution-iii": "check_evolution_iii_browser.cjs",
     "evolution-iv": "check_evolution_iv_browser.cjs",
     "evolution-v": "check_evolution_v_browser.cjs",
+    "evolution-vi": "check_evolution_vi_browser.cjs",
     "resume": "check_workspace_resume_browser.cjs",
     "frontend": "check_frontend_product_browser.cjs",
     "interface": "check_interface_browser.cjs",

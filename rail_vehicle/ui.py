@@ -230,6 +230,7 @@ ANALYSIS_MODE = "workbench_analysis_mode"
 
 SIMULATION = "动力学仿真"
 TWIN = "数字孪生工作台"
+VALIDATION = "工程验证中心"
 LINKED = "联动分析"
 _WORKSPACE = ((HOME, "工作台首页", "space_dashboard"),
               (DATA_PAGES[0], "车辆管理", "train"), (DATA_PAGES[1], "数据导入", "upload_file"))
@@ -244,8 +245,9 @@ _SPECIALTY = ((DEMO_DATA, "虚构数据分析", "science"), *zip(ADVANCED_PAGES,
 
 def render_navigation(public, on_select=navigate):
     analysis = (DEMO_DATA, "虚构数据分析", "monitoring") if public else (ANALYSIS, ANALYSIS, "monitoring")
+    validation = () if public else ((VALIDATION, VALIDATION, "verified"),)
     groups = (("工作空间", _WORKSPACE[:1] if public else _WORKSPACE),
-              ("工程分析", (analysis, *_ENGINEERING)),
+              ("工程分析", (analysis, *_ENGINEERING, *validation)),
               ("专项复核", tuple(row for row in _REVIEW if not public or row[0] != COMPARISON)))
     specialty = _SPECIALTY[1:] if public else _SPECIALTY
     allowed = {route for _, rows in groups for route, _, _ in rows} | {row[0] for row in specialty}

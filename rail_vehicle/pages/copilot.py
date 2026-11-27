@@ -573,6 +573,18 @@ def render(public):
                   kwargs={"twin_source":s["cp_twin_source"],"twin_section":"审批与任务"})
     if s.get("cp_wr_case"):
         st.caption("已连接高级轮轨模型，可用明确的速度、曲线半径及行程上限发起试验审批。")
+    if not public and (stream:=s.get("vi_recording")) and s.get("cp_vi_recording"):
+        from rail_vehicle.pages.state_lab import render_evidence
+
+        current=s["cp_vi_recording"]==stream.evidence_id
+        if current:
+            st.caption("已绑定当前采集证据。可输入「检查当前数据流异常，核查时钟并比较悬挂退化假设」。")
+            if (monitor_report:=s.get("cp_vi_result")) and monitor_report["recording"]==stream.evidence_id:
+                render_evidence(monitor_report)
+        else:
+            st.caption("采集内容已变化，请从数字孪生重新绑定证据。")
+        st.button("返回采集工作台",on_click=navigate,args=(TWIN,),
+                  kwargs={"twin_section":"在线采集与状态估计"})
     if inspection_state:
         st.caption("此会话可查询本机已记录的三维检查状态。")
     work = Work(
@@ -668,6 +680,20 @@ def render(public):
         typed = st.chat_input(placeholder, key="cp_input", max_chars=1200)
     prompt = typed or prompt
     if prompt:
+        from rail_vehicle.pages.state_lab import monitoring_intent
+        if not public and monitoring_intent(prompt):
+            from rail_vehicle.state_monitoring import diagnosis
+
+            stream=s.get("vi_recording")
+            if not stream or s.get("cp_vi_recording")!=stream.evidence_id:
+                st.warning("请先在数字孪生停止采集并绑定当前原始记录。")
+                return
+            try:
+                s["cp_vi_result"]=diagnosis(stream,s["cp_vi_observer"])
+            except (ValueError,ImportError) as exc:
+                st.warning(str(exc))
+                return
+            st.rerun()
         from rail_vehicle.pages.wheelrail_lab import wheelrail_intent
         if not public and wheelrail_intent(prompt):
             active_study=s.get("wr_job")
