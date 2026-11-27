@@ -316,23 +316,26 @@ def trial_report_pdf(report):
     lines=[report["evidence_id"],f"模型 {MODEL} · 实验性计算 · {report['solves']} 次积分",
            f"本次声明二系行程上限 {report['request']['secondary_travel_mm']:.2f} mm"]
     if context:
+        csv_lines=" 至 ".join(str(line) if line is not None else "未记录" for line in context["csv_lines"])
+        if all(line is None for line in context["csv_lines"]):
+            csv_lines="未记录"
         lines.extend((f"输入记录 {context['source_label']} · {context['vehicle_code']}",
-                      f"{context['event_id']} · {context['event_start']} · 峰值 {context['peak_m_s2']:g} m/s²",
-                      f"当前范围样本 {context['index_1based']} · CSV 行 {context['csv_lines']}",
+                      f"{context['event_id']} · {context['event_start']} · 峰值 {context['peak_m_s2']:g} m/s^2",
+                      f"当前范围样本 {context['index_1based']} · CSV 行 {csv_lines}",
                       context["dataset_sha256"]))
     for row in [report["baseline"],*report["cases"]]:
         value=f" {row['value']:g}" if row["value"] is not None else ""
         if "metrics" in row:
             metrics=row["metrics"]
-            lines.append(f"{row['name']}{value} · 横向 RMS {metrics['body_y_rms_m_s2']:.6g} m/s²"
+            lines.append(f"{row['name']}{value} · 横向 RMS {metrics['body_y_rms_m_s2']:.6g} m/s^2"
                          f" · 二系行程 {metrics['secondary_travel_peak_mm']:.3f} mm"
                          f" · {'有约束触发' if row['violations'] else '未触发所设约束'}")
         else:
             lines.append(f"{row['name']}{value} · {row['error']}")
     comparison=report["comparison"]
     if comparison and comparison["eligible"]:
-        lines.append(f"RK45 复算：RMS 差值 {comparison['reduction_m_s2']:.6g} m/s²"
-                     f" · 求解器差异包络 {comparison['numerical_variation_m_s2']:.3g} m/s²")
+        lines.append(f"RK45 复算：RMS 差值 {comparison['reduction_m_s2']:.6g} m/s^2"
+                     f" · 求解器差异包络 {comparison['numerical_variation_m_s2']:.3g} m/s^2")
     elif comparison:
         lines.append("独立复算触发约束，保留对照记录供检查。")
     else:
