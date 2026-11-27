@@ -24,6 +24,33 @@ function pageUrl(route,theme) {
   return url.href;
 }
 
+async function restoreRecording(browser,width,height,theme,raw) {
+  const page=await browser.newPage({viewport:{width,height},acceptDownloads:true});
+  try {
+    await page.route("**/*",route=>new URL(route.request().url()).origin===address.origin ||
+      /^(blob:|data:)/.test(route.request().url()) ? route.continue() : route.abort());
+    await page.goto(pageUrl("数字孪生工作台",theme));
+    await page.getByTestId("stRadio").getByText("在线采集与状态估计",{exact:true}).click();
+    await page.getByText("离线设备记录及登记表",{exact:true}).click();
+    await page.locator(".st-key-vi_record input[type=file]").setInputFiles({
+      name:"restored-acquisition.jsonl",mimeType:"application/json",buffer:raw,
+    });
+    await button(page,"读取离线设备记录").click();
+    await page.getByText(/6\.38 s · 滤波位移/).waitFor();
+    assert.equal(await page.getByTestId("stMetricValue").first().innerText(),"953");
+    assert.equal(await page.getByText("虚构真值",{exact:true}).count(),0);
+    const rerecorded=await download(page,"导出原始 JSONL");
+    assert.deepEqual(rerecorded,raw);
+    await page.getByRole("slider",{name:"回放采样点"}).press("Home");
+    await page.getByText(/0\.00 s · 滤波位移/).waitFor();
+    assert.equal(await page.getByTestId("stException").count(),0);
+    await page.getByTestId("stPlotlyChart").first().scrollIntoViewIfNeeded();
+    await page.screenshot({path:resolve(output,`${width}-${theme}-recording-restored.png`)});
+  } finally {
+    await page.close();
+  }
+}
+
 async function audit(browser,width,height,theme) {
   const page=await browser.newPage({viewport:{width,height},acceptDownloads:true});
   const errors=[];
@@ -112,6 +139,7 @@ async function audit(browser,width,height,theme) {
       assert.equal(diagnosis.attempts.length,5);
       await page.getByRole("heading",{name:"监测证据与替代解释",exact:true}).scrollIntoViewIfNeeded();
       await capture("copilot-evidence");
+      await restoreRecording(browser,width,height,theme,raw);
     }
     assert.equal(await page.getByTestId("stException").count(),0);
     assert.deepEqual(errors,[]);

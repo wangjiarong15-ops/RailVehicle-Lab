@@ -159,7 +159,10 @@ async function audit(browser,width,height) {
       await nav("AI Copilot").click();
       await page.getByText(/会话 CSV 附件.*FICT-A.*fictional-upload.csv/).waitFor();
       await page.getByText(/峰值 1.8 m\/s²/).first().waitFor();
-      await page.getByRole("button",{name:"数据来源与附件"}).click();
+      await page.locator('[data-testid="stApp"][data-test-script-state="notRunning"]').waitFor();
+      const attachmentControls=page.getByRole("button",{name:"数据来源与附件"});
+      if (await attachmentControls.getAttribute("aria-expanded")!=="true") await attachmentControls.click();
+      await threshold.waitFor({state:"visible"});
       assert.equal(Number(await threshold.inputValue()),1.2);
     }
     assert.equal(await page.getByTestId("stException").count(),0);
