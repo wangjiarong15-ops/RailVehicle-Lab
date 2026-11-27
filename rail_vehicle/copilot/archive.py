@@ -2,8 +2,11 @@
 
 import json
 
+from rail_vehicle.copilot.context import read_inspection_state
+from rail_vehicle.lateral_dynamics import case_config, read_case
 
-def export_chat(chat):
+
+def export_chat(chat, *, lateral_case=None, inspection_state=None):
     turns = []
     for t in chat.turns:
         steps = [
@@ -28,9 +31,26 @@ def export_chat(chat):
                 question=t.prompt, mode=t.mode, status=t.status, steps=steps, interpretation=interpretation
             )
         )
-    return json.dumps(
-        dict(version=1, scope=chat.scope[0], turns=turns), ensure_ascii=False, indent=2
-    ).encode("utf-8")
+    result = dict(version=1, scope=chat.scope[0], turns=turns)
+    if lateral_case is not None:
+        result["engineering_case"] = case_config(lateral_case)
+    if inspection_state is not None:
+        result["inspection_state"] = inspection_state
+    return json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False).encode("utf-8")
+
+
+def read_engineering_context(content):
+    read_chat(content)
+    archive = json.loads(content)
+    context = {}
+    if "engineering_case" in archive:
+        context["cp_lateral_case"] = read_case(json.dumps(archive["engineering_case"]))
+    if "inspection_state" in archive:
+        state = read_inspection_state(archive["inspection_state"])
+        if state is None:
+            raise ValueError("会话中的三维检查状态不符合当前模型契约。")
+        context["cp_inspection_state"] = state
+    return context
 
 
 def read_chat(content):

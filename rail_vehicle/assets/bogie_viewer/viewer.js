@@ -25,7 +25,7 @@ async function readAssembly(path) {
   return data;
 }
 
-export async function mount() {
+export async function mount(sendValue) {
   const [layout, detailed] = await Promise.all([
     readAssembly("./assembly-layout.json").catch(() => null), loadDetailedModel(),
   ]);
@@ -88,6 +88,14 @@ export async function mount() {
   const invalidate = () => { dirty = true; };
   const player = responsePlayer(invalidate);
   const surfaceMode = document.querySelector("#surface-mode");
+  const copilotInspection = document.querySelector("#copilot-inspection");
+  copilotInspection.onclick = () => {
+    if (!args?.copilotInspection || !detailed || args.replayRunning || args.spread) return;
+    const cut = section.capture();
+    sendValue({schema:"rail.bogie-inspection.v1", part_id:detailed.parts.has(selection) ? selection : null,
+      view:args.view, surface:surfaceMode.value, isolated:detailed.parts.has(isolated) ? isolated : null,
+      cut_axis:cut.enabled ? cut.axis : null, cut_m:cut.enabled ? cut.position : null});
+  };
   const fullScreen = document.querySelector("#full-screen");
   fullScreen.hidden = !document.fullscreenEnabled;
   fullScreen.onclick = async () => {
@@ -220,7 +228,9 @@ export async function mount() {
     const mode = surfaceMode.value;
     assembly.appearance({...args, drawSpread: spreadNow, hidden, isolated, surfaceMode: mode}, part);
     if (mode !== "solid") for (const mesh of assembly.objects) {
-      if (mode === "wire" || mesh.userData.part === "构架") mesh.material = inspectionSurface(mesh.material, mode);
+      if (mode === "wire" || (mode === "ghost" && mesh.userData.part === "构架") ||
+          (mode === "selected" && mesh.userData.id === part))
+        mesh.material = inspectionSurface(mesh.material, mode === "selected" ? "ghost" : mode);
     }
     batches?.update((args.playing || simulationPlaying) && !args.spread && mode === "solid");
     const visible = assembly.objects.filter((mesh) => mesh.visible && mesh.parent.visible);
@@ -229,6 +239,7 @@ export async function mount() {
     picker.select(part, available);
     browser?.update(part, hidden, isolated, args.visible, args.rails);
     workbench.dataset.selected = part ?? "";
+    workbench.dataset.selectedTransparent = String(visible.some(mesh => mesh.userData.id === part && mesh.material.transparent));
     showChannel();
     workbench.dataset.hidden = hidden.size;
     workbench.dataset.isolated = isolated ?? "";
@@ -408,11 +419,12 @@ export async function mount() {
     rig.controls.update();
     if (!(dirty || pose.running || pose.settling)) return;
     angle = pose.angle;
-    assembly.pose(angle, pose.lateral, pose.vertical, pose.yaw, pose.pitch, pose.wheelOffsets);
+    assembly.pose(angle, pose.lateral, pose.vertical, pose.yaw, pose.pitch, pose.wheelOffsets, pose.body);
     const partResponse = player.partResponse(selection);
     const partOutput = document.getElementById("simulation-part-response");
     if (partOutput.textContent !== partResponse) partOutput.textContent = partResponse;
-    const nextShadowPose = [pose.lateral, pose.vertical, pose.yaw, pose.pitch ?? 0, ...(pose.wheelOffsets ?? [])]
+    const nextShadowPose = [pose.lateral, pose.vertical, pose.yaw, pose.pitch ?? 0, ...(pose.wheelOffsets ?? []),
+      pose.body?.y ?? 0, pose.body?.roll ?? 0, pose.body?.heave ?? 0]
       .map((value) => value.toFixed(3)).join(",");
     // The rotating steel parts are axially symmetric. Reuse their shadow in normal running.
     if (shadowDirty || shadowPose !== nextShadowPose) {
@@ -440,6 +452,8 @@ export async function mount() {
       visibleComponents,
       axleAngle: assembly.partNodes.get("axle_a")?.parent.rotation.y.toFixed(4) ?? "",
       framePitch: -assembly.frame.rotation.y,
+      bodyRoll: pose.body?.roll ?? 0,
+      secondaryScale: [...assembly.secondaryNodes.values()].map(node=>node.scale.z).join(","),
       wheelVertical: ["b", "a"].map(end => {
         const rotor = assembly.partNodes.get("axle_" + end)?.parent;
         return rotor?.parent.position.z ?? 0;
@@ -509,6 +523,8 @@ export async function mount() {
     const view = localView || (review ? "侧视图" : next.view);
     args = review ? {...next, view, visible: next.relatedReview, rails: false, focus: null, labels: true}
       : {...next, ...bookmarkDisplay, view, rails: (bookmarkDisplay?.rails ?? next.rails) && view !== "底视图"};
+    copilotInspection.hidden = !args.copilotInspection || !detailed;
+    copilotInspection.disabled = Boolean(args.replayRunning || args.spread);
     if (args.replayRunning || transition) {
       exportPending = false;
       setExportStatus("");

@@ -8,6 +8,7 @@ from rail_vehicle.bogie import PARTS
 from rail_vehicle.bogie_viewer import render_webgl, webgl_available
 from rail_vehicle.deployment import public_demo_enabled
 from rail_vehicle.pages.sensors import read_snapshot
+from rail_vehicle.pages.lateral_lab import render_lateral_lab
 from rail_vehicle.pages.vehicle_lab import render_vehicle_lab
 from rail_vehicle.replay import ReplayState
 from rail_vehicle.sensor_evidence import project_frame_response
@@ -27,10 +28,14 @@ def _calculate(case):
 
 
 def render_lab(main):
-    labels = {**SCENARIOS, "two_stage": "一系与二系耦合浮沉", "vehicle": "整车垂向与点头（10 自由度）"}
+    labels = {**SCENARIOS, "two_stage": "一系与二系耦合浮沉", "vehicle": "整车垂向与点头（10 自由度）",
+              "lateral_roll": "车体横移与侧滚（2 自由度）"}
     scenario = st.selectbox("计算工况", list(labels), index=1, format_func=labels.get, key="sim_case")
     if scenario == "vehicle":
         render_vehicle_lab(main)
+        return
+    if scenario == "lateral_roll":
+        render_lateral_lab(main)
         return
     two_stage = scenario == "two_stage"
     speed = st.slider("初速（m/s）", 1, 10, 6)
@@ -69,7 +74,7 @@ def render_lab(main):
             "hunting": "横移与摇头使用预设相位关系。",
             "level": "平直轨道、零垂向输入，轮轴按设定初速滚动。",
             "axle_bump": "沿 +X 匀速通过 1 m 长的余弦凸起。三维视窗以两轮座连线为参考，显示两端悬挂行程。读数中的构架点头角以水平面为参考。",
-            "two_stage": "两轴轮座采用相同的 3 m 波长输入。三维显示构架与轮座的计算相对运动，车体与二系行程见曲线。",
+            "two_stage": "两轴轮座采用相同的 3 m 波长输入。三维显示构架与轮座相对运动，以及二系空气弹簧和车体安装面的相对运动。",
         }
         if webgl_available():
             render_webgl(mode="正常运行", phase=0, state=ReplayState(), visible=PARTS,

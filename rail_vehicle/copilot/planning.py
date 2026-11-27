@@ -33,6 +33,8 @@ def local_plan(prompt, previous=()):
     history = {item["tool"]: item["args"] for item in previous}
     previous_axis = next((c["args"]["axis"] for c in reversed(previous) if "axis" in c["args"]), "lateral")
     axis = "vertical" if "垂向" in text else "lateral" if "横向" in text else previous_axis
+    if any(phrase in text for phrase in ("当前三维检查", "已记录的三维", "刚才选中的部件")):
+        return [call("current_inspection")]
     if any(word in text for word in ("导出", "报告", "pdf")):
         before_report = re.split(r"(?:并且|然后|并|再|，|,)(?=[^，,]*(?:报告|pdf))", text, maxsplit=1)
         if len(before_report) == 2 and before_report[0].strip():
@@ -72,6 +74,22 @@ def local_plan(prompt, previous=()):
         )
     if "工况" in text and any(k in text for k in ("哪些", "查询", "可用", "列表")):
         return [call("cases")]
+    latest_simulation = next((item["tool"] for item in reversed(previous) if item["tool"] in
+                              ("simulate", "simulate_vehicle", "simulate_lateral")), None)
+    lateral_follow_up = (latest_simulation == "simulate_lateral"
+                         and not any(word in text for word in ("整车", "双轴", "垂向"))
+                         and re.search(r"(?:再|继续).*(?:速度|提高|降低|比较)", text))
+    if ("侧滚" in text and any(k in text for k in ("对照", "比较", "计算", "仿真", "刚度")) or
+            lateral_follow_up):
+        args = dict(history.get("simulate_lateral", dict(speed=None, anti_roll_factor=1)))
+        speed = re.search(r"([-+]?\d+(?:\.\d+)?)\s*m/s", text)
+        change = re.search(r"([-+]?\d+(?:\.\d+)?)\s*[%％]", text)
+        if speed:
+            args["speed"] = float(speed[1])
+        if change:
+            percent = float(change[1])
+            args["anti_roll_factor"] = 1 + (-abs(percent) if "降低" in text or "减少" in text else percent)/100
+        return validate_plan([call("simulate_lateral", **args)])
     if "整车" in text and any(k in text for k in ("对照", "比较", "计算", "仿真")):
         args = dict(history.get("simulate_vehicle", dict(track="sine", speed=20, secondary_factor=1)))
         for label, key in (("正弦", "sine"), ("多频", "multi"), ("凸起", "bump"), ("随机", "random")):

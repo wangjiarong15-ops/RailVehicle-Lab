@@ -7,6 +7,7 @@ from math import tau
 from random import Random
 
 import numpy as np
+from rail_vehicle.linear_dynamics import newmark_response
 
 from rail_vehicle.bogie_model_spec import DIMENSIONS
 
@@ -156,21 +157,7 @@ def simulate_vehicle(case, *, substeps=5):
     rail = track_height(case, times[:, None]*case.speed_m_s-distances)
     force = np.zeros((len(times), len(DOFS)))
     force[:, 6:] = case.vehicle.contact_k_n_m*rail
-    inverse = np.linalg.solve(mass + dt/2*damping + dt**2/4*stiffness, np.eye(len(DOFS)))
-    q = np.zeros(len(DOFS))
-    dq = q.copy()
-    ddq = force[0]/np.diag(mass)
-    output = np.empty((count//substeps+1, 3, len(DOFS)))
-    output[0] = q, dq, ddq
-    for i in range(1, count+1):
-        qp = q + dt*dq + dt**2/4*ddq
-        vp = dq + dt/2*ddq
-        ddq = inverse @ (force[i] - damping@vp - stiffness@qp)
-        q = qp + dt**2/4*ddq
-        dq = vp + dt/2*ddq
-        if i % substeps == 0:
-            output[i//substeps] = q, dq, ddq
-    q, dq, ddq = output.transpose(1, 0, 2)
+    q, dq, ddq = newmark_response(mass, damping, stiffness, force, dt, substeps)
     rail_output = rail[::substeps]
     vehicle = case.vehicle
     nominal_load = 9.80665*(vehicle.body_mass_kg/4 + vehicle.bogie_mass_kg/2 + vehicle.wheelset_mass_kg)

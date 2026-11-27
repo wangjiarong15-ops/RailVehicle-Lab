@@ -71,11 +71,18 @@ def _model_view(mode, phase, state, inspection, highlight, height, key, renderer
                 related_review=(), camera_group=None, sensors=None):
     camera = dict(height=height, rails=inspection.rails, camera_revision=inspection.camera_revision)
     if renderer == WEBGL:
-        render_webgl(mode=mode, phase=phase, state=state, visible=inspection.visible, highlight=highlight,
+        captured = render_webgl(mode=mode, phase=phase, state=state, visible=inspection.visible, highlight=highlight,
                      view=inspection.view, focus=focus, labels=labels, exploded=exploded,
                      spread=inspection.spread, continuous=continuous and not exploded, key=key,
                      export_context=export_context, reference=reference, periodic=periodic,
-                     related_review=related_review, camera_group=camera_group, sensors=sensors, **camera)
+                     related_review=related_review, camera_group=camera_group, sensors=sensors,
+                     copilot_inspection=key == "bogie_model", **camera)
+        if key == "bogie_model" and captured is not None:
+            from rail_vehicle.copilot.context import read_inspection_state
+            snapshot = read_inspection_state(captured)
+            if snapshot is not None:
+                st.session_state["cp_inspection_state"] = snapshot
+                st.caption("已在本会话记录三维检查，可前往 Copilot 查询所选部件和剖切。")
     else:
         plot_chart(build_bogie(mode, phase, inspection.visible, highlight, inspection.view,
                               labels=labels, exploded=exploded, spread=inspection.spread,

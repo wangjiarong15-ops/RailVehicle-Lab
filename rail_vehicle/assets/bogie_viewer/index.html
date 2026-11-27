@@ -12,7 +12,7 @@
     <header>
       <div><strong>RailVehicle 3D Studio</strong><span id="model-status">通用双轴转向架</span></div>
       <button id="browse-parts" type="button" aria-controls="part-panel" aria-expanded="false" hidden>零件清单</button>
-      <select id="surface-mode" aria-label="表面显示"><option value="solid">实体</option><option value="ghost">构架透视</option><option value="wire">网格线框</option></select>
+      <select id="surface-mode" aria-label="表面显示"><option value="solid">实体</option><option value="ghost">构架透视</option><option value="selected">所选零件透明</option><option value="wire">网格线框</option></select>
       <button id="full-screen" type="button" hidden>全屏</button>
       <select id="view" aria-label="视窗视角" disabled>
         <option>整体视图</option><option>侧视图</option><option>正视图</option>
@@ -24,6 +24,7 @@
       <button id="measure" type="button" aria-pressed="false" disabled>两点测距</button>
       <button id="section-toggle" type="button" aria-controls="section-controls" aria-pressed="false" disabled>剖切视图</button>
       <button id="export-inspection" type="button" aria-describedby="export-status" disabled>导出检查图</button>
+      <button id="copilot-inspection" type="button" hidden>记录当前检查用于 Copilot</button>
       <button id="bookmarks-toggle" type="button" aria-controls="bookmarks-controls" aria-expanded="false" disabled>检查视图</button>
       <button id="reset" disabled type="button">恢复视角</button>
       <div id="section-controls" hidden>
@@ -95,6 +96,13 @@
         <button type="button" id="front-crest">B 前轴到凸顶</button>
         <button type="button" id="rear-crest">A 后轴到凸顶</button>
       </div>
+      <div id="lateral-controls" hidden>
+        <select id="lateral-signal" aria-label="横向与侧滚曲线">
+          <option value="body_y_m">车体横移</option><option value="roll_rad">车体侧滚</option>
+          <option value="accel_m_s2">车体横向加速度</option><option value="travel_m">二系横向相对行程</option>
+        </select>
+        <button type="button" id="lateral-peak">定位本通道绝对峰值</button>
+      </div>
     </section>
     <footer>
       <span id="inspection" aria-live="polite">点击零件查看名称、作用和安装位置</span>
@@ -141,7 +149,8 @@
       document.documentElement.dataset.theme = event.data.theme?.base === "light" ? "light" : "dark";
       resize();
       if (update) update(args);
-      else startup ??= import("./viewer.js").then(({mount}) => mount()).then((apply) => {
+      else startup ??= import("./viewer.js").then(({mount}) =>
+        mount(value=>send("streamlit:setComponentValue", {value, dataType:"json"}))).then((apply) => {
         update = apply;
         update(args);
       }).catch(error);

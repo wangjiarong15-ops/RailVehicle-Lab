@@ -13,8 +13,9 @@ from rail_vehicle.bogie import PARTS
 from rail_vehicle.bogie_inspection_context import inspection_context
 from rail_vehicle.bogie_replay import TEACHING, illustration_phase, scene_for_sample
 from rail_vehicle.bogie_viewer import render_webgl, webgl_available
-from rail_vehicle.copilot.archive import export_chat, read_chat
+from rail_vehicle.copilot.archive import export_chat, read_chat, read_engineering_context
 from rail_vehicle.copilot.context import Dataset, MAX_ROWS, SOURCE_LABELS, csv_datasets
+from rail_vehicle.lateral_dynamics import read_case as read_lateral_case
 from rail_vehicle.copilot.conversation import Conversation, Job, prior_calls
 from rail_vehicle.copilot.knowledge import document_passages
 from rail_vehicle.copilot.tools import TOOLS, Work
@@ -358,6 +359,9 @@ def _turn(turn, work, detail, live_keys):
                     "application/pdf",
                     key=key + "_pdf",
                 )
+            if (case := (o.provenance or {}).get("replayable_case")) is not None:
+                st.download_button("保存此对照工况", json.dumps(case, ensure_ascii=False, allow_nan=False),
+                                   "copilot-lateral-experiment.json", "application/json", key=key+"_case")
         if turn.verified:
             with st.expander("AI 辅助解读 · 已核对证据范围", expanded=detail):
                 render_validated_result(turn.verified, work.anonymous_payload, st)
@@ -418,6 +422,13 @@ def render(public):
             data = None
         notes = ()
         if not public:
+            saved_case = st.file_uploader("恢复横移与侧滚工况 JSON", type=["json"], key="cp_lateral_upload",
+                                         max_upload_size=1)
+            if saved_case is not None and st.button("绑定已保存工况", key="cp_bind_lateral"):
+                try:
+                    s["cp_lateral_case"] = read_lateral_case(saved_case.getvalue())
+                except ValueError as exc:
+                    st.warning(str(exc))
             try:
                 upload = _attachment("已获授权的工程资料", ["md", "pdf"], "cp_notes", 2_000_000)
                 if upload:
@@ -443,7 +454,11 @@ def render(public):
         s.pop("cp_bound_batch", None)
     else:
         s["cp_bound_batch"] = (data.source, data.vehicle["id"], data.batch["id"], data.threshold)
-    scope = (data.identity if data else "unbound", other.identity if other else "", tuple((p.id, p.title) for p in notes))
+    lateral_case = s.get("cp_lateral_case")
+    inspection_state = s.get("cp_inspection_state")
+    scope = (data.identity if data else "unbound", other.identity if other else "",
+             tuple((p.id, p.title) for p in notes), lateral_case,
+             tuple(sorted(inspection_state.items())) if inspection_state else None)
     pool = s.setdefault("cp_threads", [])
     active = next((c for c in pool if c.id == s.get("cp_active") and c.scope == scope), None)
     if active is None:
@@ -472,13 +487,18 @@ def render(public):
                 st.rerun()
         if active.turns:
             st.download_button(
-                "保存对话记录", export_chat(active), "railvehicle-conversation.json", "application/json"
+                "保存对话记录", export_chat(active, lateral_case=lateral_case, inspection_state=inspection_state),
+                "railvehicle-conversation.json", "application/json"
             )
         if not public:
             saved = st.file_uploader("打开已保存的会话记录", type=["json"], key="cp_archive")
             if saved:
                 try:
                     past = read_chat(saved.getvalue())
+                    context = read_engineering_context(saved.getvalue())
+                    if context and st.button("恢复归档中的工程上下文", key="cp_restore_archived_context"):
+                        s.update(context)
+                        st.rerun()
                     st.caption("归档文本 · 可选择一个问题，按当前数据重新执行。")
                     for question, lines in past:
                         st.text(question)
@@ -524,6 +544,17 @@ def render(public):
                     analysis_button(st, label="准备当前窗口报告", key="cp_window_report", page=REPORT,
                                     vehicle_id=data.vehicle["id"], batch_id=data.batch["id"],
                                     scope=data.replay_scope, threshold=data.threshold)
+    if lateral_case is not None:
+        from rail_vehicle.ui import SIMULATION, navigate
+        st.caption(f"当前仿真 · 横移与侧滚 · {lateral_case.speed_m_s:g} m/s · {lateral_case.duration_s} s · "
+                   f"抗侧滚刚度 {lateral_case.anti_roll_k_nm_rad/1000:g} kN·m/rad")
+        with st.container(horizontal=True, gap="small"):
+            st.button("返回横移与侧滚实验", on_click=navigate, args=(SIMULATION,),
+                      kwargs={"sim_case": "lateral_roll", "lateral_experiment": lateral_case,
+                              "lateral_form_revision": s.get("lateral_form_revision", 0)+1})
+            st.button("解除当前仿真绑定", on_click=s.pop, args=("cp_lateral_case", None))
+    if inspection_state:
+        st.caption("此会话可查询本机已记录的三维检查状态。")
     work = Work(
         data,
         other,
@@ -531,6 +562,8 @@ def render(public):
         active.last_scene(),
         active.last_verified(),
         [r for turn in active.turns for r in turn.results if r["tool"] != "report"],
+        lateral_case=lateral_case,
+        inspection_state=inspection_state,
     )
     running = s.get("cp_running")
     if running and running[0] != active.id:

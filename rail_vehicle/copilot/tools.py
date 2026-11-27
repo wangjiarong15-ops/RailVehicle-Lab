@@ -13,12 +13,15 @@ from rail_vehicle.analysis_report import build_analysis_report_data, generate_an
 from rail_vehicle.anomaly import detect_anomalies_with_anchors
 from rail_vehicle.batch_comparison import compare_run_batches
 from rail_vehicle.bogie import PARTS, PART_DESCRIPTIONS, VIEWS
+from rail_vehicle.bogie_model_spec import part_label
 from rail_vehicle.bogie_replay import TEACHING
 from rail_vehicle.copilot.context import Dataset, SOURCE_LABELS
 from rail_vehicle.copilot.knowledge import search
 from rail_vehicle.data_quality import review_sampling_timestamps
 from rail_vehicle.dynamics import analyze_run_data
 from rail_vehicle.event_anchor import anchors_by_evidence
+from rail_vehicle.lateral_dynamics import (LateralCase, TRACKS as LATERAL_TRACKS, case_config, lateral_playback,
+                                          lateral_summary, simulate_lateral)
 from rail_vehicle.suspension import SCENARIOS, SuspensionCase, simulate
 from rail_vehicle.sensor_mapping import registration
 from rail_vehicle.sensor_store import active_channels, channel_inventory
@@ -49,6 +52,8 @@ class Work:
     previous_scene: dict | None = None
     verified: dict | None = None
     report_items: list = field(default_factory=list)
+    lateral_case: LateralCase | None = None
+    inspection_state: dict | None = None
 
     @cached_property
     def anonymous_payload(self):
@@ -251,7 +256,21 @@ def inspect(w, group, view, display, motion):
 
 def cases(w):
     labels = {**SCENARIOS, **{f"vehicle.{key}": f"整车 · {value}" for key, value in TRACKS.items()}}
+    labels.update({f"lateral.{key}": f"车体横移与侧滚 · {value}" for key, value in LATERAL_TRACKS.items()})
     return Output("当前可执行的简化计算工况。", rows=[{"编号": k, "工况": v} for k, v in labels.items()])
+
+
+def current_inspection(w):
+    from rail_vehicle.copilot.context import read_inspection_state
+
+    if (state := read_inspection_state(w.inspection_state)) is None:
+        raise ValueError("请在三维转向架页面暂停后，选择「记录当前检查用于 Copilot」。")
+    label = part_label(state["part_id"]) if state["part_id"] else "未选零件"
+    surfaces = {"solid": "实体", "ghost": "构架透视", "selected": "所选零件透明", "wire": "网格线框"}
+    cut = "剖切关闭" if state["cut_axis"] is None else f"剖切 {state['cut_axis'].upper()} = {state['cut_m']:g} m"
+    isolated = part_label(state["isolated"]) if state["isolated"] else "未隔离零件"
+    return Output(f"已记录的三维检查 · {label} · {state['view']} · {surfaces[state['surface']]} · {cut} · {isolated}。"
+                  "此记录描述通用示意模型的观察状态。", provenance={"inspection": state})
 
 
 def transport(w, action, seconds):
@@ -259,6 +278,10 @@ def transport(w, action, seconds):
         raise ValueError("请先在本对话中展示结构或执行悬挂仿真。")
     if action == "reset":
         seconds = 0.0
+    if seconds is not None and (simulation := w.previous_scene.get("simulation")):
+        stop = (len(simulation["channels"]["travel_m"])-1)/simulation["sample_hz"]
+        if seconds > stop:
+            raise ValueError(f"指定时刻超过当前工况的 {stop:g} s 时长。")
     return Output(
         f"三维时间轴定位到 {seconds:g} s。" if seconds is not None else
         ("已暂停在当前位置。" if action == "pause" else "已从当前位置播放。"),
@@ -353,6 +376,26 @@ def vehicle_comparison(w, track, speed, secondary_factor):
                   scene={"simulation": bogie_playback(changed, "front")})
 
 
+def lateral_comparison(w, speed, anti_roll_factor):
+    base = w.lateral_case or LateralCase()
+    if not base.anti_roll_k_nm_rad and anti_roll_factor != 1:
+        raise ValueError("当前抗侧滚刚度为零，无法进行比例调整，可在仿真台设置绝对值。")
+    changed = replace(base, speed_m_s=base.speed_m_s if speed is None else speed,
+                      anti_roll_k_nm_rad=base.anti_roll_k_nm_rad*anti_roll_factor)
+    before, after = simulate_lateral(base), simulate_lateral(changed)
+    rows = [{"工况": name, "速度 m/s": result["case"]["speed_m_s"],
+             "抗侧滚刚度 kN·m/rad": result["case"]["anti_roll_k_nm_rad"]/1000, **lateral_summary(result)}
+            for name, result in (("基准", before), ("对照", after))]
+    details = [{key: event[key] for key in ("model", "evidence_id", "configuration_sha256", "case",
+                                            "parameter_source", "substeps")} for event in (before, after)]
+    return Output(f"横向—侧滚教学模型 · 侧滚绝对峰值 {rows[0]['roll_peak_mrad']:.3f} → "
+                  f"{rows[1]['roll_peak_mrad']:.3f} mrad。基准为" + ("仿真台已绑定工况。" if w.lateral_case else "内置教学工况。"),
+                  rows=rows, plot=series(after["time_s"], {"基准侧滚": [1000*q[1] for q in before["q"]],
+                              "对照侧滚": [1000*q[1] for q in after["q"]]}, "时间（s）", "侧滚（mrad）"),
+                  provenance={"simulation_comparison": details, "replayable_case": case_config(changed)},
+                  scene={"simulation": lateral_playback(after)})
+
+
 def enum(values):
     return {"type": "string", "enum": list(values)}
 
@@ -413,10 +456,11 @@ TOOLS = {
         },
     ),
     "cases": Tool("查询计算工况", cases),
+    "current_inspection": Tool("读取已记录的三维检查状态", current_inspection),
     "transport": Tool(
         "控制上次三维演示", transport, {
             "action": enum(("play", "pause", "reset")),
-            "seconds": {**number(0, 6), "type": ["number", "null"],
+            "seconds": {**number(0, 20), "type": ["number", "null"],
                         "description": "用户指定的时间（秒）。未指定时间时传 null 以保留当前播放位置。"},
         }
     ),
@@ -433,6 +477,9 @@ TOOLS = {
     "simulate_vehicle": Tool("计算整车垂向与点头工况对照", vehicle_comparison,
                             {"track": enum(TRACKS), "speed": number(2, 70),
                              "secondary_factor": number(.25, 2)}),
+    "simulate_lateral": Tool("计算车体横移与侧滚工况对照", lateral_comparison,
+                             {"speed": {**number(2, 60), "type": ["number", "null"]},
+                              "anti_roll_factor": number(.5, 2)}),
     "report": Tool("生成当前范围 PDF", report),
 }
 
@@ -458,7 +505,8 @@ def validate_plan(plan):
     return plan
 
 
-UNBOUND_TOOLS = frozenset({"knowledge", "inspect", "cases", "simulate", "simulate_vehicle", "transport"})
+UNBOUND_TOOLS = frozenset({"knowledge", "inspect", "current_inspection", "cases", "simulate", "simulate_vehicle",
+                           "simulate_lateral", "transport"})
 
 
 def execute(w, plan, *, cancelled=lambda: False, deadline=None):

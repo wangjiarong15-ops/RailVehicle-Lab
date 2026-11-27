@@ -42,6 +42,8 @@ class Coil extends THREE.Curve {
 }
 
 const Y = new THREE.Vector3(0, 1, 0);
+const Z = new THREE.Vector3(0, 0, 1);
+const AIR_SPRING_HEIGHT_M = .324;
 const lower = new THREE.Vector3(), upper = new THREE.Vector3(), direction = new THREE.Vector3();
 
 function orient(group, from, to) {
@@ -58,6 +60,7 @@ export function createAssembly(scene, data, material, detailed) {
   const parents = {frame, wheel, fixed};
   const seatHeight = data.links.find(([,kind]) => kind === "coil")[3][2];
   const objects = [], spins = [], links = [], partNodes = new Map();
+  const secondaryNodes = new Map();
   function track(mesh, part, tone = null, id = null) {
     Object.assign(mesh.userData, {part, tone, id, original: mesh.material});
     mesh.castShadow = true;
@@ -87,11 +90,24 @@ export function createAssembly(scene, data, material, detailed) {
     if (spec.parent === "links") continue;
     const holder = holderAt(parents[spec.parent], spec.offset);
     if (spec.parent === "wheel") holder.userData.wheelEnd = spec.origin[0] > 0 ? 0 : 1;
-    const parent = spec.spin ? spinAt(holder, spec.spin) : holder;
+    let parent = spec.spin ? spinAt(holder, spec.spin) : holder;
+    if (id.startsWith("air_spring_")) {
+      parent = new THREE.Group();
+      parent.position.fromArray(spec.origin);
+      holder.add(parent);
+      secondaryNodes.set(id, parent);
+    }
     parent.attach(node);
     partNodes.set(id, node);
   }
   const markerGeometry = detailed ? null : new THREE.BoxGeometry(.060, .006, .010);
+  const mounts = [...secondaryNodes.values()];
+  const deck = mounts.length === 2 ? new THREE.Mesh(
+    new THREE.BoxGeometry(1.08, Math.abs(mounts[0].position.y-mounts[1].position.y)+.49, .10),
+    new THREE.MeshStandardMaterial({color:0x637f95, metalness:.49, roughness:.53})
+  ) : null;
+  const deckZ = mounts.length ? mounts[0].position.z + AIR_SPRING_HEIGHT_M : 0;
+  if (deck) { deck.visible = false; deck.castShadow = true; frame.add(deck); }
   if (!detailed) for (const [[part, group, parent, offset], vertices, faces, tones] of data.mesh) {
     const holder = holderAt(parents[parent], offset);
     const mesh = track(new THREE.Mesh(rigidGeometry(vertices, faces, tones), material[part]), part);
@@ -152,7 +168,7 @@ export function createAssembly(scene, data, material, detailed) {
     links.push({node, a: start, b: end, segments, part});
   }
 
-  let visible = new Set(), highlight = new Set(), selected, spread = 0, wheelTravel = [0, 0];
+  let visible = new Set(), highlight = new Set(), selected, spread = 0, wheelTravel = [0, 0], deckAllowed = false;
   const shadowCasters = objects.filter(mesh => mesh.castShadow);
   // Keep the imported steel, rubber and paint finishes readable during inspection.
   const tinted = new Map();
@@ -193,11 +209,12 @@ export function createAssembly(scene, data, material, detailed) {
     }
   }
   return {
-    objects, frame, wheel, partNodes, layers: parents, setSpread,
+    objects, frame, wheel, partNodes, secondaryNodes, layers: parents, setSpread,
     dispose() {
       for (const mesh of objects) mesh.material = mesh.userData.original;
       for (const pair of tinted.values()) for (const surface of Object.values(pair)) surface.dispose();
       tinted.clear();
+      if (deck) { deck.removeFromParent(); deck.geometry.dispose(); deck.material.dispose(); }
     },
     // World-space mounting centres in metres; rest distance uses the assembled contract.
     suspensionMounts(id, from, to) {
@@ -212,6 +229,8 @@ export function createAssembly(scene, data, material, detailed) {
       for (const mesh of shadowCasters)
         mesh.castShadow = args.surfaceMode !== "wire" && !(args.surfaceMode === "ghost" && mesh.userData.part === "构架");
       visible = new Set(args.visible);
+      deckAllowed = visible.has("二系悬挂") && !args.isolated &&
+        ![...secondaryNodes.keys()].some(id=>args.hidden?.has(id));
       if (args.rails) visible.add("轨道参照");
       highlight = new Set(args.highlight);
       selected = selection;
@@ -226,13 +245,13 @@ export function createAssembly(scene, data, material, detailed) {
           (!args.isolated || args.isolated === id);
       }
     },
-    pose(phase, lateral, vertical, yaw, pitch = 0, wheelOffsets) {
+    pose(phase, lateral, vertical, yaw, pitch = 0, wheelOffsets, body) {
       // Tilt about the midpoint of the upper seats, in the two-wheel support plane.
       frame.position.set(seatHeight*Math.sin(pitch), lateral, vertical+seatHeight*(1-Math.cos(pitch)));
       frame.rotation.y = -pitch;
       frame.rotation.z = yaw;
       // Wheelset stays at rail height. Brake discs rotate with axles; calipers and axleboxes do not.
-      wheel.position.y = lateral * data.wheelPoseGain;
+      wheel.position.y = lateral * (body?.rigidSupport ? 1 : data.wheelPoseGain);
       wheel.rotation.z = yaw * data.wheelPoseGain;
       wheelTravel = detailed && wheelOffsets ? wheelOffsets : [0, 0];
       for (const holder of wheel.children) {
@@ -240,6 +259,21 @@ export function createAssembly(scene, data, material, detailed) {
         if (end !== undefined) holder.position.z = holder.userData.offset.z * spread + wheelTravel[end];
       }
       for (const axle of spins) axle.rotation.y = phase;
+      if (deck) {
+        const active = body && !spread;
+        const {y = 0, heave = 0, roll = 0} = active ? body : {};
+        const sine = Math.sin(roll), cosine = Math.cos(roll);
+        deck.position.set(0, y-.05*sine, deckZ+heave+.05*cosine);
+        deck.rotation.x = roll;
+        deck.visible = Boolean(active && deckAllowed);
+        for (const pivot of mounts) {
+          const side = pivot.position.y;
+          direction.set(0, y+side*(cosine-1), AIR_SPRING_HEIGHT_M+heave+side*sine);
+          const length = direction.length();
+          pivot.quaternion.setFromUnitVectors(Z, direction.divideScalar(length));
+          pivot.scale.z = length/AIR_SPRING_HEIGHT_M;
+        }
+      }
       // Only the two support transforms are needed here. The renderer updates descendants.
       frame.updateWorldMatrix(true, false);
       wheel.updateWorldMatrix(true, false);

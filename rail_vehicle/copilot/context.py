@@ -7,11 +7,30 @@ import io
 import json
 import math
 
+from rail_vehicle.bogie import VIEWS
+from rail_vehicle.bogie_model_spec import model_contract
 from rail_vehicle.run_data import validate_run_csv
 
 
 MAX_ROWS = 5000
 SOURCE_LABELS = {"demo": "内置虚构数据", "history": "历史导入数据", "upload": "会话 CSV 附件"}
+_PARTS = frozenset(model_contract()["parts"])
+
+
+def read_inspection_state(value):
+    fields = {"schema", "part_id", "view", "surface", "isolated", "cut_axis", "cut_m"}
+    if not isinstance(value, dict) or set(value) != fields or value["schema"] != "rail.bogie-inspection.v1":
+        return None
+    if any(value[key] is not None and (not isinstance(value[key], str) or value[key] not in _PARTS)
+           for key in ("part_id", "isolated")):
+        return None
+    if value["view"] not in VIEWS or value["surface"] not in ("solid", "ghost", "selected", "wire"):
+        return None
+    axis, offset = value["cut_axis"], value["cut_m"]
+    if not (axis is None and offset is None or axis in ("x", "y", "z") and
+            type(offset) in (int, float) and math.isfinite(offset) and -3 <= offset <= 3):
+        return None
+    return dict(value)
 
 
 @dataclass

@@ -7,6 +7,7 @@ export function partBrowser(parts, actions) {
   const show = document.querySelector("#show-part");
   const isolate = document.querySelector("#isolate-part");
   const groups = new Map();
+  const subgroups = new Map();
   const rows = [];
   let lastSelected = null;
 
@@ -31,8 +32,24 @@ export function partBrowser(parts, actions) {
     const status = document.createElement("span");
     status.className = "part-state";
     row.append(name, status);
-    groups.get(spec.group).append(row);
-    rows.push({id, spec, row, status, search: normalize([name.textContent, spec.group, id].join(" "))});
+    let parent = groups.get(spec.group);
+    const axle = /_([ab])(?:_|$)/.exec(id)?.[1];
+    if (axle) {
+      const key = `${spec.group}:${axle}`;
+      if (!subgroups.has(key)) {
+        const subsection = document.createElement("details");
+        const title = document.createElement("summary");
+        title.className = "part-axle";
+        title.textContent = axle.toUpperCase()+" 轴位置";
+        subsection.open = true;
+        subsection.append(title);
+        parent.append(subsection);
+        subgroups.set(key, subsection);
+      }
+      parent = subgroups.get(key);
+    }
+    parent.append(row);
+    rows.push({id, spec, row, status, parent, search: normalize([name.textContent, spec.group, id].join(" "))});
   }
 
   function normalize(text) {
@@ -45,7 +62,7 @@ export function partBrowser(parts, actions) {
       row.hidden = !search.includes(term);
       if (!row.hidden) matches++;
     }
-    for (const section of groups.values()) {
+    for (const section of [...subgroups.values(), ...groups.values()]) {
       section.hidden = !section.querySelector(".part-row:not([hidden])");
       if (term && !section.hidden) section.open = true;
     }
@@ -76,6 +93,7 @@ export function partBrowser(parts, actions) {
     update(selection, hidden, isolated, visible, rails) {
       if (selection !== lastSelected && parts.has(selection)) {
         groups.get(parts.get(selection).spec.group).open = true;
+        rows.find(row=>row.id===selection).parent.open = true;
       }
       lastSelected = selection;
       const groupVisible = (group) => group === "轨道参照" ? rails : visible.includes(group);

@@ -14,6 +14,8 @@ export function playbackBatches(assembly, model) {
       const x = spec.spin[0];
       if (!axles.has(x)) axles.set(x, anchor);
       anchor = axles.get(x);
+    } else if (assembly.secondaryNodes.has(id)) {
+      anchor = assembly.secondaryNodes.get(id);
     } else if (spec.parent !== "links") {
       anchor = assembly.layers[spec.parent];
     }

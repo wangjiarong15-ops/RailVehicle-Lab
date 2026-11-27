@@ -4,6 +4,7 @@ export function responsePlayer(invalidate) {
   const panel = get("response"), slider = get("sim-time"), play = get("sim-play");
   const svg = get("response-plot"), cursor = get("response-cursor");
   const axleSignal = get("axle-signal");
+  const lateralSignal = get("lateral-signal");
   const limitTravel = value => Math.max(-.04, Math.min(.04, value));
   let result, index = 0, position = 0, last = null, running = false;
   function pause() {
@@ -25,6 +26,12 @@ export function responsePlayer(invalidate) {
   function updateReadout() {
     const c = result.channels;
     const mm = v => (v*1000).toFixed(2);
+    if (result.lateral_model) {
+      get("sim-values").textContent = (index/result.sample_hz).toFixed(3) + " s　车体横移 " + mm(c.body_y_m[index]) +
+        " mm　侧滚 " + mm(c.roll_rad[index]) + " mrad　横向加速度 " + c.accel_m_s2[index].toFixed(3) +
+        " m/s²　动画 " + displayGain().toFixed(2) + "×";
+      return;
+    }
     const dual = Boolean(c.front_travel_m);
     const front = dual ? c.front_travel_m[index] : c.travel_m[index];
     const rear = dual ? c.rear_travel_m[index] : front;
@@ -63,7 +70,7 @@ export function responsePlayer(invalidate) {
     const c = result.channels;
     const dual = Boolean(c.front_travel_m);
     const key = axleSignal.value === "support" ? "support_m" : "travel_m";
-    const series = dual ? c["front_" + key] : c.travel_m;
+    const series = result.lateral_model ? c[lateralSignal.value] : dual ? c["front_" + key] : c.travel_m;
     const rear = dual ? c["rear_" + key] : [];
     const nominal = result.nominal_travel_m ?? [];
     const scale = Math.max(.001, ...series.map(Math.abs), ...nominal.map(Math.abs), ...rear.map(Math.abs));
@@ -72,13 +79,22 @@ export function responsePlayer(invalidate) {
     get("response-path").setAttribute("d", path(series));
     get("nominal-path").setAttribute("d", path(nominal));
     get("rear-path").setAttribute("d", path(rear));
-    const label = dual && key === "support_m" ? "轨面输入" : "悬挂行程";
+    const label = result.lateral_model ? lateralSignal.selectedOptions[0].textContent :
+      dual && key === "support_m" ? "轨面输入" : "悬挂行程";
+    const unit = result.lateral_model && lateralSignal.value === "roll_rad" ? "mrad" :
+      result.lateral_model && lateralSignal.value === "accel_m_s2" ? "m/s²" : "mm";
     svg.setAttribute("aria-label", label + "曲线，点击定位");
     get("response-scale").textContent = label +
-      " ±" + (scale*1000).toFixed(2) + " mm" + (dual ? "　实线 B 前轴 · 虚线 A 后轴" :
+      " ±" + (scale*(unit === "m/s²" ? 1 : 1000)).toFixed(2) + " " + unit + (dual ? "　实线 B 前轴 · 虚线 A 后轴" :
         nominal.length ? "　虚线：名义刚度" : "");
   }
   axleSignal.onchange = () => { drawSeries(); updateReadout(); };
+  lateralSignal.onchange = drawSeries;
+  get("lateral-peak").onclick = () => {
+    const values = result.channels[lateralSignal.value];
+    const peak = values.reduce((best, value, i) => Math.abs(value) > Math.abs(values[best]) ? i : best, 0);
+    pause(); seek(peak);
+  };
   function seekCrest(rear) {
     const frontTime = result.bump_start_s + result.bump_length_m/(2*result.parameters.speed_m_s);
     pause();
@@ -88,12 +104,19 @@ export function responsePlayer(invalidate) {
   get("rear-crest").onclick = () => seekCrest(true);
   function displayGain() {
     const c = result.channels;
+    if (result.lateral_model) return Math.min(result.parameters.gain, .04/Math.max(
+      Math.abs(c.base_y_m[index]), Math.abs(c.travel_m[index]), ...c.spring_m[index].map(Math.abs), 1e-12));
     return Math.min(result.parameters.gain, .04/Math.max(Math.abs(c.front_wheel_m[index]),
       Math.abs(c.rear_wheel_m[index]), Math.abs(c.frame_m[index]),
-      Math.abs(c.front_travel_m[index]), Math.abs(c.rear_travel_m[index]), 1e-12));
+      Math.abs(c.front_travel_m[index]), Math.abs(c.rear_travel_m[index]), Math.abs(c.secondary_m[index]), 1e-12));
   }
   return {
     partResponse(id) {
+      if (result?.lateral_model && id?.startsWith("air_spring_")) {
+        const side = id.endsWith("_l") ? 0 : 1;
+        const spring = result.channels.spring_m[index][side];
+        return "二系垂向相对变化 " + (1000*spring).toFixed(2) + " mm · 线性计算";
+      }
       if (!result?.vehicle_model || !id) return "";
       const c = result.channels;
       const end = id.match(/_[ab](?:_|$)/)?.[0][1];
@@ -120,7 +143,8 @@ export function responsePlayer(invalidate) {
       pause();
       slider.max = result.channels.travel_m.length-1;
       get("axle-controls").hidden = !result.channels.front_travel_m;
-      get("sim-step").hidden = !result.vehicle_model;
+      get("sim-step").hidden = !result.vehicle_model && !result.lateral_model;
+      get("lateral-controls").hidden = !result.lateral_model;
       get("front-crest").hidden = get("rear-crest").hidden = Boolean(result.vehicle_model);
       get("response-duration").textContent = "0 – " + Number(slider.max)/result.sample_hz + " s";
       axleSignal.value = "travel";
@@ -137,19 +161,29 @@ export function responsePlayer(invalidate) {
         if (next === +slider.max) pause();
       }
       const c = result.channels;
+      if (result.lateral_model) {
+        const gain = displayGain(), roll = c.roll_rad[index]*gain;
+        const y = (c.body_y_m[index]-c.base_y_m[index])*gain + result.parameters.com_height_m*Math.sin(roll);
+        panel.dataset.displayGain = gain.toFixed(4);
+        return {running, settling:false, angle:c.wheel_rad[index], vertical:0, yaw:0,
+          lateral:c.base_y_m[index]*gain,
+          body:{y, heave:result.parameters.com_height_m*(1-Math.cos(roll)), roll, rigidSupport:true}};
+      }
       if (result.vehicle_model) {
         const front = c.front_wheel_m[index], rear = c.rear_wheel_m[index];
         // Preserve the relative geometry with one common display scale.
         const visibleGain = displayGain();
         panel.dataset.displayGain = visibleGain.toFixed(4);
         return {running, settling:false, angle:c.wheel_rad[index], vertical:c.frame_m[index]*visibleGain,
-          pitch:c.pitch_rad[index]*visibleGain, lateral:0, yaw:0, wheelOffsets:[front*visibleGain, rear*visibleGain]};
+          pitch:c.pitch_rad[index]*visibleGain, lateral:0, yaw:0, wheelOffsets:[front*visibleGain, rear*visibleGain],
+          body:{heave:c.secondary_m[index]*visibleGain}};
       }
       const front = limitTravel((c.front_travel_m ?? c.travel_m)[index]);
       const rear = limitTravel((c.rear_travel_m ?? c.travel_m)[index]);
       return {running, settling:false, angle:c.wheel_rad[index], vertical:(front+rear)/2,
         pitch:result.wheelbase_m ? Math.asin((front-rear)/result.wheelbase_m) : 0,
-        lateral:c.lateral_m[index], yaw:c.yaw_rad[index]};
+        lateral:c.lateral_m[index], yaw:c.yaw_rad[index],
+        body:c.secondary_travel_m ? {heave:limitTravel(c.secondary_travel_m[index])} : undefined};
     },
   };
 }

@@ -77,6 +77,19 @@ def _rest_triangles(doc, binary, part, surface):
         yield tuple((x + px, -depth - pz, up + py) for px, py, pz in face)
 
 
+def _validate_air_spring_interfaces(doc, binary, parts, contract):
+    for side in ("l", "r"):
+        name = f"air_spring_{side}"
+        part, surface = parts[name]
+        base = contract["parts"][name]["origin"][2]
+        heights = [z for face in _rest_triangles(doc, binary, part, surface) for _, _, z in face]
+        require(abs(min(heights)-base) < .0005, f"Air spring lower endpoint no longer meets its pivot: {name}")
+        require(abs(max(heights)-base-.324) < .001, f"Air spring upper interface changed: {name}")
+        primitives = doc["meshes"][surface["mesh"]]["primitives"]
+        finishes = {doc["materials"][p["material"]]["name"] for p in primitives}
+        require({"rubber", "steel"} <= finishes, f"Missing bellows or plate material: {name}")
+
+
 def _plane_points(faces, axis, coordinate):
     """Yield the corners of each triangle/plane intersection in model metres."""
     for face in faces:
@@ -381,6 +394,7 @@ def validate(path):
             triangles += indices["count"]//3
     require(0 < triangles <= MAX_TRIANGLES, "Model exceeds triangle budget")
     _validate_dampers(doc, binary, dampers, contract)
+    _validate_air_spring_interfaces(doc, binary, parts, contract)
     _validate_wheel_track_fit(doc, binary, parts, contract)
     _validate_animation_clearance(doc, binary, parts, contract)
     return dict(parts=len(parts) + len(dampers), meshes=len(mesh_indices), triangles=triangles, bytes=size)

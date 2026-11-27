@@ -68,7 +68,7 @@ def render_vehicle_lab(main):
                          view="整体视图", focus=None, labels=False, rails=False, exploded=False, spread=0,
                          camera_revision=0, continuous=False, height=670, key="vehicle_suspension_model",
                          simulation=bogie_playback(result, bogie, gain))
-        st.caption("GLB 视窗按统一倍率更新单台转向架的构架、轮对和一系连接。二系行程可点选空气弹簧查看。")
+        st.caption("GLB 以统一倍率更新单台转向架的构架、轮对及悬挂。车体安装面按该台架中心的二系行程更新。")
         st.line_chart({"相对时间（s）": result["time_s"],
                        "车体（mm）": [row[0]*1000 for row in result["q"]],
                        "前构架（mm）": [row[2]*1000 for row in result["q"]],

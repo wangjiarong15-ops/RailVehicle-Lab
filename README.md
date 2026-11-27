@@ -10,6 +10,8 @@ Phase 9 可在「动力学仿真」运行整车垂向与点头试验，保存工
 
 Evolution II 第一阶段统一了异常计数、来源声明和图表回查，并把三维观测窗口接入 Copilot 与报告。[工程质量审计与验收](docs/evolution-ii-quality-audit.md)
 
+Evolution II 第二阶段增加横移与侧滚教学工况、二系端点动画以及三维检查和仿真工况的 Copilot 联动。[方程、装配与验证](docs/evolution-ii-engineering.md)
+
 ## 采样数据质量检查
 
 CSV 导入预览按车辆分别检查重复 UTC 时刻、原 CSV 行序中的时间倒序和长采样间隔，
