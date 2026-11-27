@@ -144,3 +144,26 @@ def analysis_demo_data():
         batches.append(dict(id=batch_id, file_name=f"虚构演示批次{index + 1}（非实测）",
                             imported_at="内存生成，未导入数据库", sample_count=DEMO_SAMPLE_COUNT))
     return vehicle, batches, samples_by_batch
+
+
+def spectral_demo_data():
+    """50 Hz synthetic pair with documented signal content and no real vehicle data."""
+    from math import pi, sin
+
+    vehicle, _, _ = analysis_demo_data()
+    vehicle = {**vehicle, "id":-7, "vehicle_code":"FICTIONAL-SPECTRUM"}
+    samples, batches = {}, []
+    for scenario,batch in enumerate((-71,-72)):
+        rows = []
+        for n in range(640):
+            t = n/50
+            instant = datetime(2026,10,8,8,scenario,tzinfo=timezone.utc)+timedelta(milliseconds=20*n)
+            lateral = (.22+.06*scenario)*sin(2*pi*3*t)+.10*sin(2*pi*9*t)
+            if 251<=n<=255:
+                lateral += 1.25
+            rows.append({"timestamp":instant.isoformat(),"speed_kmh":74+2*scenario,
+                         "lateral_accel":lateral,"vertical_accel":.16*sin(2*pi*5*t)})
+        batches.append({"id":batch,"file_name":f"合成频谱批次{scenario+1}（50 Hz，非实测）",
+                        "sample_count":len(rows),"imported_at":"内存合成"})
+        samples[batch] = rows
+    return vehicle,batches,samples

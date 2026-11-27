@@ -52,6 +52,21 @@ def _add_columns(connection, table, definitions):
 def init_db(db_path: Path | str = DB_PATH) -> None:
     """Create the initial tables if they do not already exist."""
     with get_connection(db_path) as connection:
+        connection.executescript("""
+            CREATE TABLE IF NOT EXISTS workbench_jobs (
+                id TEXT PRIMARY KEY, title TEXT NOT NULL, context TEXT NOT NULL,
+                rounds TEXT NOT NULL DEFAULT '[]', limits TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'draft', priority INTEGER NOT NULL DEFAULT 0,
+                control TEXT NOT NULL DEFAULT '', error TEXT NOT NULL DEFAULT '',
+                owner TEXT NOT NULL DEFAULT '', heartbeat REAL NOT NULL DEFAULT 0,
+                spent REAL NOT NULL DEFAULT 0, cloud_calls INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS workbench_results (
+                job_id TEXT REFERENCES workbench_jobs(id), step_id TEXT NOT NULL,
+                result BLOB NOT NULL, digest TEXT NOT NULL, PRIMARY KEY (job_id, step_id)
+            );
+        """)
         connection.execute("""CREATE TABLE IF NOT EXISTS engineering_agent_tasks (
             task_id TEXT PRIMARY KEY, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             approval_json TEXT NOT NULL
