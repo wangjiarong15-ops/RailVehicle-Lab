@@ -27,3 +27,15 @@ Evolution VI 的 `5d7f6b4d` 已在本机重新通过 768 项 pytest 测试和 32
 内置虚构横向事件 `event.lateral.001` 是窗口样本 31–33，峰值 1.8 m/s²。教学基准、降低一系刚度、降低二系刚度和降低二系阻尼的车体横向 RMS 分别为 0.0695517、0.0689665、0.0668572、0.0699918 m/s²。RK45 独立复算得到最小候选的降低量为 0.00269435 m/s²，两种积分器的差异和约 0.0000002053 m/s²。该排序用于展示如何复算假设。悬挂故障和实车优化幅度需要额外证据。
 
 工程验证中心保留 Manchester Case 1 刚性首触对照，项目计算为 0.182101245 mm，报告参考起点为 0.1821 mm。另加入固定公开输出的加载柔度对照。左轮 10 kN 时，CONTACT 加载前后法向逼近差为 0.0160 mm，输出切线刚度为 1.054×10⁶ N/mm。项目名义 Hertz 系数 80×10⁹ N/m^(3/2) 给出 0.0250 mm 和 6.00×10⁵ N/mm，刚度差约 −43.1%。刚性几何的接近不能替代加载时程验证。接触斑、轮缘多点和更广载荷的外部校准仍待完成。[公开试验定义](https://research.hud.ac.uk/media/assets/document/research/railwayresearchinsituteofirr/downloads/Contact_Benchmark_ver3.0.pdf) · [固定 CONTACT 参考输出](https://github.com/eve70a/CONTACT/blob/5644061ade1b0214e7ce70d780066f630d05f782/testbank/contact_mbench.ref_out) · [CONTACT 用户手册](https://www.kalkersoftware.org/downloads/user-guide.pdf)
+
+## 验收与便携构建
+
+- 最终可执行程序源码为 `4aadc4a157a836561df8545039b4736d8460c49d`。全量 pytest 在独立目录得到 773 项通过、325 个子测试通过、0 失败，用时 224.98 秒。首次运行遇到系统 pytest 临时目录访问错误，改用本次专用 `--basetemp` 重跑。
+- Python 编译、JavaScript 语法、Phase 8 契约与 GLB 校验通过。现有 GLB 为 54 部件、58 网格、47,948 个三角形、1,457,452 字节。
+- 实际 Edge 验收覆盖 1366×768、1920×1080 深浅主题、18 个桌面导航入口和 9 个移动页面。在专用批次复核事件、审批前第二轮修改、六次求解、逐帧与峰值定位、归档和 PDF/JSON。本机模拟服务还复核了同意、限流、重试、流式输出及取消，线上 OpenAI/DeepSeek 需另行验收。
+- 15 套 Edge 流程通过分轮验收。第一轮旧 Copilot 测试在 Streamlit 渲染期间定位到两个输入框，加入空闲等待与可见性筛选后复测通过。第二轮旧 GLB 连续播放低于既有 5 FPS 门槛，在独立模型复跑中测得 1920×1080 软件 WebGL 约 17 FPS、32 次绘制调用，每帧 47,974 个三角形。剖切、爆炸、部件隐藏、7 个教学场景和缺失或损坏 GLB 的回退均通过。性能数据只代表本机软件渲染，批量回归中的低帧率仍需在目标硬件上复核。
+- Windows x64 本地 ZIP 共 171,526,851 字节，包含 8,047 项已校验文件与构建清单。SHA-256 为 `8828184f2324ea5516af4b24bbea8aa5cda3d04599bdc517af53ee8249d5160a`。在本机以隔离存储和仅保留 System32 的进程 PATH 启动打包 EXE，验证了本机健康检查和 Edge 全流程，未使用项目 Python 启动应用到浏览器。
+
+使用包内 `BUILD-METADATA.json` 核对源码提交和 EXE/GLB 摘要，用同目录 `.sha256` 文件核对 ZIP。完整解压后双击 `RailVehicle-Lab.exe`，在 Copilot 选择虚构批次开始。后续验收须在未安装 Python 的独立 Windows x64 设备复核启动、数据目录可写、断开外网后的三维和报告、退出与再次启动。签名及公开发布仍待另行授权。
+
+本机验收证据位于 `tmp/evo-vii-exe-qa/run-20261127-205906/screenshots/`（1366×768 与 1920×1080 截图、六次积分证据 JSON、PDF）。公开加载基准截图位于 `tmp/evo-vii-edge-all/run-1wzmzx4_/evolution-vi/`，浏览器全量回归日志位于 `tmp/evo-vii-edge-green/run-sq85x4wv/`，独立 GLB 复跑位于 `tmp/evo-vii-edge-model-retry/run-n1771ur6/`。这些文件使用虚构数据或明确定位的公开资料，保留为本机验收记录。

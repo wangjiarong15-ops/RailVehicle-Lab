@@ -660,7 +660,7 @@ async function audit(browser, width, height, complete = true) {
         await new Promise((resolve) => setTimeout(resolve, 3200));
         const later = await data();
         const fps = (Number(later.frames) - Number(beforeSample.frames)) * 1000 / (Date.now() - started);
-        assert(fps > 5, "Browser stopped drawing during continuous playback");
+        assert(fps > 5, `Continuous playback: ${fps.toFixed(1)} FPS (${beforeSample.frames} → ${later.frames} frames)`);
         console.log("Normal playback", JSON.stringify({width, height, fps: Math.round(fps),
           triangles: Number(later.triangles), drawCalls: Number(later.calls), renderer: later.renderer}));
       }
