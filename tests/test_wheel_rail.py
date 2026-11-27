@@ -29,6 +29,34 @@ def test_unilateral_hertz_energy_and_friction_circle():
     assert np.sum(spec["fx"]*spec["xi_x"]+spec["fy"]*spec["xi_y"])<0
 
 
+def test_contact_switch_matches_free_fall_and_an_implicit_solver():
+    integrate=pytest.importorskip("scipy.integrate")
+    p=Contact()
+    mass,height=1550.,.003
+    indent=(mass*G/(2*p.normal_n_m32))**(2/3)
+
+    def rhs(t,state):
+        z,speed=state
+        wheels=wheel_forces(p,[0,z,0,0],[0,speed,0,0],20.,0.,0.,np.zeros(2),indent)
+        return [speed,wheels["normal"].sum()/mass-G]
+
+    def boundary(t,state):
+        return state[0]-indent
+
+    settings=dict(t_span=(0,.055),y0=(indent+height,0.),t_eval=np.linspace(0,.055,551),
+                  rtol=1e-10,atol=1e-12,max_step=.00012,events=boundary)
+    explicit=integrate.solve_ivp(rhs,method="DOP853",**settings)
+    implicit=integrate.solve_ivp(rhs,method="Radau",**settings)
+    assert explicit.success and implicit.success
+    assert len(explicit.t_events[0])==len(implicit.t_events[0])==2
+    assert explicit.t_events[0][0]==pytest.approx(np.sqrt(2*height/G),abs=1e-9)
+    np.testing.assert_allclose(explicit.t_events[0],implicit.t_events[0],atol=1e-8,rtol=0)
+    np.testing.assert_allclose(explicit.y[0],implicit.y[0],atol=1e-8,rtol=0)
+    z,speed=explicit.y
+    total=.5*mass*speed**2+mass*G*(z-indent)+2*normal_energy(p.normal_n_m32,indent-z)
+    np.testing.assert_allclose(total/total[0],1.,atol=1e-6,rtol=0)
+
+
 def test_wheelset_analytic_tangent_and_kinematic_wavelength():
     p=replace(Contact(),law="linear")
     speed=20.

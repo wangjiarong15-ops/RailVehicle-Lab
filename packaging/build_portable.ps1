@@ -11,7 +11,7 @@ $railDirty = @(git status --porcelain --untracked-files=no)
 if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect Git status.' }
 $railClean = ($railDirty.Count -eq 0)
 $railPython = (Resolve-Path -LiteralPath $Python).Path
-& $railPython -c 'import sys,sysconfig; sys.exit(sysconfig.get_platform() != "win-amd64")'
+& $railPython -c "import sys,sysconfig; sys.exit(sysconfig.get_platform() != 'win-amd64')"
 if ($LASTEXITCODE -ne 0) { throw 'Build requires Windows x64 Python.' }
 $railRepo = (Get-Location).Path
 $railOutput = if ([IO.Path]::IsPathRooted($OutputRoot)) { $OutputRoot } else { Join-Path $railRepo $OutputRoot }
@@ -26,7 +26,7 @@ New-Item -ItemType Directory -Path $railBuild | Out-Null
 $railBuildArgs = @('--distpath', (Join-Path $railBuild 'dist'), '--workpath', (Join-Path $railBuild 'work'), 'RailVehicleLab.spec')
 if ($Tools) {
     $railTools = (Resolve-Path -LiteralPath $Tools).Path
-    $railDriver = 'import runpy,sys;sys.path.insert(0,sys.argv.pop(1));runpy.run_module("PyInstaller",run_name="__main__")'
+    $railDriver = "import runpy,sys;sys.path.insert(0,sys.argv.pop(1));runpy.run_module('PyInstaller',run_name='__main__')"
     & $railPython -c $railDriver $railTools @railBuildArgs
 } else {
     & $railPython -m PyInstaller @railBuildArgs

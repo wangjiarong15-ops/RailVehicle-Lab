@@ -32,11 +32,14 @@ def test_finite_budget_independent_recalculation_and_archive_checks():
     case=WheelRailCase()
     plan=StudyPlan(speeds=(20.,),radii=(450.,),repairs=(.75,),right_factor=.9,max_travel_mm=35,maximum_solves=5)
     phases=[]
-    result=solve_study(case,plan,stage=phases.append)
+    traces=[]
+    result=solve_study(case,plan,stage=phases.append,capture=traces.append)
     assert phases==list(range(4))
     assert result["solves"]==5 and result["comparison"]["qualified"]
     old,new=(result["comparison"][key] for key in ("reference","candidate"))
     assert old["rows"][0]["solver"]["method"]==new["rows"][0]["solver"]["method"]=="RK45"
+    assert [item["evidence_id"] for item in traces]==[whole["rows"][0]["evidence_id"] for whole in (old,new)]
+    assert all(len(item["time_s"])==301 for item in traces)
     assert new["worst_body_y_rms_m_s2"]<old["worst_body_y_rms_m_s2"]
     assert new["max_travel_mm"]<old["max_travel_mm"]<35
     assert restore_study(json_text(result))==(case,plan,result["evidence_id"])

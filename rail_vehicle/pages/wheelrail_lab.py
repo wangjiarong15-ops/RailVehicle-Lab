@@ -191,7 +191,7 @@ def _progress(job):
     b.button("取消轮轨试验",on_click=job.cancel,disabled=state=="cancelling")
 
 
-def _comparison(report):
+def _comparison(report,job):
     c=report["comparison"]
     st.subheader("曲线试验证据")
     st.caption(f"{report['solves']} 次求解 · {report['evidence_id']}")
@@ -210,11 +210,9 @@ def _comparison(report):
                             format_func=lambda i:f"{by_case[i]['speed_m_s']:g} m/s · R {by_case[i]['radius_m']:g} m")
         a,b=c["reference"]["rows"][choice],by_case[choice]
         if st.toggle("打开复算双视窗",key="wr_show_pair"):
-            with st.spinner("正在重建两条独立复算响应…"):
-                original=_run(read_case(json_text(a["case"])),"independent")
-                after=_run(read_case(json_text(b["case"])),"independent")
-            if (original["evidence_id"],after["evidence_id"])!=(a["evidence_id"],b["evidence_id"]):
-                st.error("三维计算证据与档案不一致。")
+            original,after=(job.response(row["evidence_id"]) for row in (a,b))
+            if not original or not after:
+                st.error("当前任务没有对应的复算响应。可载入完整试验记录后重新审批。")
             else:
                 _viewer(original,"wr_pair_view",after)
     else:
@@ -253,7 +251,7 @@ def _study(case):
         if report:
             if expected:=s.get("wr_expected"):
                 st.write("档案复算摘要一致。" if expected==report["evidence_id"] else "当前数值环境产生了新摘要。")
-            _comparison(report)
+            _comparison(report,job)
         st.button("新建轮轨试验",on_click=s.pop,args=("wr_job",None))
         return
     uploaded=st.file_uploader("载入已归档的轮轨试验",type=["json"],key="wr_import_study",max_upload_size=1)

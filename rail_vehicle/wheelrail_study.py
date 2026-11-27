@@ -61,7 +61,7 @@ def condition_case(base,speed,radius,plan,repair=None):
     return replace(base,speed_m_s=speed,route=route,secondary_right=right)
 
 
-def solve_study(base,plan,*,checkpoint=lambda:None,stage=lambda _:None):
+def solve_study(base,plan,*,checkpoint=lambda:None,stage=lambda _:None,capture=None):
     scenarios=list(product(plan.speeds,plan.radii))
     if any(speed*base.duration_s < 32 + 2*base.vehicle.bogie_half_spacing_m+2.6 for speed,_ in scenarios):
         raise ValueError("试验时窗不足以让最后一轴完成缓和曲线。请延长时长或提高最低速度。")
@@ -84,6 +84,8 @@ def solve_study(base,plan,*,checkpoint=lambda:None,stage=lambda _:None):
             rows.append({"speed_m_s":speed,"radius_m":radius,"case":case_config(case),
                          "evidence_id":result["evidence_id"],"configuration_sha256":result["configuration_sha256"],
                          "metrics":performance(result),"solver":result["solver"]})
+            if accuracy=="independent" and capture is not None:
+                capture(result)
         metric=[row["metrics"] for row in rows if "metrics" in row]
         peak=max((p["secondary_travel_peak_mm"] for p in metric),default=None)
         flags=[]
@@ -148,21 +150,36 @@ class WheelRailStudy(Research):
     """Use the same cooperative pause/cancel controls as the existing local Copilot."""
     active_budget_s=210
 
+    def __init__(self,request):
+        super().__init__(request)
+        self._responses={}
+
+    def response(self,evidence_id):
+        with self._condition:
+            return self._responses.get(evidence_id)
+
     def _run(self):
         if not _STUDIES.acquire(blocking=False):
             with self._condition:
                 self.status,self.error="error","轮轨试验正在运行，可稍后重试。"
             return
         try:
+            responses={}
+
+            def capture(result):
+                responses[result["evidence_id"]]=result
+
             def stage(number):
                 self._checkpoint()
                 with self._condition:
                     self.stage=number
-            report=solve_study(*self.request,checkpoint=self._checkpoint,stage=stage)
+            report=solve_study(*self.request,checkpoint=self._checkpoint,stage=stage,capture=capture)
             self._checkpoint()
             with self._condition:
                 if self.status=="cancelling":
                     raise InterruptedError
+                if report["comparison"] and report["comparison"]["qualified"]:
+                    self._responses=responses
                 self.report,self.status,self.stage=report,"complete",len(PHASES)
         except InterruptedError:
             with self._condition:

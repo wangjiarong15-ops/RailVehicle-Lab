@@ -42,7 +42,13 @@ async function audit(browser,width,height,theme) {
       for (const field of fields) field.push(await download(page,field[1]));
       await page.getByText("工程记录",{exact:true}).click();
       for (const [key,,name,buffer] of fields) {
-        await page.locator(`.st-key-${key} input[type=file]`).setInputFiles({name,mimeType:name.endsWith(".csv")?"text/csv":"application/json",buffer});
+        const widget=page.locator(`.st-key-${key}`);
+        const request=page.waitForResponse(response=>response.request().method()==="PUT"
+          && response.url().includes("/_stcore/upload_file/") && response.ok());
+        await widget.locator("input[type=file]").setInputFiles({name,mimeType:name.endsWith(".csv")?"text/csv":"application/json",buffer});
+        await request;
+        await widget.getByText(name,{exact:true}).waitFor();
+        await page.getByTestId("stStatusWidget").waitFor({state:"hidden"});
       }
       await page.getByRole("button",{name:"下载与验证工况绑定的元数据模板",exact:true}).waitFor();
       await page.getByRole("button",{name:"核对并绑定观测",exact:true}).click();

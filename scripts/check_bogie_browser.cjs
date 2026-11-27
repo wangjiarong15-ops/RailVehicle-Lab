@@ -352,8 +352,10 @@ async function checkTeachingControls(page, data, play, pause, reset) {
   await page.waitForTimeout(230);
   assert.equal((await data()).phase, paused.phase, "Paused teaching wheel kept turning");
   await play.click();
-  await until(data, (d) => d.playing === "true" && Number(d.frames) > Number(paused.frames) + 4,
+  const resumed = await until(data, (d) => d.playing === "true" && Number(d.phase) > Number(paused.phase) + .02,
     "Teaching playback did not resume");
+  await until(data, (d) => d.playing === "true" && Number(d.frames) >= Number(resumed.frames) + 4
+    && Number(d.phase) > Number(resumed.phase), "Resumed teaching playback did not render several advancing frames");
   await reset.click();
   await until(data, (d) => d.playing === "false" && Number(d.phase) === 0, "Teaching reset did not return to zero");
   await option(page, "bogie_rate", "1×");
