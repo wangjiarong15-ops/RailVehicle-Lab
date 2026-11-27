@@ -277,7 +277,9 @@ def _optimization_result(report,key):
         if len(objectives)>1:
             x,y=objectives[:2]
             fig=go.Figure(go.Scatter(x=[r["worst"][x] for r in front],y=[r["worst"][y] for r in front],
-                                     mode="markers",text=[f"方案 {i+1}" for i in range(len(front))]))
+                                     name="复算可行方案",mode="markers",text=[f"方案 {i+1}" for i in range(len(front))]))
+            fig.add_scatter(x=[report["baseline"]["worst"][x]],y=[report["baseline"]["worst"][y]],
+                            name="基准",mode="markers",marker=dict(symbol="diamond",size=9))
             fig.update_layout(height=255,xaxis_title=OBJECTIVES[x],yaxis_title=OBJECTIVES[y])
             plot_chart(fig,key=key+"_pareto")
         labels=[f"{row['speed_m_s']:g} m/s · {TRACKS[row['track']]}" for row in front[selected]["conditions"]]

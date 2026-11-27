@@ -7,9 +7,8 @@ from math import isfinite
 import numpy as np
 
 from rail_vehicle.coupled_vehicle import case_config, simulate, summary
-from rail_vehicle.twin_data import digest
+from rail_vehicle.twin_data import check_excitation_coverage, digest
 from rail_vehicle.twin_identification import coefficients, parameter_bounds
-from rail_vehicle.vehicle_dynamics import axle_distances
 
 OBJECTIVES = {"body_y_rms_m_s2":"横向加速度 RMS", "body_z_rms_m_s2":"垂向加速度 RMS",
               "roll_peak_mrad":"侧滚峰值", "secondary_y_peak_mm":"二系横向行程"}
@@ -76,9 +75,7 @@ def optimize(case, plan, *, checkpoint=lambda: None):
     cases = [replace(case,speed_m_s=v,track=track,profile=case.profile if track=="custom" else ())
              for v,track in product(plan.speeds,plan.tracks)]
     for scenario in cases:
-        coverage = scenario.profile[-1][0] if scenario.track=="custom" else scenario.length_m*(1 if scenario.track=="bump" else 2)
-        if scenario.duration_s < (axle_distances(scenario.vehicle)[-1]+coverage)/scenario.speed_m_s:
-            raise ValueError("有工况在计算窗口内无法完整激励尾轴。请延长时长或缩小速度和激励范围。")
+        check_excitation_coverage(scenario)
     keys = tuple(plan.bounds)
     lo,hi = np.asarray(list(plan.bounds.values())).T
     baseline = {k:getattr(case.transverse,k) for k in keys}

@@ -34,6 +34,21 @@ async function audit(browser,width,height,theme) {
     assert(+await frame().locator("#sim-time").inputValue()>1);
     await frame().locator("#response").scrollIntoViewIfNeeded();
     await capture("paired-observations");
+    if (width===1366) {
+      await page.getByText("下载虚构原始记录",{exact:true}).click();
+      const fields=[["tw_train_csv","辨识观测 CSV","train.csv"],["tw_train_meta","辨识元数据 JSON","train.json"],
+        ["tw_train_case","辨识动力学工况 JSON","train-case.json"],["tw_val_csv","验证观测 CSV","valid.csv"],
+        ["tw_val_meta","验证元数据 JSON","valid.json"],["tw_val_case","验证动力学工况 JSON","valid-case.json"]];
+      for (const field of fields) field.push(await download(page,field[1]));
+      await page.getByText("工程记录",{exact:true}).click();
+      for (const [key,,name,buffer] of fields) {
+        await page.locator(`.st-key-${key} input[type=file]`).setInputFiles({name,mimeType:name.endsWith(".csv")?"text/csv":"application/json",buffer});
+      }
+      await page.getByRole("button",{name:"核对并绑定观测",exact:true}).click();
+      await page.getByRole("button",{name:"解除配对记录绑定",exact:true}).waitFor();
+      await page.getByRole("heading",{name:"观测与计算回放",exact:true}).waitFor();
+      await page.getByText("虚构试验",{exact:true}).click();
+    }
 
     await page.getByRole("button",{name:"将当前观测交给 Copilot",exact:true}).click();
     await page.getByText(/已连接数字孪生工作台/).waitFor();

@@ -138,6 +138,8 @@ class Research:
                 self.stage = 3
             self._checkpoint()
             with self._condition:
+                if self.status=="cancelling":
+                    raise InterruptedError
                 report = {"schema":SCHEMA,"model":MODEL,"source":r.observations.source,
                           "recipe":r.recipe,"case":case_config(r.case),"plan":asdict(r.plan),"quality_and_model":self.completed[0],
                           "identification":self.completed[1],"optimization":self.completed[2],
@@ -226,8 +228,11 @@ def research_pdf(report):
              f"验证 CSV SHA-256 {fit['validation']['csv_sha256']}",
              f"辨识证据 {fit['evidence_id']} · {fit['evaluations']} 次求解",
              f"独立验证归一化 RMSE {fit['baseline_normalized_rmse']:.6g} → {fit['validation_normalized_rmse']:.6g}"]
+    fields={"secondary_y_k_n_m":("二系横向刚度","kN/m"),"secondary_y_c_ns_m":("二系横向阻尼","kN·s/m"),
+            "antiroll_k_nm_rad":("等效抗侧滚刚度","kN·m/rad")}
     for key,value in (fit["identified"] or {}).items():
-        lines.append(f"{key}  {value:.6g} SI")
+        name,unit=fields[key]
+        lines.append(f"{name} {value/1000:.6g} {unit}")
     if opt:
         lines += [f"优化证据 {opt['evidence_id']} · {opt['evaluations']} 次求解",
                   f"半步长验证 Pareto 候选 {len(opt['pareto'])} 个"]

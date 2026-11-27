@@ -21,7 +21,7 @@ from rail_vehicle.pages.data_workflow import ANALYSIS_TARGET, WORKBENCH_SOURCE
 
 
 MAIN_NAV = ("工作台首页", "车辆管理", "数据导入", "运行分析", "三维转向架", "动力学仿真",
-            "AI Copilot", "分析报告", "异常检测", "联动分析", "批次对比", "振动与频谱", "AI 证据解读")
+            "数字孪生", "AI Copilot", "分析报告", "异常检测", "联动分析", "批次对比", "振动与频谱", "AI 证据解读")
 ADVANCED_ROUTES = ("动态运行驾驶舱", "机器学习异常检测", "多车辆运行对比", "演示中心")
 
 

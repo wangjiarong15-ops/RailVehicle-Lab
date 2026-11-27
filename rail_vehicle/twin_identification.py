@@ -5,9 +5,9 @@ from math import isfinite
 
 import numpy as np
 
-from rail_vehicle.coupled_vehicle import MODEL, OUTPUT_HZ, case_config, force_at, matrices
+from rail_vehicle.coupled_vehicle import MODEL, OUTPUT_HZ, case_config, force_at, matrices, simulate
 from rail_vehicle.linear_dynamics import newmark_response
-from rail_vehicle.twin_data import CHANNELS, check_case, digest, quality, residual_metrics
+from rail_vehicle.twin_data import CHANNELS, check_case, check_excitation_coverage, digest, quality, residual_metrics
 
 VARIABLES = {
     "secondary_y_k_n_m": ("二系横向刚度", 30_000., 900_000.),
@@ -88,6 +88,8 @@ def identify(case, observations, validation_case, validation, bounds, *, budget=
         raise ValueError("辨识与独立验证均需要明确的非零横向激励。")
     if case.vehicle != validation_case.vehicle or case.transverse != validation_case.transverse:
         raise ValueError("训练与验证须采用同一车辆的初始模型参数。")
+    for excitation in (case, validation_case):
+        check_excitation_coverage(excitation)
     common = [key for key in FIT_CHANNELS if key in observations.channels and key in validation.channels]
     if "body_y_accel" not in common or ("antiroll_k_nm_rad" in bounds and "body_roll" not in common):
         raise ValueError("需要两份车体横向加速度记录，辨识抗侧滚刚度还需要同步的车体侧滚角。")
@@ -101,13 +103,22 @@ def identify(case, observations, validation_case, validation, bounds, *, budget=
     if any(np.std(training.channels[key][1]) < CHANNELS[key][3]/4 for key in common):
         raise ValueError("观测响应缺少足够变化，请核对激励、通道分辨率或安装位置。")
 
+    contact=[]
+    # The fit changes only the transverse block; one vertical validity check per input suffices.
+    for excitation in (case,validation_case):
+        checkpoint()
+        reference=simulate(excitation,substeps=10,include_modes=False)
+        if reference["min_linear_contact_n"] <= 0:
+            raise ValueError("工况包含非正线性接触载荷，超出当前模型的辨识适用范围。")
+        contact.append({"evidence_id":reference["evidence_id"],"minimum_n":reference["min_linear_contact_n"]})
     keys = tuple(bounds)
     unit = np.array([SCALE[key] for key in keys])
     lower, upper = np.asarray(list(bounds.values())).T/unit
     original = np.array([getattr(case.transverse, key) for key in keys])/unit
-    first = np.clip(original, lower+1e-6, upper-1e-6)
+    margin=(upper-lower)*1e-4
+    first = np.clip(original, lower+margin, upper-margin)
     second = lower+.7*(upper-lower)
-    calls = 0
+    calls = len(contact)
 
     def unpack(x):
         return dict(zip(keys, map(float,x*unit), strict=True))
@@ -139,7 +150,7 @@ def identify(case, observations, validation_case, validation, bounds, *, budget=
         return (answer.x, answer.success) if answer.success else (best[1], False)
 
     reserved = 4+2*len(keys)
-    allowance = (budget-reserved)//2
+    allowance = (budget-calls-reserved)//2
     a, converged_a = fit(first,allowance)
     b, converged_b = fit(second,allowance)
     trial_a,trial_b = training.error(execute(training,a)),training.error(execute(training,b))
@@ -184,6 +195,7 @@ def identify(case, observations, validation_case, validation, bounds, *, budget=
               "training":observations.evidence(),"validation":validation.evidence(),"case":case_config(case),
               "validation_case":case_config(validation_case),"bounds":bounds,"budget":budget,"evaluations":calls,
               "channels":common,"rank":rank,"condition":condition,"start_spread":angles,"flags":flags,
+              "linear_contact_screen":contact,
               "fit_normalized_rmse":sigma,"validation_normalized_rmse":test_rms,"baseline_normalized_rmse":original_rms,
               "validation_baseline":testing.metrics(baseline_validation),"validation_fitted":testing.metrics(result_validation),
               "identified":None if flags else unpack(estimate),"conditional_95_interval":intervals,

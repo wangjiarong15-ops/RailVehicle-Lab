@@ -12,6 +12,7 @@ from rail_vehicle.coupled_vehicle import MODEL, case_config, read_case, simulate
 from rail_vehicle.db import DB_PATH, get_connection
 from rail_vehicle.sensor_store import active_channels, sensor_snapshot
 from rail_vehicle.timestamp_utils import parse_iso_timestamp
+from rail_vehicle.vehicle_dynamics import axle_distances
 from rail_vehicle.virtual_trials import json_text
 
 SCHEMA = "rail.twin-observation.v1"
@@ -173,6 +174,12 @@ def check_case(observations, case):
         raise ValueError("同步速度通道未连续覆盖仿真窗。")
     if np.max(np.abs(np.asarray(speed.values)-case.speed_m_s)) > max(.3, .02*case.speed_m_s):
         raise ValueError("观测速度与匀速模型工况不一致。")
+
+
+def check_excitation_coverage(case):
+    required=case.profile[-1][0] if case.track=="custom" else case.length_m*(1 if case.track=="bump" else 2)
+    if case.duration_s < (axle_distances(case.vehicle)[-1]+required)/case.speed_m_s:
+        raise ValueError("计算窗口内无法完整激励尾轴。请延长时长或缩小速度和激励范围。")
 
 
 def residual_metrics(reference, calculated):

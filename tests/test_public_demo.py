@@ -10,7 +10,7 @@ from streamlit.testing.v1 import AppTest
 
 from rail_vehicle.deployment import demo_source_options, public_demo_enabled
 from rail_vehicle.ai.ui import request_ai_analysis
-from rail_vehicle.pages import cockpit, copilot, ml_detection, vibration_analysis, fleet_comparison
+from rail_vehicle.pages import cockpit, copilot, ml_detection, twin, vibration_analysis, fleet_comparison
 from rail_vehicle.pages.experiment_ai import render_experiment_ai
 
 
@@ -29,14 +29,20 @@ class PublicDemoTests(unittest.TestCase):
             for module in (cockpit, copilot, ml_detection, vibration_analysis, fleet_comparison):
                 for name in ("list_vehicles", "list_vehicle_batches", "list_batch_samples"):
                     stack.enter_context(patch.object(module, name, side_effect=AssertionError("no history")))
+            for name in ("list_vehicles", "list_vehicle_batches", "historic_samples", "history"):
+                stack.enter_context(patch.object(twin, name, side_effect=AssertionError("no twin history")))
             app = AppTest.from_file(str(Path(__file__).resolve().parents[1]/"app.py")).run()
             self.assertFalse(app.exception)
             navigation = [button.key.removeprefix("nav_") for button in app.sidebar.button]
-            self.assertEqual(navigation[:10], ["平台首页", "统计与异常演示", "三维转向架仿真", "动力学仿真",
+            self.assertEqual(navigation[:11], ["平台首页", "统计与异常演示", "三维转向架仿真", "动力学仿真", "数字孪生工作台",
                                                 "RailVehicle Copilot", "分析报告", "异常检测", "联动分析",
                                                 "振动与平稳性分析", "AI 智能分析中心"])
             self.assertEqual(app.session_state["navigation_page"], "统计与异常演示")
             self.assertFalse(app.file_uploader)
+            app.sidebar.button(key="nav_数字孪生工作台").click().run()
+            self.assertFalse(app.exception)
+            self.assertFalse(app.file_uploader)
+            self.assertEqual(app.radio(key="twin_source").options, ["虚构试验"])
             app.sidebar.button(key="nav_RailVehicle Copilot").click().run()
             self.assertFalse(app.exception)
             self.assertFalse(app.file_uploader)

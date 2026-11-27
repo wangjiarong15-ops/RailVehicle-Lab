@@ -9,7 +9,7 @@ import pytest
 
 from rail_vehicle.coupled_vehicle import simulate, summary
 from rail_vehicle.db import get_connection, init_db
-from rail_vehicle.twin_data import compare, fuse, parse_observations, quality
+from rail_vehicle.twin_data import compare, fuse, parse_observations, quality, synthetic_observations
 from rail_vehicle.twin_identification import coefficients, identify
 from rail_vehicle.twin_monitoring import residual_profile, suspension_hypotheses
 from rail_vehicle.twin_optimization import OptimizationPlan, optimize, replay_cases
@@ -77,6 +77,10 @@ def test_identification_rejects_nonindependence_unexcited_and_missing_directions
     stagnant=replace(train.channels["body_y_accel"],values=(0.,)*len(train.channels["body_y_accel"].values))
     with pytest.raises(ValueError,match="足够变化"):
         identify(case,replace(train,channels={**train.channels,"body_y_accel":stagnant}),held,validation,plan.bounds)
+    bad=replace(case,speed_m_s=70.,length_m=2.,vertical_m=.012)
+    energetic,*_=synthetic_observations(bad,rate=60,seed=81)
+    with pytest.raises(ValueError,match="非正线性接触"):
+        identify(bad,energetic,held,validation,plan.bounds)
 
 
 @pytest.mark.parametrize("strategy",("grid","local","global","hybrid"))
