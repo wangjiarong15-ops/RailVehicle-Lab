@@ -21,7 +21,7 @@ export function motionClock() {
         phase = localAnchor;
         last = now;
       } else if (!latest || !args.playing || !latest.playing || args.spread || args.hold || rewind ||
-          args.periodic !== latest.periodic || now - received >= snapshotTimeout) {
+          args.periodic !== latest.periodic || (!args.periodic && now - received >= snapshotTimeout)) {
         phase = args.hold ? 0 : args.phase;
         last = now;
       }
@@ -36,8 +36,10 @@ export function motionClock() {
       last = now;
       if (!latest) return null;
       const args = latest;
+      // Teaching cycles have a known period and can continue through a delayed
+      // Streamlit update. Historical samples must hold when the source goes stale.
       const running = args.playing && !args.spread && !args.hold &&
-        (Boolean(args.studioCommand) || now - received < snapshotTimeout);
+        (args.periodic || Boolean(args.studioCommand) || now - received < snapshotTimeout);
       if (args.studioCommand) phase = localPhase(now);
       else if (running) {
         // Bridge server snapshots without driving statistics or changing the chosen sample.

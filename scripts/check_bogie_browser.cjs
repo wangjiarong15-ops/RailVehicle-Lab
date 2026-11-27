@@ -308,6 +308,13 @@ async function checkMotionClock(root) {
     // A late packet from the next teaching cycle carries a smaller wrapped phase.
     clock.receive({...teaching, phase: .5}, 320);
     for (let now = 336; now <= 416; now += 16) forward.push(clock.tick(now).angle);
+    const late = motionClock();
+    late.receive(teaching, 0);
+    const first = late.tick(1000);
+    late.receive({...teaching, phase:.4},1000);
+    const after = late.tick(1016);
+    late.receive({...teaching,playing:false,phase:1.1},1020);
+    const stopped = late.tick(1040);
 
     const history = {...teaching, periodic: false, rate: 1, phase: 12, envelope: [.075, .065, .049]};
     clock.receive(history, 500);
@@ -321,11 +328,14 @@ async function checkMotionClock(root) {
     const resumed = clock.tick(1060);
     const stale = clock.tick(1821), frozen = clock.tick(1850);
     clock.receive({...history, phase: 10}, 1900);
-    return {forward, beforeRewind, rewound, gap, held, resumed, stale, frozen, reanchored: clock.tick(1900)};
+    return {forward, first, after, stopped, beforeRewind, rewound, gap, held, resumed, stale, frozen, reanchored: clock.tick(1900)};
   });
   assert(poses.forward.at(-1) > 2 * Math.PI, "Teaching motion did not cross the cycle boundary");
   assert(poses.forward.every((angle, index, list) => index === 0 || angle > list[index - 1]),
     "An out-of-date teaching snapshot made the wheel backtrack");
+  assert(poses.first.running && poses.after.angle>poses.first.angle,
+    "Periodic teaching must keep advancing across a delayed fragment");
+  assert(!poses.stopped.running, "An explicit pause must stop even a locally timed teaching scene");
   assert(poses.beforeRewind.angle > 12);
   assert.equal(poses.rewound.angle, 3, "An event loop rewind must use the destination batch time immediately");
   const neutral = {running: false, settling: false, angle: 0, lateral: 0, vertical: 0, yaw: 0};

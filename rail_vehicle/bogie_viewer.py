@@ -21,7 +21,7 @@ def webgl_available():
         "lighting.js", "camera.js", "camera-link.js", "interaction.js", "motion.js", "model-loader.js",
         "playback-batches.js", "part-browser.js", "measurement.js", "section-plane.js",
         "inspection-export.js", "view-bookmarks.js", "bookmark-transfer.js", "response-player.js", "sensor-marker.js",
-        "vehicle-overview.js", "wheelrail-scene.js",
+        "vehicle-overview.js", "wheelrail-scene.js", "vehicle-details.js",
         "vendor/three.module.min.js", "vendor/three.core.min.js",
         "vendor/OrbitControls.js", "vendor/RoomEnvironment.js", "vendor/utils/BufferGeometryUtils.js",
     ))
