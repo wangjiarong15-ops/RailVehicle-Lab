@@ -22,6 +22,7 @@
         <option value="front_primary">前架一系</option><option value="front_secondary">前架二系</option>
       </select>
       <button id="wheelrail-shell" type="button" aria-pressed="false" hidden>隐藏车体</button>
+      <button id="solver-values-toggle" type="button" aria-pressed="false" hidden>计算量</button>
       <select id="render-quality" aria-label="渲染质量">
         <option value="auto">自动画质</option><option value="high">高画质</option>
         <option value="balanced">均衡</option><option value="low">轻量</option>
@@ -94,6 +95,11 @@
           <button id="show-part" type="button" disabled>恢复所选</button>
           <button id="isolate-part" type="button" aria-pressed="false" disabled>仅看所选</button>
         </div>
+      </aside>
+      <aside id="solver-values-panel" aria-label="当前计算量" hidden>
+        <strong>当前计算量</strong>
+        <p>相对轨道坐标 · 数值比例 1:1</p>
+        <pre id="solver-values"></pre>
       </aside>
     </div>
     <section id="response" aria-label="计算响应时间轴" hidden>

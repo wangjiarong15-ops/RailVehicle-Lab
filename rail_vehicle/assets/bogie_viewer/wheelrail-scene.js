@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import {OrbitControls} from "./vendor/OrbitControls.js";
+import {addCarbodyDetails, vehicleAssembly} from "./vehicle-details.js";
 
 const Y=new THREE.Vector3(0,1,0);
 const UP=new THREE.Vector3(0,0,1);
@@ -59,18 +60,20 @@ export function wheelRailScene(canvas, invalidate, environment, route, dims, fra
   }
   const z=route.rails;
   for (const side of [0,1]) {
-    const beams=new THREE.InstancedMesh(cube,materials.steel,z.length-1);
+    const shapes=[[.093,.040,-.020],[.024,.058,-.061],[.158,.014,-.090]];
+    const rails=shapes.map(()=>own(new THREE.InstancedMesh(cube,materials.steel,z.length-1)));
     let prev=new THREE.Vector3(),next=new THREE.Vector3();
     z.slice(1).forEach(([l,r],i)=>{
       prev.fromArray(z[i][side]);next.fromArray(side? r:l);
       direction.subVectors(next,prev);
-      dummy.position.copy(prev).lerp(next,.5).addScaledVector(UP,-.055);
       dummy.quaternion.setFromUnitVectors(Y,direction.clone().normalize());
-      dummy.scale.set(.094,direction.length()+.003,.105);
-      dummy.updateMatrix();beams.setMatrixAt(i,dummy.matrix);
+      shapes.forEach(([width,height,offset],j)=>{
+        dummy.position.copy(prev).lerp(next,.5).addScaledVector(UP,offset);
+        dummy.scale.set(width,direction.length()+.003,height);
+        dummy.updateMatrix();rails[j].setMatrixAt(i,dummy.matrix);
+      });
     });
-    scene.add(beams);
-    own(beams);
+    scene.add(...rails);
   }
   const ties=new THREE.InstancedMesh(cube,materials.tie,Math.ceil(z.length/4));
   for(let i=0;i<ties.count;i++){
@@ -90,13 +93,9 @@ export function wheelRailScene(canvas, invalidate, environment, route, dims, fra
   hull.closePath();
   put(roots[0],own(new THREE.ExtrudeGeometry(hull,{depth:1.70,bevelEnabled:true,bevelThickness:.08,
     bevelSize:.065,bevelSegments:2,steps:1})),"cabin",[0,0,-.69]);
-  put(roots[0],cube,"bodyEdge",[0,0,1.07],[2*span-1.36,2.43,.09]);
+  put(roots[0],cube,"bodyEdge",[0,0,vehicleAssembly.shell.roof-.09],[2*span-1.36,2.43,.09]);
   put(roots[0],cube,"glass",[0,0,-.78],[2*span,2.72,.12]);
-  for(const sign of [-1,1]){
-    for(let i=0;i<9;i++)put(roots[0],cube,"glass",[(i-4)*span/5,sign*1.457,.51],[span*.145,.026,.43]);
-    put(roots[0],cube,"bodyEdge",[0,sign*1.46,-.23],[2*span-1.41,.021,.067]);
-    put(roots[0],cube,"glass",[sign*(span+.067),0,.47],[.025,1.79,.42]);
-  }
+  addCarbodyDetails(roots[0],span,dims.bogie_half_spacing,put,cube,materials,own);
   for(const root of roots.slice(1,3)) {
     if (frameParts.length) {
       for (const part of frameParts) {
@@ -130,9 +129,15 @@ export function wheelRailScene(canvas, invalidate, environment, route, dims, fra
       [1,3,dims.half_wheelbase,false],[1,4,-dims.half_wheelbase,false],[2,5,dims.half_wheelbase,false],[2,6,-dims.half_wheelbase,false]]){
     for(const sign of [1,-1]){
       links.push({high,low,station,sign,secondary,
-        spring:put(scene,secondary?bellows:coil,secondary?"bellows":"coil"),damper:put(scene,tube,"steel")});
+        spring:put(scene,secondary?bellows:coil,secondary?"bellows":"coil"),damper:put(scene,tube,"frame"),
+        rod:put(scene,tube,"steel")});
     }
   }
+  const connections = [1,2].flatMap((bogie,i)=>vehicleAssembly.links.flatMap(spec=>{
+    const sides = spec.id==="yaw_damper"||spec.id==="antiroll_link"?[-1,1]:[1];
+    return sides.map(sign=>({spec,bogie,station:(1-2*i)*dims.bogie_half_spacing,sign,
+      link:put(scene,tube,"steel")}));
+  }));
   const marks=Array.from({length:8},()=>{
     const normal=new THREE.ArrowHelper(UP,from,1,0x6be2a6,.15,.07);
     const tangent=new THREE.ArrowHelper(UP,from,1,0xffba70,.10,.055);
@@ -175,7 +180,9 @@ export function wheelRailScene(canvas, invalidate, environment, route, dims, fra
   }
   reset();
   const old=new THREE.Vector3(),newCentre=new THREE.Vector3(),tan=new THREE.Vector3(),long=new THREE.Vector3();
+  const pistonEnd=new THREE.Vector3(),pistonBegin=new THREE.Vector3();
   let pendingFocus=false;
+  let shellHidden=false;
   function project(data,index,angle,forces,source=null){
     const p=data.pose[index];
     for(const [i,root] of roots.entries()){
@@ -185,12 +192,26 @@ export function wheelRailScene(canvas, invalidate, environment, route, dims, fra
       root.updateMatrixWorld();
     }
     for(const spin of spins)spin.rotation.y=angle;
-    for(const {high,low,station,sign,secondary,spring,damper} of links){
+    for(const {high,low,station,sign,secondary,spring,damper,rod} of links){
       roots[high].localToWorld(to.set(station,sign*1.16,secondary?-.90:-.10));
       roots[low].localToWorld(from.set(0,sign*(secondary ? 1.16 : 1.20),secondary ? .17 : .14));
       link(spring,secondary ? .19 : .081);
-      to.x+=.15;to.z+=.03;from.x+=.20;
-      link(damper,secondary ? .024 : .037);
+      roots[high].localToWorld(to.set(station+.17,sign*1.16,secondary?-.88:-.08));
+      roots[low].localToWorld(from.set(.20,sign*(secondary?1.16:1.20),secondary?.17:.14));
+      pistonEnd.copy(to);pistonBegin.copy(from);
+      to.lerp(from,.40);
+      link(damper,secondary ? .041 : .037);
+      from.lerpVectors(pistonBegin,pistonEnd,.56);
+      to.copy(pistonEnd);
+      link(rod,secondary ? .022 : .019);
+    }
+    for(const {spec,bogie,station,sign,link:part} of connections){
+      part.visible=!shellHidden;
+      if(!part.visible) continue;
+      const [ux,uy,uz]=spec.upper,[lx,ly,lz]=spec.lower;
+      roots[0].localToWorld(to.set(station+ux,sign*uy,uz));
+      roots[bogie].localToWorld(from.set(lx,sign*ly,lz));
+      link(part,spec.radius);
     }
     const normals=data.tread_normal_n[index], fx=data.tread_longitudinal_n[index],fy=data.tread_lateral_n[index];
     const contact=data.contact[index], heading=data.contact_heading[index],bank=data.contact_bank[index];
@@ -228,7 +249,7 @@ export function wheelRailScene(canvas, invalidate, environment, route, dims, fra
     controls.update();
   }
   return {controls,camera,resize,reset,
-    setShell(hidden){roots[0].visible=!hidden;},
+    setShell(hidden){shellHidden=hidden;roots[0].visible=!hidden;},
     focus(value){
       focus=presets[value]?value:"vehicle";
       for(const item of links){

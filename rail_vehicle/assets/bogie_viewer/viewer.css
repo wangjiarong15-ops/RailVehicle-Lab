@@ -82,9 +82,16 @@ footer { border-top: 1px solid #34485e; justify-content: space-between; color: #
 #measurement-panel { display: flex; flex: 1; min-width: 0; align-items: center; gap: 7px; }
 #measurement-panel[hidden] { display: none; }
 #measurement-status { flex: 1; min-width: 0; font-variant-numeric: tabular-nums; }
-#workspace { display: grid; grid-template-columns: minmax(0, 1fr) auto; min-height: 0; position: relative; }
+#workspace { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; min-height: 0; position: relative; }
+#stage { grid-column:2;grid-row:1; }
 #part-panel { width: clamp(162px, 25vw, 218px); min-height: 0; padding: 8px; background: #142336;
-  border-left: 1px solid #34485e; display: flex; flex-direction: column; gap: 5px; }
+  border-right: 1px solid #34485e; display: flex; flex-direction: column; gap: 5px; grid-column:1;grid-row:1; }
+#solver-values-panel {grid-column:3;grid-row:1;width:clamp(150px,21vw,220px);padding:10px;overflow:auto;
+  background:#142336;border-left:1px solid #34485e;}
+#solver-values-panel p {margin:5px 0;color:#a9bfcc;font-size:11px}
+#solver-values {font:12px/1.55 "Segoe UI", "Microsoft YaHei", sans-serif;font-variant-numeric:tabular-nums;white-space:pre-wrap}
+[data-theme="light"] #solver-values-panel {background:#edf2f5;color:#203949;border-color:#bdcbd4}
+[data-theme="light"] #solver-values-panel p {color:#435c6b}
 #part-panel[hidden] { display: none; }
 #part-query { width: 100%; min-width: 0; background: #0b1521; color: #e3edf9; border: 1px solid #486581;
   border-radius: 4px; font: inherit; padding: 5px 6px; color-scheme: dark; }
@@ -101,7 +108,8 @@ footer { border-top: 1px solid #34485e; justify-content: space-between; color: #
 .part-actions { display: flex; flex-wrap: wrap; gap: 4px; }
 .part-actions button { flex: 1; }
 @media (max-width: 470px) {
-  #part-panel { position: absolute; z-index: 2; right: 0; top: 0; bottom: 0; max-width: 65%; }
+  #part-panel { position: absolute; z-index: 2; left: 0; top: 0; bottom: 0; max-width: 65%; }
+  #solver-values-panel {position:absolute;z-index:2;right:0;top:0;bottom:0;max-width:58%;}
 }
 .legend { white-space: nowrap; font-size: 11px; }
 .legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: #55aaff; }

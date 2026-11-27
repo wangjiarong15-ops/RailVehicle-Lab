@@ -28,6 +28,7 @@ async function readAssembly(path) {
 }
 
 export async function mount(sendValue) {
+  const loadStarted=performance.now();
   const [layout, detailed] = await Promise.all([
     readAssembly("./assembly-layout.json").catch(() => null), loadDetailedModel(),
   ]);
@@ -126,6 +127,9 @@ export async function mount(sendValue) {
   const trackFocus=document.getElementById("wheelrail-target");
   const trackShell=document.getElementById("wheelrail-shell");
   const vectorsNote=document.getElementById("wheelrail-vector-note");
+  const valuesToggle=document.getElementById("solver-values-toggle");
+  const valuesPanel=document.getElementById("solver-values-panel");
+  const valuesText=document.getElementById("solver-values");
   let advanced, advancedOther, advancedId, showForces=false;
   let overview, comparison, overviewActive = false, heat = false;
   function overviewLayout() {
@@ -167,6 +171,9 @@ export async function mount(sendValue) {
     const active=Boolean(advanced);
     rig.controls.enabled=!active&&!overviewActive;
     forcesButton.hidden=wheelFocusButton.hidden=trackFocus.hidden=trackShell.hidden=!active;
+    valuesPanel.hidden=valuesToggle.hidden=!active;
+    valuesPanel.hidden=true;
+    valuesToggle.setAttribute("aria-pressed","false");
     vectorsNote.hidden=true;
     workbench.dataset.wheelrail=String(active);
     overviewLayout();
@@ -178,6 +185,24 @@ export async function mount(sendValue) {
     forcesButton.setAttribute("aria-pressed",String(showForces));
     invalidate();
   };
+  valuesToggle.onclick=()=>{
+    valuesPanel.hidden=!valuesPanel.hidden;
+    valuesToggle.setAttribute("aria-pressed",String(!valuesPanel.hidden));
+    invalidate();
+  };
+  function showSolverValues(pose){
+    if(valuesPanel.hidden) return;
+    const lines=(data,label)=>{
+      const i=pose.index, [y,z,roll,pitch,yaw]=data.body_state_si[i];
+      const [left,right]=data.tread_normal_n[i][0];
+      return [label,`里程 ${data.station[i][0].toFixed(2)} m`,
+        `横移 / 垂移 ${(y*1000).toFixed(2)} / ${(z*1000).toFixed(2)} mm`,
+        `侧滚 / 点头 / 摇头 ${[roll,pitch,yaw].map(x=>(1000*x).toFixed(2)).join(" / ")} mrad`,
+        `前轴左 / 右轮重 ${(left/1000).toFixed(2)} / ${(right/1000).toFixed(2)} kN`];
+    };
+    const text=[...lines(pose.advanced,"基准计算"),...(pose.alternate?["",...lines(pose.alternate,"候选计算")]:[])].join("\n");
+    if(valuesText.textContent!==text) valuesText.textContent=text;
+  }
   function setTrackFocus(target) {
     if(!advanced) return;
     trackFocus.value=target;
@@ -575,12 +600,14 @@ export async function mount(sendValue) {
     if (advanced && pose.advanced){
       const clipping=renderer.clippingPlanes;
       renderer.clippingPlanes=[];
+      let triangles=0,calls=0;
       try{
         if(advancedOther&&pose.alternate){
           const half=Math.floor(width/2);
           renderer.setScissorTest(true);
           renderer.setViewport(0,0,half,height);renderer.setScissor(0,0,half,height);
           advanced.draw(renderer,pose.advanced,pose.index,angle,showForces);
+          triangles=renderer.info.render.triangles;calls=renderer.info.render.calls;
           renderer.setViewport(half,0,width-half,height);renderer.setScissor(half,0,width-half,height);
           advancedOther.draw(renderer,pose.alternate,pose.index,angle,showForces,advanced);
         }else advanced.draw(renderer,pose.advanced,pose.index,angle,showForces);
@@ -589,8 +616,10 @@ export async function mount(sendValue) {
         renderer.clippingPlanes=clipping;
       }
       dirty=false;
+      showSolverValues(pose);
       Object.assign(workbench.dataset,{
-        frames:++frames,playing:String(simulationPlaying),triangles:renderer.info.render.triangles,
+        frames:++frames,playing:String(simulationPlaying),triangles:triangles+renderer.info.render.triangles,
+        calls:calls+renderer.info.render.calls,
         wheelrailStation:pose.advanced.station[pose.index][0],
         wheelrailHeading:pose.advanced.pose[pose.index][0][5],
         wheelrailNormal:pose.advanced.tread_normal_n[pose.index][0].join(","),
@@ -723,6 +752,7 @@ export async function mount(sendValue) {
   });
   message.hidden = true;
   workbench.dataset.status = "ready";
+  workbench.dataset.loadMs = String(Math.round(performance.now()-loadStarted));
   workbench.dataset.model = detailed ? "glb" : "procedural";
   workbench.dataset.components = String(assembly.partNodes.size);
   workbench.dataset.renderer = software ? "software" : "default";

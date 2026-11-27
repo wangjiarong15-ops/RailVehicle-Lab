@@ -47,6 +47,7 @@ def _payload(result):
     return case,{"vehicle_model":MODEL,"sample_hz":VEHICLE_SAMPLE_HZ,
                  "parameters":{"id":result["evidence_id"]},"channels":channels,
                  "advanced":{"track":line,"pose":pose.tolist(),"station":station.tolist(),"contact":contact_positions.tolist(),
+                             "body_state_si":q[:,:5].tolist(),
                              "tread_normal_n":outputs["normal"],"tread_longitudinal_n":outputs["fx"],
                              "tread_lateral_n":outputs["fy"],"contact_heading":wheels_heading.tolist(),
                              "contact_bank":theta.tolist(),"mount_travel":travel.tolist(),
