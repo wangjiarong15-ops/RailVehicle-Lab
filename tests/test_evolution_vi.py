@@ -8,7 +8,7 @@ import pytest
 
 from rail_vehicle.flexible_track import TrackCase, linear_matrices, response
 from rail_vehicle.manchester_contact import run_external_case
-from rail_vehicle.measurement_stream import Acquisition, Device, Packet, Replay, read_packet_csv, read_recording
+from rail_vehicle.measurement_stream import Acquisition, Device, Packet, Replay, STEP_US, read_packet_csv, read_recording
 from rail_vehicle.profile_geometry import Pair, read_profile, sample_profiles
 from rail_vehicle.state_monitoring import ObserverCase, diagnosis, estimate, matrices, simulated_stream
 from rail_vehicle.stream_loopback import LoopbackCapture
@@ -119,6 +119,34 @@ def test_observer_unobservable_and_converges_on_independent_synthetic_truth():
             input_only.push(packet)
     assert all(row["estimate_m"] is None for row in estimate(input_only))
     assert diagnosis(input_only)["status"]=="insufficient"
+
+
+def test_estimator_against_an_independent_prescribed_motion_with_missing_channels():
+    pytest.importorskip("scipy")
+    case=ObserverCase()
+    devices=tuple(Device(channel,channel,unit,1,1.,0.,0,"declared","common_trigger")
+                  for channel,unit in (("force","N"),("displacement","m"),("acceleration","m/s2")))
+    stream=Acquisition(devices,0,"simulated")
+    truth=[]
+    omega,amplitude=2*np.pi*1.35,.007
+    for tick in range(350):
+        timestamp=tick*STEP_US
+        phase=omega*timestamp/1e6
+        pos=amplitude*(1-np.cos(phase))
+        velocity=amplitude*omega*np.sin(phase)
+        accel=amplitude*omega**2*np.cos(phase)
+        force=case.mass_kg*accel+case.stiffness_n_m*pos+case.damping_ns_m*velocity
+        truth.append(pos)
+        for device,value in zip(devices,(force,pos,accel),strict=True):
+            if (device.channel=="displacement" and not tick%7
+                    or device.channel=="acceleration" and not tick%11):
+                continue
+            stream.push(Packet(device.device,tick,timestamp,float(value)))
+    results=estimate(stream,case)
+    errors=[row["estimate_m"]-truth[i] for i,row in enumerate(results)
+            if i>20 and row["estimate_m"] is not None]
+    assert len(errors)==329 and stream.counters["missing_sequence"]==80
+    assert np.sqrt(np.mean(np.asarray(errors)**2))<20e-6
 
 
 def test_monitoring_uses_holdout_and_quarantines_bad_time():
