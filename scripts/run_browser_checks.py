@@ -168,7 +168,10 @@ def main() -> int:
                 with local_app(home,env,output/"streamlit.log") as address:
                     results.extend(run_suite(node,name,address,output,env) for name in offline)
             if "copilot-stream" in names:
-                from scripts.copilot_mock_service import simulated_provider
+                if __package__:
+                    from .copilot_mock_service import simulated_provider
+                else:
+                    from copilot_mock_service import simulated_provider
                 with simulated_provider() as (url,requests):
                     mock_env = dict(env,AI_ENABLED="true",AI_PROVIDER="deepseek",AI_MODEL="local-browser-fixture",
                                     DEEPSEEK_BASE_URL=url,DEEPSEEK_API_KEY="local-test-only",NO_PROXY="127.0.0.1")
