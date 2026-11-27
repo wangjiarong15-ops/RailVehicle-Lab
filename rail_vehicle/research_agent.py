@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass, replace
 from hashlib import sha256
 from itertools import product
 import json
+from pathlib import Path
 from threading import BoundedSemaphore
 import zlib
 
@@ -251,7 +252,11 @@ def approved(plan, db_path=DB_PATH):
 
 
 def list_tasks(db_path=DB_PATH):
+    if not Path(db_path).is_file():
+        return []
     with get_connection(db_path) as connection:
+        if connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='engineering_agent_tasks'").fetchone() is None:
+            return []
         return [dict(row) for row in connection.execute(
             "SELECT task_id,created_at FROM engineering_agent_tasks ORDER BY created_at DESC,rowid DESC LIMIT 20")]
 

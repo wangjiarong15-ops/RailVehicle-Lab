@@ -98,6 +98,7 @@ async function runResearch(browser) {
     const rendering=[];
     for(const mode of ["balanced","auto","low"]) rendering.push(await sampleRender(view,workbench,mode));
     assert(rendering.every(row=>row.fps>5 && row.frames.every(frame=>frame.triangles===row.frames[0].triangles)));
+    if(process.env.RAIL_VIII_NATIVE==="1") assert(rendering.every(row=>row.renderer==="default"));
     assert.equal(rendering[0].frames.at(-1).triangles,rendering[2].frames.at(-1).triangles);
     await writeFile(resolve(output,"render-performance.json"),JSON.stringify(rendering,null,2));
     assert.deepEqual(errors,[]);
@@ -139,7 +140,7 @@ async function lightReview(browser) {
 (async()=>{
   await mkdir(output,{recursive:true});
   const browser=await chromium.launch({executablePath:process.env.RAIL_BROWSER_PATH,
-    args:["--use-angle=swiftshader","--enable-unsafe-swiftshader"]});
+    args:process.env.RAIL_VIII_NATIVE==="1"?[]:["--use-angle=swiftshader","--enable-unsafe-swiftshader"]});
   try {
     await runResearch(browser);
     await lightReview(browser);

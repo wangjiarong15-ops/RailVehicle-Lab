@@ -7,7 +7,7 @@ import pytest
 from rail_vehicle.contact_calibration import circular_hertz, compare_fixed_grid, fit_compliance, load_reference, manchester_points
 from rail_vehicle.db import get_connection, init_db
 from rail_vehicle.nonlinear_vehicle import VehicleSystem, WheelRailCase
-from rail_vehicle.research_agent import Plan, approved, candidate, design_points, execute, graph, read_plan, restore
+from rail_vehicle.research_agent import Plan, approved, candidate, design_points, execute, graph, list_tasks, read_plan, restore
 from rail_vehicle.twin_identification import identify
 from rail_vehicle.twin_workflow import demo_plan, demonstration
 from rail_vehicle.wheel_rail import normal_energy, normal_force
@@ -106,6 +106,16 @@ def test_real_research_recovers_saved_steps_and_builds_synchronized_comparison(t
         connection.execute("UPDATE engineering_agent_steps SET sha256='tampered' WHERE step_id='observe'")
     with pytest.raises(ValueError,match="摘要"):
         restore(task,db)
+
+
+def test_history_on_a_missing_or_pre_viii_database_leaves_it_unmodified(tmp_path):
+    db=tmp_path/"legacy.db"
+    assert list_tasks(db)==[] and not db.exists()
+    with get_connection(db) as conn:
+        conn.execute("CREATE TABLE old_history (id INTEGER)")
+    assert list_tasks(db)==[]
+    with get_connection(db) as conn:
+        assert conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()[0][0]=="old_history"
 
 
 def test_joint_spectral_fit_on_distinct_noisy_observation():
