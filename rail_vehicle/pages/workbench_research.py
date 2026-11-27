@@ -38,12 +38,25 @@ def _pdf(record, proof):
     for step in record["steps"]:
         if step["id"] in proof:
             item = proof[step["id"]]
+            output = item.get("output", {})
             lines += [f"{step['id']} · {TOOLS[step['tool']].title} · {item['status']}",
-                      item.get("output",{}).get("text",item.get("detail",""))]
-            for reference in item.get("output",{}).get("references",[])[:8]:
-                lines.append(str(reference))
+                      output.get("text", item.get("detail", ""))]
+            if source := output.get("source"):
+                lines.append(f"证据来源 {BOUND.get(source, source)}")
+            if response := output.get("response"):
+                metrics = output["metrics"]
+                lines += [f"求解器 {response['solver']['method']} · 配置 SHA-256 {response['configuration_sha256']}",
+                          f"横向 RMS {metrics['body_y_rms_m_s2']:.6g} m/s^2 · 垂向 RMS {metrics['body_z_rms_m_s2']:.6g} m/s^2",
+                          f"最大减载率 {metrics['wheel_unloading']:.2%} · 二系垂向行程 {metrics['secondary_travel_peak_mm']:.5g} mm"]
+            if "pareto" in output:
+                args = step["args"]
+                candidates = "、".join(output["pareto"]) or "无"
+                lines += [f"减载率上限 {args['unloading_ratio']:.2%} · 二系行程上限 {args['travel_mm']:.5g} mm",
+                          f"Pareto 候选 {candidates}"]
+            lines.extend(str(ref) for ref in dict.fromkeys(output.get("references", [])))
     lines.append("测量分析、公开数值资料及教学计算的来源见工具明细。实车结论需独立验证。")
     for text in lines:
+        text = text.replace("²", "^2").replace("³", "^3")
         while text:
             end = len(text)
             while page.stringWidth(text[:end],normal,10) > 520:

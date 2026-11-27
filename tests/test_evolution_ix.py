@@ -120,3 +120,29 @@ def test_cloud_stream_can_change_tool_graph_and_receives_only_compact_status(tmp
     assert figure["xlabel"]=="频率（Hz）"
     power=next(iter(figure["columns"].values()))
     assert figure["x"][power.index(max(power))]==pytest.approx(3.,abs=.12)
+
+
+def test_research_pdf_keeps_numeric_evidence_and_portable_font_units(monkeypatch):
+    from reportlab.pdfgen.canvas import Canvas
+    from rail_vehicle.pages.workbench_research import _pdf
+
+    drawn = []
+    draw = Canvas.drawString
+
+    def capture(self, x, y, text):
+        drawn.append(text)
+        return draw(self, x, y, text)
+
+    monkeypatch.setattr(Canvas, "drawString", capture)
+    record = {"title": "虚构计算", "id": "demo", "status": "review",
+              "steps": [plan_step("solve", "solve31")]}
+    proof = {"solve": {"status": "done", "output": {
+        "source": "simulation", "text": "测值单位 m/s²",
+        "response": {"solver": {"method": "RK45"}, "configuration_sha256": "a" * 64},
+        "metrics": {"body_y_rms_m_s2": .044834, "body_z_rms_m_s2": .02,
+                    "wheel_unloading": .1394, "secondary_travel_peak_mm": 20.3},
+        "references": ["wheelrail.synthetic"]}}}
+    assert _pdf(record, proof).startswith(b"%PDF")
+    report = "\n".join(drawn)
+    assert "数值仿真" in report and "RK45" in report and "wheelrail.synthetic" in report
+    assert "0.044834 m/s^2" in report and "13.94%" in report and "²" not in report
