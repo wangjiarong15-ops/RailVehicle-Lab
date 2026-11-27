@@ -422,7 +422,9 @@ def render(public):
     page_title("RailVehicle Copilot")
     s = st.session_state
     if not public:
-        st.segmented_control("Copilot 工作区",("对话","工程研究"),default="对话",key="cp_mode_ix",label_visibility="collapsed")
+        s.setdefault("cp_mode_ix", "对话")
+        st.segmented_control("Copilot 工作区", ("对话", "工程研究"), key="cp_mode_ix",
+                             label_visibility="collapsed")
     for key, value in s.get("cp_saved_source_controls", {}).items():
         if key not in s:
             s[key] = value
