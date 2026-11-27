@@ -11,6 +11,7 @@ import streamlit as st
 from rail_vehicle.bogie import PARTS
 from rail_vehicle.bogie_viewer import render_webgl, webgl_available
 from rail_vehicle.coupled_vehicle import TRACKS, case_config, playback, read_case, simulate
+from rail_vehicle.dynamics_registry import compare_common_vertical
 from rail_vehicle.pages.bogie_link import batch_replay_button
 from rail_vehicle.replay import ReplayState
 from rail_vehicle.run_data import list_vehicle_batches
@@ -34,6 +35,29 @@ def _demo():
 @st.cache_data(max_entries=12,show_spinner=False)
 def _response(case,step=5):
     return simulate(case,substeps=step,include_modes=False)
+
+
+@st.cache_data(max_entries=1,show_spinner="正在运行同输入模型对照…")
+def _model_comparison():
+    return tuple(compare_common_vertical())
+
+
+def _model_panel():
+    with st.expander("动力学模型版本与轮轨对照"):
+        st.caption("工程记录的修正和辨识沿用原有 19 自由度模型。下方 19／31 自由度对照使用同一段虚构的直线路面脉冲。")
+        if st.button("计算同输入模型对照"):
+            st.session_state["twin_compare_models"]=True
+        if st.session_state.get("twin_compare_models"):
+            try:
+                comparison=_model_comparison()
+            except (ValueError,ImportError) as exc:
+                st.warning(f"模型对照无法运行。{exc}")
+                return
+            figure=go.Figure()
+            for item in comparison:
+                figure.add_scatter(x=item["time_s"],y=item["body_z_accel"],name=item["model"])
+            figure.update_layout(xaxis_title="时间（s）",yaxis_title="车体相对垂向加速度（m/s²）")
+            plot_chart(figure,key="twin-wr-model-comparison")
 
 
 def proposal_prompt(text):
@@ -434,6 +458,7 @@ def render(public):
                 if st.checkbox("以已复核的辨识参数为基准",value=True):
                     base=coefficients(base,study["identification"]["identified"])
         st.subheader("工程优化中心")
+        _model_panel()
         st.caption("目标和约束按教学模型计算。垂向 RMS 可作联合目标，当前横向变量不会改变垂向子系统。")
         plan=_plan_form(base,"twin_opt","运行有界优化")
         if plan:

@@ -9,6 +9,11 @@
 #twin-panes > span {padding:8px 12px;color:#cfe6f9;font-size:12px;}
 #twin-panes > span + span {border-left:1px solid #52708a;}
 #twin-heat-note:not([hidden]) {position:absolute;right:8px;bottom:8px;background:#142336;color:#e3edf9;padding:3px 7px;border-radius:4px;font-size:11px;}
+#workbench[data-wheelrail="true"] :is(#browse-parts,#part-panel,#surface-mode,#focus,#hide,#restore,
+  #measure,#section-toggle,#section-controls,#export-inspection,#bookmarks-toggle,#bookmarks-controls,
+  #labels,#axle-labels,#mount-overlay,#mount-readout,#sensor-overlay,footer) {display:none;}
+#workbench[data-wheelrail="true"] {grid-template-rows:auto minmax(0,1fr) auto;}
+#wheelrail-vector-note:not([hidden]) {position:absolute;right:8px;bottom:8px;font-size:11px;color:#d8ebfc;background:#142336;padding:3px 7px;}
 #response {padding:6px 10px;background:#152538;border-top:1px solid #34485e;}
 .response-bar {display:flex;align-items:center;gap:7px;flex-wrap:wrap;}
 #sim-time {flex:1;min-width:75px;accent-color:#50d3c3;}

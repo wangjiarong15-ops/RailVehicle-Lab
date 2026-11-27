@@ -571,6 +571,8 @@ def render(public):
         st.caption(f"已连接数字孪生工作台 · {s['cp_twin_source']}。可输入校准与优化任务，提交本地计划审批。")
         st.button("查看工程任务",on_click=navigate,args=(TWIN,),
                   kwargs={"twin_source":s["cp_twin_source"],"twin_section":"审批与任务"})
+    if s.get("cp_wr_case"):
+        st.caption("已连接高级轮轨模型，可用明确的速度、曲线半径及行程上限发起试验审批。")
     if inspection_state:
         st.caption("此会话可查询本机已记录的三维检查状态。")
     work = Work(
@@ -666,6 +668,17 @@ def render(public):
         typed = st.chat_input(placeholder, key="cp_input", max_chars=1200)
     prompt = typed or prompt
     if prompt:
+        from rail_vehicle.pages.wheelrail_lab import wheelrail_intent
+        if not public and wheelrail_intent(prompt):
+            active_study=s.get("wr_job")
+            if active_study is None or active_study.state()[0] in ("draft","error","cancelled","complete"):
+                s.pop("wr_job",None)
+                s.pop("wr_expected",None)
+                s["wr_prompt"]=prompt
+                s["wr_prompt_rev"]=s.get("wr_prompt_rev",0)+1
+            mode="单轮对与稳定性" if "蛇行稳定" in prompt and "曲线" not in prompt else "多工况审批"
+            navigate(SIMULATION,sim_case="wheelrail",wr_mode=mode,wr_case=s.get("cp_wr_case") or s.get("wr_case"))
+            st.rerun()
         from rail_vehicle.pages.twin import proposal_prompt
         if proposal_prompt(prompt):
             source = s.get("cp_twin_source") or ("虚构试验" if public else "工程记录")

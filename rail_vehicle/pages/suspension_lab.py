@@ -11,6 +11,7 @@ from rail_vehicle.pages.sensors import read_snapshot
 from rail_vehicle.pages.lateral_lab import render_lateral_lab
 from rail_vehicle.pages.coupled_lab import render_coupled_lab
 from rail_vehicle.pages.vehicle_lab import render_vehicle_lab
+from rail_vehicle.pages.wheelrail_lab import render_wheelrail
 from rail_vehicle.replay import ReplayState
 from rail_vehicle.sensor_evidence import project_frame_response
 from rail_vehicle.suspension import SCENARIOS, SuspensionCase, simulate
@@ -28,9 +29,14 @@ def _calculate(case):
     return result
 
 
-def render_lab(main):
+def render_lab(main, *, public=False):
     labels = {**SCENARIOS, "two_stage": "一系与二系耦合浮沉", "vehicle": "整车垂向与点头（10 自由度）",
-              "lateral_roll": "车体横移与侧滚（2 自由度）", "coupled": "整车虚拟试验台（19 自由度）"}
+              "lateral_roll": "车体横移与侧滚（2 自由度）", "coupled": "整车虚拟试验台（19 自由度）",
+              "wheelrail":"高级轮轨动力学（31 自由度）"}
+    if public:
+        labels.pop("wheelrail")
+        if st.session_state.get("sim_case")=="wheelrail":
+            st.session_state.pop("sim_case")
     st.session_state.setdefault("sim_case", list(labels)[1])
     scenario = st.selectbox("计算工况", list(labels), format_func=labels.get, key="sim_case")
     if scenario == "vehicle":
@@ -41,6 +47,9 @@ def render_lab(main):
         return
     if scenario == "coupled":
         render_coupled_lab(main)
+        return
+    if scenario == "wheelrail":
+        render_wheelrail(main)
         return
     two_stage = scenario == "two_stage"
     speed = st.slider("初速（m/s）", 1, 10, 6)

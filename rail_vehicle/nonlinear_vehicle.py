@@ -224,6 +224,8 @@ def run_vehicle(case, *, accuracy="standard", checkpoint=lambda:None):
     def validity(t,state):
         return min(.065-np.max(abs(state[system.indices])),
                    .22-np.max(abs(state[system.indices+1])),
+                   .15-np.max(abs(state[system.indices+2])),
+                   .15-np.max(abs(state[system.indices[:3]+3])),
                    .15-np.max(abs(state[system.yaw_index])))
 
     validity.terminal=True
@@ -289,16 +291,32 @@ def tangent_stability(case,speeds):
         raise ValueError("稳定性扫描需要 1 至 25 个有效速度。")
     system=VehicleSystem(case)
     equilibrium,_,_=system.equilibrium()
+    def poles_at(velocity):
+        return np.linalg.eigvals(state_matrix(system,equilibrium,velocity))
+
     rows=[]
     for velocity in sorted(set(speeds)):
-        poles=np.linalg.eigvals(state_matrix(system,equilibrium,velocity))
+        poles=poles_at(velocity)
         leading=poles[int(np.argmax(poles.real))]
+        oscillatory=sorted((p for p in poles if p.imag>1e-6),key=lambda p:p.imag)
         rows.append({"speed_m_s":velocity,"growth_per_s":float(leading.real),
                      "leading_hz":float(abs(leading.imag)/(2*np.pi)),
-                     "oscillatory_modes_hz":sorted(float(p.imag/(2*np.pi)) for p in poles if p.imag>1e-6)})
+                     "oscillatory_modes_hz":[float(p.imag/(2*np.pi)) for p in oscillatory],
+                     "modes":[{"damped_hz":float(p.imag/(2*np.pi)),"natural_hz":float(abs(p)/(2*np.pi)),
+                               "damping_ratio":float(-p.real/abs(p))} for p in oscillatory]})
     brackets=[[a["speed_m_s"],b["speed_m_s"]] for a,b in zip(rows,rows[1:])
               if a["growth_per_s"]<0<=b["growth_per_s"]]
-    return {"rows":rows,"onset_brackets_m_s":brackets,"scope":"centred-straight small-disturbance tangent"}
+    estimates=[]
+    for low,high in brackets:
+        while high-low>.02:
+            middle=(low+high)/2
+            if np.max(poles_at(middle).real)<0:
+                low=middle
+            else:
+                high=middle
+        estimates.append({"speed_m_s":(low+high)/2,"bracket_m_s":[low,high]})
+    return {"rows":rows,"onset_brackets_m_s":brackets,"onset_estimates":estimates,
+            "scope":"centred-straight small-disturbance tangent"}
 
 
 def frequency_response(case, frequencies):

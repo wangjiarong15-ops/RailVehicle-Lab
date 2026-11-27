@@ -15,6 +15,7 @@ import {exportInspectionPng} from "./inspection-export.js";
 import {viewBookmarks} from "./view-bookmarks.js";
 import {sensorMarker} from "./sensor-marker.js";
 import {vehicleOverview} from "./vehicle-overview.js";
+import {wheelRailFrameParts, wheelRailScene} from "./wheelrail-scene.js";
 
 async function readAssembly(path) {
   const response = await fetch(path);
@@ -74,6 +75,7 @@ export async function mount(sendValue) {
   const scene = new THREE.Scene();
   const illumination = studio(scene, renderer);
   const finishes = materials();
+  const wheelRailParts=wheelRailFrameParts(detailed);
   const assembly = createAssembly(scene, data, finishes, detailed);
   const hidden = new Set();
   let isolated = null;
@@ -93,15 +95,65 @@ export async function mount(sendValue) {
   const heatButton = document.getElementById("vehicle-heat");
   const heatNote = document.getElementById("twin-heat-note");
   const twinPanes = document.getElementById("twin-panes");
+  const forcesButton=document.getElementById("wheelrail-forces");
+  const wheelFocusButton=document.getElementById("wheelrail-focus");
+  const vectorsNote=document.getElementById("wheelrail-vector-note");
+  let advanced, advancedOther, advancedId, showForces=false, focusWheel=false;
   let overview, comparison, overviewActive = false, heat = false;
   function overviewLayout() {
-    const split = overviewActive && Boolean(serverArgs?.simulation?.alternative);
+    const split = (overviewActive || Boolean(advanced)) && Boolean(serverArgs?.simulation?.alternative);
     overview?.resize(split ? width/2 : width,height);
     comparison?.resize(width/2,height);
+    advanced?.resize(split ? width/2 : width,height);
+    advancedOther?.resize(width/2,height);
     twinPanes.hidden = !split;
     heatButton.hidden = !(overviewActive && serverArgs?.simulation?.twin);
     heatNote.hidden = heatButton.hidden || !heat;
   }
+  function configureAdvanced(next){
+    const sim=next.simulation;
+    const identity=sim?.advanced ? JSON.stringify(sim.parameters):null;
+    if(identity===advancedId)return;
+    advancedId=identity;
+    const wasAdvanced=Boolean(advanced);
+    advanced?.dispose();advancedOther?.dispose();advanced=advancedOther=null;
+    showForces=focusWheel=false;
+    forcesButton.setAttribute("aria-pressed","false");
+    wheelFocusButton.textContent="前轴接触局部";
+    wheelFocusButton.setAttribute("aria-pressed","false");
+    if(sim?.advanced){
+      const spec=sim.advanced;
+      advanced=wheelRailScene(canvas,invalidate,scene.environment,spec.track,spec.geometry,wheelRailParts);
+      if(sim.alternative){
+        advancedOther=wheelRailScene(canvas,invalidate,scene.environment,spec.track,spec.geometry,wheelRailParts);
+        advancedOther.controls.enabled=false;
+      }
+      modelStatus.textContent=wheelRailParts.length?"轮轨计算 · GLB 构架":"轮轨计算 · 兼容构架";
+      workbench.dataset.wheelrailGlb=String(Boolean(wheelRailParts.length));
+    } else if (wasAdvanced) {
+      modelStatus.textContent=detailed?"Blender 精细模型":"兼容几何 · GLB 不可用";
+    }
+    const active=Boolean(advanced);
+    rig.controls.enabled=!active&&!overviewActive;
+    forcesButton.hidden=wheelFocusButton.hidden=!active;
+    vectorsNote.hidden=true;
+    workbench.dataset.wheelrail=String(active);
+    overviewLayout();
+    invalidate();
+  }
+  forcesButton.onclick=()=>{
+    showForces=!showForces;
+    vectorsNote.hidden=!showForces;
+    forcesButton.setAttribute("aria-pressed",String(showForces));
+    invalidate();
+  };
+  wheelFocusButton.onclick=()=>{
+    if(!advanced)return;
+    focusWheel=!focusWheel;
+    advanced.focus(focusWheel);advancedOther?.focus(focusWheel);
+    wheelFocusButton.textContent=focusWheel?"查看整车":"前轴接触局部";
+    wheelFocusButton.setAttribute("aria-pressed",String(focusWheel));
+  };
   function changeOverview(active) {
     if (active && !overview) {
       overview = vehicleOverview(canvas, invalidate, scene.environment, serverArgs.simulation.coupled.dimensions);
@@ -269,6 +321,7 @@ export async function mount(sendValue) {
   measureControl.addEventListener("click", toggleMeasurement);
   clearMeasurementControl.addEventListener("click", clearMeasurement);
   const reset = () => {
+    if (advanced) advanced.reset(args?.view);
     if (overviewActive) overview.reset(args?.view);
     // The hidden inspection camera must be initialized before its first switch.
     if (args) rig.reset(args.view, args);
@@ -323,7 +376,7 @@ export async function mount(sendValue) {
       " m/s² · 安装点未知" : "此批次无该部件专用通道";
   }
   const picker = inspection(canvas, data, assembly, rig, select, reset, detailed?.parts, section, {
-    enabled: () => !overviewActive,
+    enabled: () => !overviewActive && !advanced,
     active: () => measuring,
     hit(point) {
       if (measureControl.disabled) return;
@@ -468,9 +521,35 @@ export async function mount(sendValue) {
       updateMeasurement();
       updateExportButton();
     }
-    (overviewActive ? overview.controls : rig.controls).update();
+    (advanced?.controls ?? (overviewActive ? overview.controls : rig.controls)).update();
     if (!(dirty || pose.running || pose.settling)) return;
     angle = pose.angle;
+    if (advanced && pose.advanced){
+      const clipping=renderer.clippingPlanes;
+      renderer.clippingPlanes=[];
+      try{
+        if(advancedOther&&pose.alternate){
+          const half=Math.floor(width/2);
+          renderer.setScissorTest(true);
+          renderer.setViewport(0,0,half,height);renderer.setScissor(0,0,half,height);
+          advanced.draw(renderer,pose.advanced,pose.index,angle,showForces);
+          renderer.setViewport(half,0,width-half,height);renderer.setScissor(half,0,width-half,height);
+          advancedOther.draw(renderer,pose.alternate,pose.index,angle,showForces,advanced);
+        }else advanced.draw(renderer,pose.advanced,pose.index,angle,showForces);
+      }finally{
+        renderer.setScissorTest(false);renderer.setViewport(0,0,width,height);
+        renderer.clippingPlanes=clipping;
+      }
+      dirty=false;
+      Object.assign(workbench.dataset,{
+        frames:++frames,playing:String(simulationPlaying),triangles:renderer.info.render.triangles,
+        wheelrailStation:pose.advanced.station[pose.index][0],
+        wheelrailHeading:pose.advanced.pose[pose.index][0][5],
+        wheelrailNormal:pose.advanced.tread_normal_n[pose.index][0].join(","),
+        wheelrailOther:pose.alternate?.pose[pose.index][0][2]??"",
+      });
+      return;
+    }
     if (overviewActive && pose.vehicle) {
       const clipping = renderer.clippingPlanes;
       renderer.clippingPlanes = [];
@@ -571,6 +650,8 @@ export async function mount(sendValue) {
     assembly.dispose();
     overview?.dispose();
     comparison?.dispose();
+    advanced?.dispose();
+    advancedOther?.dispose();
     gauge.dispose();
     section.dispose();
     const disposable = new Set(Object.values(finishes).flat());
@@ -718,6 +799,7 @@ export async function mount(sendValue) {
     overviewButton.hidden = !hasCoupled || !detailed;
     if (enteredCoupled || (!hasCoupled && overviewActive)) changeOverview(enteredCoupled);
     else overviewLayout();
+    configureAdvanced(next);
     if (applyCommand && next.simulation && command.transport) {
       player.command(command.transport.action, newSeek ? seek.seconds : null);
     }

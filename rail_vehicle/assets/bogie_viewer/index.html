@@ -14,6 +14,8 @@
       <button id="vehicle-overview" type="button" aria-pressed="false" hidden>整车总览</button>
       <button id="vehicle-shell" type="button" aria-pressed="false" hidden>车体透视</button>
       <button id="vehicle-heat" type="button" aria-pressed="false" hidden>二系行程着色</button>
+      <button id="wheelrail-forces" type="button" aria-pressed="false" hidden>接触力矢量</button>
+      <button id="wheelrail-focus" type="button" aria-pressed="false" hidden>前轴接触局部</button>
       <button id="browse-parts" type="button" aria-controls="part-panel" aria-expanded="false" hidden>零件清单</button>
       <select id="surface-mode" aria-label="表面显示"><option value="solid">实体</option><option value="ghost">构架透视</option><option value="selected">所选零件透明</option><option value="wire">网格线框</option></select>
       <button id="full-screen" type="button" hidden>全屏</button>
@@ -55,6 +57,7 @@
         <div id="surface"></div>
         <div id="twin-panes" hidden aria-hidden="true"><span>基准计算</span><span>方案复算</span></div>
         <div id="twin-heat-note" hidden>二系横向计算行程绝对值 · 蓝 0 mm → 橙 20 mm</div>
+        <div id="wheelrail-vector-note" hidden>绿 法向 50 kN/m · 橙 踏面切向 15 kN/m</div>
         <svg id="sensor-overlay" aria-label="传感器安装点与测量正方向" style="display:none">
           <defs><marker id="sensor-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">
             <path d="M0 0L10 5L0 10Z" fill="#58dfb3"/></marker></defs>
@@ -110,6 +113,9 @@
           <option value="body_z_accel_m_s2" data-coupled hidden>车体垂向加速度</option>
           <option value="body_y_velocity_m_s" data-coupled hidden>车体横向速度</option>
           <option value="body_z_velocity_m_s" data-coupled hidden>车体垂向速度</option>
+          <option value="support_side_l_m" data-wheelrail hidden>前架左二系垂向行程</option>
+          <option value="support_side_r_m" data-wheelrail hidden>前架右二系垂向行程</option>
+          <option value="contact_q_min_kn" data-wheelrail hidden>最小法向轮重</option>
         </select>
         <button type="button" id="lateral-peak">定位本通道绝对峰值</button>
       </div>

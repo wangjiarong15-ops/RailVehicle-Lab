@@ -27,6 +27,14 @@ export function responsePlayer(invalidate) {
   function updateReadout() {
     const c = result.channels;
     const mm = v => (v*1000).toFixed(2);
+    if (result.advanced) {
+      const n=result.advanced.tread_normal_n[index];
+      get("sim-values").textContent = (index/result.sample_hz).toFixed(2) + " s　车体里程 " +
+        result.advanced.station[index][0].toFixed(2) + " m　前轴左/右法向 " +
+        n[0].map(v=>(v/1000).toFixed(2)).join("/") + " kN　前架二系左/右 " +
+        [c.support_side_l_m[index],c.support_side_r_m[index]].map(mm).join("/") + " mm";
+      return;
+    }
     if (result.coupled) {
       const q = result.coupled.q[index];
       get("sim-values").textContent = (index/result.sample_hz).toFixed(3) + " s　车体 Y/Z " +
@@ -81,7 +89,7 @@ export function responsePlayer(invalidate) {
   svg.onpointermove = event => { if (svg.hasPointerCapture(event.pointerId)) selectOnPlot(event); };
   function drawSeries() {
     const c = result.channels;
-    const lateral = result.lateral_model || result.coupled;
+    const lateral = result.lateral_model || result.coupled || result.advanced;
     const dual = Boolean(c.front_travel_m) && !result.coupled;
     const key = axleSignal.value === "support" ? "support_m" : "travel_m";
     const series = lateral ? c[signalKey()] : dual ? c["front_" + key] : c.travel_m;
@@ -102,12 +110,12 @@ export function responsePlayer(invalidate) {
     }).join(""));
     const label = lateral ? lateralSignal.selectedOptions[0].textContent :
       dual && key === "support_m" ? "轨面输入" : "悬挂行程";
-    const unit = lateral && lateralSignal.value === "roll_rad" ? "mrad" :
+    const unit = lateralSignal.value === "contact_q_min_kn" ? "kN" : lateral && lateralSignal.value === "roll_rad" ? "mrad" :
       lateral && lateralSignal.value.includes("accel") ? "m/s²" :
       lateral && lateralSignal.value.includes("velocity") ? "m/s" : "mm";
     svg.setAttribute("aria-label", label + "曲线，点击定位");
     get("response-scale").textContent = label +
-      " ±" + (scale*(unit.startsWith("m/") ? 1 : 1000)).toFixed(2) + " " + unit + (dual ? "　实线 B 前轴 · 虚线 A 后轴" :
+      " ±" + (scale*(unit.startsWith("m/") || unit === "kN" ? 1 : 1000)).toFixed(2) + " " + unit + (dual ? "　实线 B 前轴 · 虚线 A 后轴" :
         result.alternative ? "　实线基准 · 虚线方案" : nominal.length ? "　虚线：名义刚度" : "") +
         (observations.length ? "　蓝点为对齐观测" : "");
   }
@@ -181,9 +189,12 @@ export function responsePlayer(invalidate) {
       slider.max = result.channels.travel_m.length-1;
       get("axle-controls").hidden = !result.channels.front_travel_m || Boolean(result.coupled);
       get("sim-step").hidden = !result.vehicle_model && !result.lateral_model;
-      get("lateral-controls").hidden = !(result.lateral_model || result.coupled);
-      lateralSignal.querySelectorAll("[data-coupled]").forEach(option => {option.hidden = !result.coupled;});
-      if (result.coupled) lateralSignal.value = "accel_m_s2";
+      get("lateral-controls").hidden = !(result.lateral_model || result.coupled || result.advanced);
+      lateralSignal.querySelectorAll("[data-coupled]").forEach(option => {
+        option.hidden = !result.coupled && !(result.advanced && Object.hasOwn(result.channels,option.value));
+      });
+      lateralSignal.querySelectorAll("[data-wheelrail]").forEach(option => {option.hidden = !result.advanced;});
+      if (result.coupled || result.advanced) lateralSignal.value = "accel_m_s2";
       else if (lateralSignal.selectedOptions[0]?.hidden) lateralSignal.value = "body_y_m";
       get("front-crest").hidden = get("rear-crest").hidden = Boolean(result.vehicle_model);
       get("response-duration").textContent = "0 – " + Number(slider.max)/result.sample_hz + " s";
@@ -201,6 +212,8 @@ export function responsePlayer(invalidate) {
         if (next === +slider.max) pause();
       }
       const c = result.channels;
+      if (result.advanced) return {running,settling:false,index,angle:c.wheel_rad[index],
+                                   advanced:result.advanced,alternate:result.alternative?.advanced};
       if (result.coupled) {
         const data = result.coupled, q = data.q[index], y = data.rail_y[index], gain = data.display_gain;
         const i = data.index, f = 2+2*i, j = 13+3*i, axle = 2*i;

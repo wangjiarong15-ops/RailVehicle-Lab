@@ -61,6 +61,8 @@ class Request:
 class Research:
     """One approved run with stage-level resumption and cooperative solver checkpoints."""
 
+    active_budget_s = 150
+
     def __init__(self, request):
         self.request = request
         self._condition = Condition()
@@ -81,7 +83,7 @@ class Research:
                 self._condition.notify_all()
             elif self.status in ("draft","error"):
                 self.status, self.error = "running", None
-                self._deadline = monotonic()+150
+                self._deadline = monotonic()+self.active_budget_s
                 Thread(target=self._run,name="rail-twin",daemon=True).start()
 
     def pause(self):

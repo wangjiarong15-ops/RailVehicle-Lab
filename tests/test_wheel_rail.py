@@ -10,6 +10,7 @@ from rail_vehicle.nonlinear_vehicle import (DOFS, VehicleSystem, WheelRailCase, 
 from rail_vehicle.wheel_rail import (Contact, G, isolated_wheelset, klingel_wavelength, normal_energy, normal_force,
                                      wheel_forces, wheel_generalized, wheelset_linear_matrix)
 from rail_vehicle.wheel_track import Section, SpatialTrack, Track, body_acceleration, template
+from rail_vehicle.wheelrail_playback import playback
 
 
 def test_unilateral_hertz_energy_and_friction_circle():
@@ -128,5 +129,15 @@ def test_curve_has_track_delays_and_linearization_changes_with_speed():
     assert analysis["rows"][0]["growth_per_s"]<0
     assert analysis["rows"][-1]["growth_per_s"]>0
     assert analysis["onset_brackets_m_s"]
+    onset=analysis["onset_estimates"][0]
+    assert 24<onset["speed_m_s"]<25
+    low,high=onset["bracket_m_s"]
+    assert 0<high-low<=.02
+    assert all(mode["natural_hz"]>=mode["damped_hz"] for mode in analysis["rows"][0]["modes"])
     frf=frequency_response(case,[.05,1.,10.])
     assert .9<frf[0]["vertical_gain"]<1.1
+    scene=playback(result)["advanced"]
+    np.testing.assert_allclose(scene["station"],position)
+    np.testing.assert_allclose(scene["tread_normal_n"],result["contact"]["normal"])
+    frame=225
+    assert scene["pose"][frame][0][5]>0 and scene["contact"][frame][0][1][2]>scene["contact"][frame][0][0][2]
