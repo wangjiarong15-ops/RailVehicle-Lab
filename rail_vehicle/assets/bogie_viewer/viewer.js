@@ -90,11 +90,21 @@ export async function mount(sendValue) {
   const player = responsePlayer(invalidate);
   const overviewButton = document.getElementById("vehicle-overview");
   const shellButton = document.getElementById("vehicle-shell");
-  let overview, overviewActive = false;
+  const heatButton = document.getElementById("vehicle-heat");
+  const heatNote = document.getElementById("twin-heat-note");
+  const twinPanes = document.getElementById("twin-panes");
+  let overview, comparison, overviewActive = false, heat = false;
+  function overviewLayout() {
+    const split = overviewActive && Boolean(serverArgs?.simulation?.alternative);
+    overview?.resize(split ? width/2 : width,height);
+    comparison?.resize(width/2,height);
+    twinPanes.hidden = !split;
+    heatButton.hidden = !(overviewActive && serverArgs?.simulation?.twin);
+    heatNote.hidden = heatButton.hidden || !heat;
+  }
   function changeOverview(active) {
     if (active && !overview) {
       overview = vehicleOverview(canvas, invalidate, scene.environment, serverArgs.simulation.coupled.dimensions);
-      overview.resize(width,height);
     }
     overviewActive = active;
     if (overview) overview.controls.enabled = active;
@@ -103,6 +113,7 @@ export async function mount(sendValue) {
     overviewButton.setAttribute("aria-pressed", String(active));
     overviewButton.textContent = active ? "检查转向架 GLB" : "整车总览";
     shellButton.hidden = !active;
+    overviewLayout();
     modelStatus.textContent = active ? "刚体整车示意 · " + (detailed ? "数值驱动" : "局部 GLB 不可用") :
       detailed ? "Blender 精细模型" : "兼容几何 · GLB 不可用";
     canvas.setAttribute("aria-label", active ? "可旋转的整车与前后转向架" : "可旋转的三维转向架");
@@ -114,6 +125,13 @@ export async function mount(sendValue) {
     const transparent = shellButton.getAttribute("aria-pressed") !== "true";
     shellButton.setAttribute("aria-pressed", String(transparent));
     overview.setShellTransparency(transparent);
+    comparison?.setShellTransparency(transparent);
+  };
+  heatButton.onclick = () => {
+    heat = !heat;
+    heatButton.setAttribute("aria-pressed", String(heat));
+    overviewLayout();
+    invalidate();
   };
   const surfaceMode = document.querySelector("#surface-mode");
   const copilotInspection = document.querySelector("#copilot-inspection");
@@ -417,7 +435,7 @@ export async function mount(sendValue) {
     height = h;
     renderer.setSize(w, h);
     rig.resize(w, h);
-    overview?.resize(w,h);
+    overviewLayout();
     if (first && args) reset();
     invalidate();
   }
@@ -456,14 +474,34 @@ export async function mount(sendValue) {
     if (overviewActive && pose.vehicle) {
       const clipping = renderer.clippingPlanes;
       renderer.clippingPlanes = [];
-      try { overview.draw(renderer, pose.vehicle, angle); }
-      finally { renderer.clippingPlanes = clipping; }
+      try {
+        if (pose.alternative) {
+          if (!comparison) {
+            comparison = vehicleOverview(canvas,invalidate,scene.environment,serverArgs.simulation.coupled.dimensions);
+            comparison.setShellTransparency(shellButton.getAttribute("aria-pressed")==="true");
+            overviewLayout();
+          }
+          const half = Math.floor(width/2);
+          renderer.setScissorTest(true);
+          renderer.setScissor(0,0,half,height);
+          renderer.setViewport(0,0,half,height);
+          overview.draw(renderer,pose.vehicle,angle,heat);
+          renderer.setScissor(half,0,width-half,height);
+          renderer.setViewport(half,0,width-half,height);
+          comparison.draw(renderer,pose.alternative,angle,heat,overview);
+        } else overview.draw(renderer,pose.vehicle,angle,heat);
+      } finally {
+        renderer.setScissorTest(false);
+        renderer.setViewport(0,0,width,height);
+        renderer.clippingPlanes = clipping;
+      }
       dirty = false;
       Object.assign(workbench.dataset, {
         frames: ++frames, phase: angle.toFixed(4), playing: String(simulationPlaying),
         triangles: renderer.info.render.triangles, calls: renderer.info.render.calls,
         vehicleBody: [0,1,10,11,12].map(i=>pose.vehicle.q[i]).join(","),
         vehicleWheel: pose.vehicle.q.slice(6,10).join(","),
+        twinAlternative: pose.alternative ? pose.alternative.q[10] : "",
       });
       return;
     }
@@ -532,6 +570,7 @@ export async function mount(sendValue) {
     batches?.dispose();
     assembly.dispose();
     overview?.dispose();
+    comparison?.dispose();
     gauge.dispose();
     section.dispose();
     const disposable = new Set(Object.values(finishes).flat());
@@ -678,6 +717,7 @@ export async function mount(sendValue) {
     player.load(next.simulation);
     overviewButton.hidden = !hasCoupled || !detailed;
     if (enteredCoupled || (!hasCoupled && overviewActive)) changeOverview(enteredCoupled);
+    else overviewLayout();
     if (applyCommand && next.simulation && command.transport) {
       player.command(command.transport.action, newSeek ? seek.seconds : null);
     }

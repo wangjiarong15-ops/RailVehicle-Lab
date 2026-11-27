@@ -269,5 +269,6 @@ def playback(result, bogie="front", gain=1):
             "parameters": {"evidence_id": result["evidence_id"], "bogie": bogie, "gain": gain},
             "coupled": {"q": result["q"], "rail_y": result["rail_y_m"], "display_gain": display_gain, "index": i,
                         "half_spacing": half, "half_wheelbase": b, "dimensions": DIMENSIONS,
+                        "secondary_y":result["secondary_y_m"],
                         "body_peak_sample": int(np.argmax(np.abs(ddq[:, 10])))},
             "wheelbase_m": 2*b}

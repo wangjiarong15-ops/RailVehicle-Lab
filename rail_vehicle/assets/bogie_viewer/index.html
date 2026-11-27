@@ -13,6 +13,7 @@
       <div><strong>RailVehicle 3D Studio</strong><span id="model-status">通用双轴转向架</span></div>
       <button id="vehicle-overview" type="button" aria-pressed="false" hidden>整车总览</button>
       <button id="vehicle-shell" type="button" aria-pressed="false" hidden>车体透视</button>
+      <button id="vehicle-heat" type="button" aria-pressed="false" hidden>二系行程着色</button>
       <button id="browse-parts" type="button" aria-controls="part-panel" aria-expanded="false" hidden>零件清单</button>
       <select id="surface-mode" aria-label="表面显示"><option value="solid">实体</option><option value="ghost">构架透视</option><option value="selected">所选零件透明</option><option value="wire">网格线框</option></select>
       <button id="full-screen" type="button" hidden>全屏</button>
@@ -52,6 +53,8 @@
     <div id="workspace">
       <div id="stage">
         <div id="surface"></div>
+        <div id="twin-panes" hidden aria-hidden="true"><span>基准计算</span><span>方案复算</span></div>
+        <div id="twin-heat-note" hidden>二系横向计算行程绝对值 · 蓝 0 mm → 橙 20 mm</div>
         <svg id="sensor-overlay" aria-label="传感器安装点与测量正方向" style="display:none">
           <defs><marker id="sensor-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">
             <path d="M0 0L10 5L0 10Z" fill="#58dfb3"/></marker></defs>
@@ -91,6 +94,7 @@
         <path d="M0 32H1000" stroke="#51657a"/><path id="response-path" fill="none" stroke="#50d3c3" vector-effect="non-scaling-stroke"/>
         <path id="nominal-path" fill="none" stroke="#a7b4c4" stroke-dasharray="4 3" vector-effect="non-scaling-stroke"/>
         <path id="rear-path" fill="none" stroke="#eab879" stroke-dasharray="6 2" vector-effect="non-scaling-stroke"/>
+        <path id="observation-path" fill="none" stroke="#8bc8fb" stroke-linecap="round" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
         <line id="response-cursor" y1="0" y2="64" stroke="#ffbd69" stroke-width="2"/></svg>
       <div class="response-axis"><span id="response-scale"></span><span id="response-duration">0 – 6 s</span></div>
       <div id="axle-controls" hidden>

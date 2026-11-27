@@ -7,6 +7,7 @@ export function responsePlayer(invalidate) {
   const lateralSignal = get("lateral-signal");
   const limitTravel = value => Math.max(-.04, Math.min(.04, value));
   let result, index = 0, position = 0, last = null, running = false;
+  const signalKey = () => result?.coupled && lateralSignal.value === "travel_m" ? "secondary_y_m" : lateralSignal.value;
   function pause() {
     running = false;
     last = null;
@@ -32,6 +33,10 @@ export function responsePlayer(invalidate) {
         mm(q[10]) + "/" + mm(q[0]) + " mm　侧滚/点头/摇头 " + [q[11], q[1], q[12]].map(mm).join("/") +
         " mrad　横向加速度 " + c.accel_m_s2[index].toFixed(3) + " m/s²　动画 " +
         result.coupled.display_gain.toFixed(2) + "×";
+      const nearby = result.observed?.[signalKey()]?.[index];
+      if (nearby) get("sim-values").textContent += "　观测 " + nearby.value.toPrecision(4) + "（SI）· CSV 第 " + nearby.csv_line + " 行";
+      if (result.alternative) get("sim-values").textContent += "　方案横向加速度 " +
+        result.alternative.channels.accel_m_s2[index].toFixed(3) + " m/s²";
       return;
     }
     if (result.lateral_model) {
@@ -79,16 +84,22 @@ export function responsePlayer(invalidate) {
     const lateral = result.lateral_model || result.coupled;
     const dual = Boolean(c.front_travel_m) && !result.coupled;
     const key = axleSignal.value === "support" ? "support_m" : "travel_m";
-    const series = lateral ? (result.coupled && lateralSignal.value === "travel_m" ? c.secondary_y_m :
-      c[lateralSignal.value]) : dual ? c["front_" + key] : c.travel_m;
-    const rear = dual ? c["rear_" + key] : [];
+    const series = lateral ? c[signalKey()] : dual ? c["front_" + key] : c.travel_m;
+    const rear = result.alternative?.channels[signalKey()] ?? (dual ? c["rear_" + key] : []);
     const nominal = result.nominal_travel_m ?? [];
-    const scale = Math.max(.001, ...series.map(Math.abs), ...nominal.map(Math.abs), ...rear.map(Math.abs));
+    const observations = result.observed?.[signalKey()] ?? [];
+    const scale = Math.max(.001, ...series.map(Math.abs), ...nominal.map(Math.abs), ...rear.map(Math.abs),
+      ...observations.map(point => point ? Math.abs(point.value) : 0));
     const path = values => values.map((v,i) =>
       (i ? "L" : "M") + (i*1000/(values.length-1)).toFixed(2) + " " + (32-v*32/scale).toFixed(2)).join("");
     get("response-path").setAttribute("d", path(series));
     get("nominal-path").setAttribute("d", path(nominal));
     get("rear-path").setAttribute("d", path(rear));
+    get("observation-path").setAttribute("d", observations.map((point,i)=>{
+      if (!point || point.csv_line===observations[i-1]?.csv_line) return "";
+      const x=1000*point.observed_time_s/((series.length-1)/result.sample_hz);
+      return "M"+x.toFixed(2)+" "+(32-point.value*32/scale).toFixed(2)+"h.15";
+    }).join(""));
     const label = lateral ? lateralSignal.selectedOptions[0].textContent :
       dual && key === "support_m" ? "轨面输入" : "悬挂行程";
     const unit = lateral && lateralSignal.value === "roll_rad" ? "mrad" :
@@ -97,12 +108,13 @@ export function responsePlayer(invalidate) {
     svg.setAttribute("aria-label", label + "曲线，点击定位");
     get("response-scale").textContent = label +
       " ±" + (scale*(unit.startsWith("m/") ? 1 : 1000)).toFixed(2) + " " + unit + (dual ? "　实线 B 前轴 · 虚线 A 后轴" :
-        nominal.length ? "　虚线：名义刚度" : "");
+        result.alternative ? "　实线基准 · 虚线方案" : nominal.length ? "　虚线：名义刚度" : "") +
+        (observations.length ? "　蓝点为对齐观测" : "");
   }
   axleSignal.onchange = () => { drawSeries(); updateReadout(); };
-  lateralSignal.onchange = drawSeries;
+  lateralSignal.onchange = () => { drawSeries(); updateReadout(); };
   get("lateral-peak").onclick = () => {
-    const values = result.channels[result.coupled && lateralSignal.value === "travel_m" ? "secondary_y_m" : lateralSignal.value];
+    const values = result.channels[signalKey()];
     const peak = values.reduce((best, value, i) => Math.abs(value) > Math.abs(values[best]) ? i : best, 0);
     pause(); seek(peak);
   };
@@ -197,7 +209,12 @@ export function responsePlayer(invalidate) {
           lateral:q[j]*gain, yaw:q[j+2]*gain, wheelOffsets:q.slice(6+axle, 8+axle).map(v=>v*gain),
           body:{frameRoll:q[j+1]*gain, wheelY:y.slice(axle, axle+2).map(v=>v*gain),
             y:c.secondary_y_m[index]*gain, heave:c.secondary_m[index]*gain, roll:(q[11]-q[j+1])*gain},
-          vehicle:{q, y, gain, half:data.half_spacing, span:data.half_wheelbase}};
+          vehicle:{q, y, gain, half:data.half_spacing, span:data.half_wheelbase, travel:data.secondary_y?.[index]},
+          alternative:result.alternative ? {
+            q:result.alternative.coupled.q[index],y:result.alternative.coupled.rail_y[index],
+            half:data.half_spacing,span:data.half_wheelbase,gain,
+            travel:result.alternative.coupled.secondary_y[index],
+          } : null};
       }
       if (result.lateral_model) {
         const gain = displayGain(), roll = c.roll_rad[index]*gain;

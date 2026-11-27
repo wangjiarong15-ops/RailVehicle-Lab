@@ -28,7 +28,7 @@ from rail_vehicle.sensor_evidence import viewer_sensors
 from rail_vehicle.sensor_store import active_channels
 from rail_vehicle.replay import ReplayState, prepare_replay
 from rail_vehicle.run_data import list_batch_samples, list_vehicle_batches
-from rail_vehicle.ui import SIMULATION, navigate, page_title, plot_chart
+from rail_vehicle.ui import SIMULATION, TWIN, navigate, page_title, plot_chart
 from rail_vehicle.vehicle_data import list_vehicles
 
 
@@ -567,6 +567,10 @@ def render(public):
                    f"{coupled_case.duration_s} s · 19 自由度教学模型")
         st.caption("可输入「比较不同二系刚度和阻尼，侧滚不超过 5 mrad，行程不超过 20 mm，并生成试验报告」。")
         st.button("解除整车工况绑定", on_click=s.pop, args=("cp_coupled_case", None))
+    if s.get("cp_twin_source"):
+        st.caption(f"已连接数字孪生工作台 · {s['cp_twin_source']}。可输入校准与优化任务，提交本地计划审批。")
+        st.button("查看工程任务",on_click=navigate,args=(TWIN,),
+                  kwargs={"twin_source":s["cp_twin_source"],"twin_section":"审批与任务"})
     if inspection_state:
         st.caption("此会话可查询本机已记录的三维检查状态。")
     work = Work(
@@ -662,6 +666,17 @@ def render(public):
         typed = st.chat_input(placeholder, key="cp_input", max_chars=1200)
     prompt = typed or prompt
     if prompt:
+        from rail_vehicle.pages.twin import proposal_prompt
+        if proposal_prompt(prompt):
+            source = s.get("cp_twin_source") or ("虚构试验" if public else "工程记录")
+            old = s.get("twin_job")
+            if old is None or old.state()[0] in ("draft","cancelled","complete","error"):
+                s.pop("twin_job",None)
+                s.pop("twin_expected",None)
+                s["twin_prompt"] = prompt
+                s["twin_prompt_rev"] = s.get("twin_prompt_rev",0)+1
+            navigate(TWIN,twin_source=source,twin_section="审批与任务")
+            st.rerun()
         if config is not None and (
             not consent or not config.enabled or not config.api_key or not config.model
         ):

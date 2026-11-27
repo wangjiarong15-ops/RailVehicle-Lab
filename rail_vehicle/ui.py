@@ -229,11 +229,12 @@ ANALYSIS_MODE = "workbench_analysis_mode"
 
 
 SIMULATION = "动力学仿真"
+TWIN = "数字孪生工作台"
 LINKED = "联动分析"
 _WORKSPACE = ((HOME, "工作台首页", "space_dashboard"),
               (DATA_PAGES[0], "车辆管理", "train"), (DATA_PAGES[1], "数据导入", "upload_file"))
 _ENGINEERING = ((BOGIE, "三维转向架", "view_in_ar"), (SIMULATION, SIMULATION, "experiment"),
-                (COPILOT, "AI Copilot", "forum"), (REPORT, REPORT, "description"))
+                (TWIN, "数字孪生", "hub"), (COPILOT, "AI Copilot", "forum"), (REPORT, REPORT, "description"))
 _REVIEW = ((ANOMALIES, ANOMALIES, "warning"), (LINKED, LINKED, "timeline"),
            (COMPARISON, COMPARISON, "compare_arrows"), ("振动与平稳性分析", "振动与频谱", "waves"),
            (AI, "AI 证据解读", "fact_check"))

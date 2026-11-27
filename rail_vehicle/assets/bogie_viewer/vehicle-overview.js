@@ -85,6 +85,8 @@ export function vehicleOverview(canvas, invalidate, environment, dimensionsSpec)
     scene.add(frame);
     for (const side of [-1,1]) box(frame, "frame", [frameLength,beamWidth,.27], 0, side*beamCenter, .03);
     box(frame, "frame", [.54,beamSpan,.24]);
+    const frameMat = materials.frame.clone();
+    for (const piece of frame.children) piece.material = frameMat;
     const secondary = [-1,1].map(side => ({
       side, bellows:mesh(scene, lineGeometry, "rubber"), collar:mesh(scene, lineGeometry, "steel"),
       rollLink:mesh(scene, lineGeometry, "accent"),
@@ -105,7 +107,7 @@ export function vehicleOverview(canvas, invalidate, environment, dimensionsSpec)
       });
       return {carrier, axle, end, springs, j:2*i+j};
     });
-    return {frame, wheels, secondary, sign, i};
+    return {frame, frameMat, wheels, secondary, sign, i};
   });
   let lastHalf, aspect = 1;
   const from = new THREE.Vector3(), to = new THREE.Vector3(), direction = new THREE.Vector3();
@@ -163,18 +165,27 @@ export function vehicleOverview(canvas, invalidate, environment, dimensionsSpec)
     controls.enableDamping = true;
     invalidate();
   }
+  const low = new THREE.Color(0x2f74b4), high = new THREE.Color(0xe99446);
   return {
     controls, camera, resize, reset,
     setShellTransparency(value) {
       for (const [piece, original] of shellMaterials) piece.material = value ? translucent.get(original) : original;
       invalidate();
     },
-    draw(renderer, {q,y,gain,half,span}, wheelAngle) {
+    draw(renderer, {q,y,gain,half,span,travel}, wheelAngle, heat=false, cameraSource=null) {
       dimensions(half);
+      if (cameraSource) {
+        camera.position.copy(cameraSource.camera.position);
+        camera.zoom = cameraSource.camera.zoom;
+        camera.updateProjectionMatrix();
+        controls.target.copy(cameraSource.controls.target);
+      }
       body.position.set(0,q[10]*gain,2.48+q[0]*gain);
       body.rotation.set(q[11]*gain,-q[1]*gain,q[12]*gain,"ZYX");
       body.updateMatrixWorld();
-      for (const {frame,wheels,secondary,sign,i} of bogies) {
+      for (const {frame,frameMat,wheels,secondary,sign,i} of bogies) {
+        frameMat.color.copy(heat && travel ? low : materials.frame.color);
+        if (heat && travel) frameMat.color.lerp(high, Math.min(1,Math.abs(travel[i])/.02));
         const center = sign*half, f=2+2*i, lateral=13+i*3;
         frame.position.set(center,q[lateral]*gain,.95+q[f]*gain);
         frame.rotation.set(q[lateral+1]*gain,-q[f+1]*gain,q[lateral+2]*gain);
@@ -209,6 +220,7 @@ export function vehicleOverview(canvas, invalidate, environment, dimensionsSpec)
       for (const geometry of [boxGeometry,wheelGeometry,flangeGeometry,lineGeometry,shellGeometry]) geometry.dispose();
       for (const material of Object.values(materials)) material.dispose();
       for (const material of translucent.values()) material.dispose();
+      for (const {frameMat} of bogies) frameMat.dispose();
       ties.dispose();
       scene.clear();
     },
