@@ -3,6 +3,7 @@
 from hashlib import sha256
 from io import StringIO
 import csv
+import re
 
 import numpy as np
 
@@ -14,6 +15,7 @@ DIRECTORY = f"https://github.com/eve70a/CONTACT/tree/{REVISION}/testbank/profile
 REFERENCE = f"https://github.com/eve70a/CONTACT/blob/{REVISION}/testbank/contact_mbench.ref_out"
 WHEEL_SHA = "008c1aa6293ffc8a5141e78a663b21e39ba8daccd4774029f79cfde0c45e0d1d"
 RAIL_SHA = "5a431b69bd7ae8418b641412da6fdf1d852f4d9865080875cf3f0f3e874e3588"
+LOADED_SHA = "5cfafd7017b2da1034ae36fc9be45270b4fce90f8734be59951a7c57d781e80e"
 
 
 def _points(blob, expected):
@@ -66,3 +68,29 @@ def run_external_case(wheel_blob,rail_blob):
             "lateral_difference_mm":abs(location-loaded_reference_point_mm),
             "covered":"rigid initial clearance datum; loaded contact location only displayed for comparison"}
     return {**result,"evidence_id":"external."+sha256(json_text(result).encode()).hexdigest()},wheel_csv,rail_csv
+
+
+def compare_loaded_compliance(blob, coefficient_n_m32):
+    """Compare an effective vertical Hertz law with CONTACT's declared load point."""
+    from rail_vehicle.wheel_rail import in_range
+
+    if not isinstance(blob,bytes) or len(blob)>250_000 or not in_range(coefficient_n_m32,2e9,2e11):
+        raise ValueError("载荷参考文件或 Hertz 系数超出范围。")
+    text=blob.replace(b"\r\n",b"\n")
+    if sha256(text).hexdigest()!=LOADED_SHA:
+        raise ValueError("CONTACT 参考输出摘要与固定版本不一致。")
+    case=text.decode("ascii").partition("Case 1 for w/r contact on result element 1")[2].partition("WHEEL-RAIL CONTACT")[0]
+    terms=re.findall(r"\d+, NR,\s+z_ws, Fz:\s*(\S+)\s+(\S+), dFz/dz:\s*(\S+)",case)
+    initial,_,_=map(float,terms[0])
+    loaded,force,tangent=map(float,terms[-1])
+    approach=1000*(force/coefficient_n_m32)**(2/3)
+    increment=loaded-initial
+    stiffness=1.5*coefficient_n_m32*(approach/1000)**.5/1000
+    result={"schema":"rail.loaded-compliance.v1","level":"external_numerical_comparison",
+            "source":REFERENCE,"reference_sha256":LOADED_SHA,"coefficient_n_m32":coefficient_n_m32,
+            "wheel_normal_n":force,"contact_vertical_approach_mm":increment,
+            "effective_hertz_approach_mm":approach,"contact_stiffness_n_mm":tangent,
+            "effective_hertz_stiffness_n_mm":stiffness,"approach_error_mm":approach-increment,
+            "relative_stiffness_error":stiffness/tangent-1,
+            "scope":"single left wheel, centred, local load compliance; excludes loaded geometry and contact patch"}
+    return {**result,"evidence_id":"loaded."+sha256(json_text(result).encode()).hexdigest()}

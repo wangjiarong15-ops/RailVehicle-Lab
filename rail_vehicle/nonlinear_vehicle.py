@@ -35,6 +35,9 @@ class WheelRailCase:
     disturbance_m: float=.00045
     antiroll_n_m_rad: float=130_000.
     antiroll_n_m_s_rad: float=8_000.
+    primary_lateral_k_scale: float=1.
+    secondary_lateral_k_scale: float=1.
+    secondary_lateral_c_scale: float=1.
 
     def __post_init__(self):
         if (not isinstance(self.vehicle,VehicleParameters) or not isinstance(self.contact,Contact)
@@ -46,10 +49,17 @@ class WheelRailCase:
             raise ValueError("初始扰动、速度、时长或抗侧滚参数无效。")
         if abs(self.duration_s*VEHICLE_SAMPLE_HZ-round(self.duration_s*VEHICLE_SAMPLE_HZ))>1e-8:
             raise ValueError("试验时长须位于 0.01 s 输出网格。")
+        if not all(in_range(value,.5,1.6) for value in (
+                self.primary_lateral_k_scale,self.secondary_lateral_k_scale,self.secondary_lateral_c_scale)):
+            raise ValueError("横向悬挂系数须在名义值的 0.5 至 1.6 倍内。")
 
 
 def case_config(case):
-    return {"schema":SCHEMA,"model":MODEL,"source":"experimental_teaching","case":asdict(case)}
+    fields=asdict(case)
+    for name in ("primary_lateral_k_scale","secondary_lateral_k_scale","secondary_lateral_c_scale"):
+        if fields[name]==1.:
+            del fields[name]  # Preserve the numerical provenance of pre-VII nominal cases.
+    return {"schema":SCHEMA,"model":MODEL,"source":"experimental_teaching","case":fields}
 
 
 def read_case(content):
@@ -121,8 +131,8 @@ class VehicleSystem:
             upper.append(u)
             lower.append(l)
             offsets.append(x)
-            linear_k.append(180_000. if secondary else 580_000.)
-            linear_c.append(16_000. if secondary else 32_000.)
+            linear_k.append(180_000.*case.secondary_lateral_k_scale if secondary else 580_000.*case.primary_lateral_k_scale)
+            linear_c.append(16_000.*case.secondary_lateral_c_scale if secondary else 32_000.)
             yaw_k.append(170_000. if secondary else 1_500_000.)
             yaw_c.append(12_000. if secondary else 39_000.)
         self.vertical=np.asarray(qs)

@@ -52,6 +52,12 @@ def _add_columns(connection, table, definitions):
 def init_db(db_path: Path | str = DB_PATH) -> None:
     """Create the initial tables if they do not already exist."""
     with get_connection(db_path) as connection:
+        connection.execute("""CREATE TABLE IF NOT EXISTS engineering_trial_records (
+            trial_id TEXT PRIMARY KEY,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            request_json TEXT NOT NULL,
+            report_json TEXT
+        )""")
         connection.execute("""CREATE TABLE IF NOT EXISTS twin_research_history (
             evidence_id TEXT PRIMARY KEY,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
