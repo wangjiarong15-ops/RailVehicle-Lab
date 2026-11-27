@@ -24,6 +24,8 @@ Evolution VII 可在 Copilot 审批横向异常的三组悬挂对照，也可在
 
 Evolution VIII 增加公开 CONTACT 分组柔度校准及固定网格载荷对照、可恢复的受控工程研究、31 自由度 Pareto 试验和时间–频率联合悬挂辨识。[物理定义、证据与操作步骤](docs/evolution-viii-calibration.md)
 
+Evolution IX 将工程研究接入独立工作区、结构化多轮工具图和本机可恢复队列，并在求解三维中显示连接构件及左右轮重。[架构、工程边界与验收](docs/evolution-ix-workbench.md) · [Windows 五分钟入门及独立公测](docs/windows-beta-checklist.md)
+
 ## 采样数据质量检查
 
 CSV 导入预览按车辆分别检查重复 UTC 时刻、原 CSV 行序中的时间倒序和长采样间隔，

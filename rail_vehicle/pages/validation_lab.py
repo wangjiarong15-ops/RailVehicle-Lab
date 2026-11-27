@@ -280,7 +280,11 @@ def _calibration():
 
 def render():
     page_title("工程验证中心","对照已登记的参考、求解结果与有效时钟。")
-    selected=st.radio("工程验证任务",("基准对照","轮轨型面","不确定性","外部资料","物理校准"),horizontal=True)
+    choices=("基准对照","轮轨型面","不确定性","外部资料","物理校准")
+    if entry:=st.session_state.pop("ix_validation_entry",None):
+        if entry in choices:
+            st.session_state["ix_validation_choice"]=entry
+    selected=st.radio("工程验证任务",choices,horizontal=True,key="ix_validation_choice")
     if selected=="基准对照":
         _benchmark()
     elif selected=="轮轨型面":

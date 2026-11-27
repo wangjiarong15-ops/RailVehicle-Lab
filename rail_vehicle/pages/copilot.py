@@ -72,7 +72,7 @@ def interrupt():
 def _source(public):
     s = st.session_state
     handoff = s.get("cp_handoff")
-    options = ["自由问答", "内置虚构批次"]
+    options = ["自由问答", "内置虚构批次", "合成频谱双批次"]
     if not public:
         options.extend(["历史导入批次", "会话 CSV"])
     if handoff and (not public or handoff["target"]["fictional"]):
@@ -112,9 +112,14 @@ def _source(public):
         sets = csv_datasets(upload[1], upload[0], threshold)
         chosen = st.selectbox("附件车辆", list(sets), key="cp_attachment_vehicle")
         return sets[chosen], None
-    demo = source == "内置虚构批次"
+    demo = source in ("内置虚构批次","合成频谱双批次")
     if demo:
-        v, batches, rows = analysis_demo_data()
+        if source=="合成频谱双批次":
+            from rail_vehicle.demo_data import spectral_demo_data
+
+            v,batches,rows = spectral_demo_data()
+        else:
+            v,batches,rows = analysis_demo_data()
     else:
         vehicles = {v["id"]: v for v in list_vehicles()}
         if not vehicles:
@@ -416,10 +421,13 @@ def _progress(running):
 def render(public):
     page_title("RailVehicle Copilot")
     s = st.session_state
+    if not public:
+        st.segmented_control("Copilot 工作区",("对话","工程研究"),default="对话",key="cp_mode_ix",label_visibility="collapsed")
     for key, value in s.get("cp_saved_source_controls", {}).items():
         if key not in s:
             s[key] = value
-    bar = st.columns(4, gap="small")
+    research_view = not public and s.get("cp_mode_ix")=="工程研究"
+    bar = st.columns([1,3] if research_view else 4, gap="small")
     other = None
     source_error = None
     with bar[0].popover("数据来源与附件", icon=":material/database:", width="stretch"):
@@ -429,7 +437,7 @@ def render(public):
             source_error = str(exc) if isinstance(exc, ValueError) else "本机数据暂时无法读取。"
             data = None
         notes = ()
-        if not public:
+        if not public and not research_view:
             saved_case = st.file_uploader("恢复横移与侧滚工况 JSON", type=["json"], key="cp_lateral_upload",
                                          max_upload_size=1)
             if saved_case is not None and st.button("绑定已保存工况", key="cp_bind_lateral"):
@@ -462,6 +470,11 @@ def render(public):
         s.pop("cp_bound_batch", None)
     else:
         s["cp_bound_batch"] = (data.source, data.vehicle["id"], data.batch["id"], data.threshold)
+    if research_view:
+        from rail_vehicle.pages.workbench_research import render as render_research
+
+        render_research(Work(data,other),None)
+        return
     lateral_case = s.get("cp_lateral_case")
     inspection_state = s.get("cp_inspection_state")
     coupled_case = s.get("cp_coupled_case")

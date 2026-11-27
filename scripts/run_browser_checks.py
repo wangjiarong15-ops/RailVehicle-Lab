@@ -32,6 +32,8 @@ SUITES = {
     "evolution-vi": "check_evolution_vi_browser.cjs",
     "evolution-vii": "check_evolution_vii_browser.cjs",
     "evolution-viii": "check_evolution_viii_browser.cjs",
+    "evolution-ix": "check_evolution_ix_browser.cjs",
+    "evolution-ix-cloud": "check_evolution_ix_browser.cjs",
     "resume": "check_workspace_resume_browser.cjs",
     "frontend": "check_frontend_product_browser.cjs",
     "interface": "check_interface_browser.cjs",
@@ -168,21 +170,26 @@ def main() -> int:
                     with local_app(home, env, restart_output / "streamlit.log") as address:
                         results.append(run_suite(node, "workbench-trust", address, restart_output,
                                                  dict(env, RAIL_WORKBENCH_RESTART="1")))
-            offline = [name for name in names if name not in ("copilot-stream", "workbench-trust")]
+            offline = [name for name in names if name not in ("copilot-stream", "workbench-trust", "evolution-ix-cloud")]
             if offline:
                 with local_app(home,env,output/"streamlit.log") as address:
                     results.extend(run_suite(node,name,address,output,env) for name in offline)
-            if "copilot-stream" in names:
+            if "copilot-stream" in names or "evolution-ix-cloud" in names:
                 if __package__:
                     from .copilot_mock_service import simulated_provider
                 else:
                     from copilot_mock_service import simulated_provider
-                with simulated_provider() as (url,requests):
-                    mock_env = dict(env,AI_ENABLED="true",AI_PROVIDER="deepseek",AI_MODEL="local-browser-fixture",
-                                    DEEPSEEK_BASE_URL=url,DEEPSEEK_API_KEY="local-test-only",NO_PROXY="127.0.0.1")
-                    with local_app(home,mock_env,output/"streamlit-mock.log") as address:
-                        results.append(run_suite(node,"copilot-stream",address,output,env))
-                    results.append(requests==["plan","plan","interpretation","plan","interpretation"])
+                for suite, expected in (("copilot-stream",["plan","plan","interpretation","plan","interpretation"]),
+                                        ("evolution-ix-cloud",["initial","followup"])):
+                    if suite not in names:
+                        continue
+                    research=suite=="evolution-ix-cloud"
+                    with simulated_provider(research=research) as (url,requests):
+                        mock_env = dict(env,AI_ENABLED="true",AI_PROVIDER="deepseek",AI_MODEL="local-browser-fixture",
+                                        DEEPSEEK_BASE_URL=url,DEEPSEEK_API_KEY="local-test-only",NO_PROXY="127.0.0.1")
+                        with local_app(home,mock_env,output/f"streamlit-{suite}-mock.log") as address:
+                            results.append(run_suite(node,suite,address,output,dict(env,RAIL_IX_MOCK="1" if research else "0")))
+                        results.append(requests==expected)
             return 0 if all(results) else 1
     except (OSError, RuntimeError, ValueError) as exc:
         print(f"无法运行浏览器回归：{exc}（日志目录：{output}）", file=sys.stderr)

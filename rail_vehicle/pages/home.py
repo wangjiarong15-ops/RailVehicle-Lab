@@ -12,7 +12,7 @@ from rail_vehicle.analysis_history import SOURCES, source_kind, threshold_label,
 from rail_vehicle.pages.bogie_link import batch_replay_button, event_replay_button
 from rail_vehicle.pages.data_workflow import WORKBENCH_SOURCE, analysis_button, import_button, open_analysis
 from rail_vehicle.pages.demo_center import render_walkthrough
-from rail_vehicle.ui import (ANALYSIS, ANOMALIES, REPORT, ANALYSIS_MODE, navigate, plot_chart, page_title, kpi,
+from rail_vehicle.ui import (ANALYSIS, ANOMALIES, REPORT, COPILOT, SIMULATION, VALIDATION, ANALYSIS_MODE, navigate, plot_chart, page_title, kpi,
                              chart_container, empty_state, data_table, source_caption, light_theme_active)
 from rail_vehicle.dashboard_chart import (dashboard_chart, dashboard_events, display_timestamp, sample_label,
                                          DASHBOARD_POINT_LIMIT, DISPLAY_TIMEZONES, EVENTS_PER_PAGE, HOME_PLOT_CONFIG)
@@ -63,6 +63,13 @@ def render():
             timezone_name = "UTC"
             st.warning("该批次时间超出北京时间可显示范围，暂按 UTC 显示。")
     _render_next_step(data, preview, threshold)
+    with st.container(horizontal=True,key="ix_home_actions",vertical_alignment="center"):
+        st.button("工程研究",icon=":material/hub:",on_click=navigate,args=(COPILOT,),
+                  kwargs={"cp_mode_ix":"工程研究"})
+        st.button("31 自由度仿真",icon=":material/experiment:",on_click=navigate,args=(SIMULATION,),
+                  kwargs={"sim_case":"wheelrail"})
+        st.button("物理校准",icon=":material/verified:",on_click=navigate,args=(VALIDATION,),
+                  kwargs={"ix_validation_entry":"物理校准"})
     with st.container(key="rv-home-kpis", gap=None):
         columns = st.columns(4, gap="small")
     for column, title, key, detail in zip(columns[:3], ("登记车辆", "导入批次", "采样点总数"),
@@ -131,6 +138,7 @@ def render():
             else:
                 st.caption("暂无导入记录，请先导入 CSV。")
     with right:
+        _research_status()
         with chart_container("rv-panel-demo"):
             st.subheader("虚构数据演练")
             st.caption("在波形上定位一次横向异常，再查看对应时刻的转向架。")
@@ -171,6 +179,30 @@ def render():
                 st.metric("超阈值观测（按行去重）", analysis["threshold"]["either"]["count"])
                 st.caption(f"按通道计 {len(anomalies['points'])} 次超阈值；横向与垂向分开计算。")
 
+
+
+def _research_status():
+    from rail_vehicle.pages.workbench_research import STATUS
+    from rail_vehicle.workbench_queue import listing
+
+    with chart_container("ix-research-monitor"):
+        st.subheader("研究与仿真")
+        try:
+            tasks = listing()
+        except (sqlite3.Error,OSError):
+            tasks = []
+        if tasks:
+            active = sum(row["status"] in ("running","queued","paused") for row in tasks)
+            st.caption(f"{active} 项活跃或暂停 · 最近 {len(tasks)} 项本机任务")
+            for row in tasks[:2]:
+                st.text(f"{STATUS[row['status']]} · {row['title'][:26]}")
+        else:
+            st.caption("暂无已保存研究，可从工程研究创建任务。")
+        latest = st.session_state.get("wr_latest")
+        if latest:
+            case,result = latest
+            st.caption(f"本会话最近求解 · {case.speed_m_s:g} m/s · {len(result['time_s'])} 个计算帧")
+        st.caption("验证状态 · 公开基准复核可用，实车确认待开展")
 
 
 def _render_next_step(data, preview, threshold):
