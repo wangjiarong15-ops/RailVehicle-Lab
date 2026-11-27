@@ -41,3 +41,27 @@ flowchart LR
 连接类型参考公开构型。几何尺寸取教学近似，制造、公差或干涉需独立检验。里程为运行条件，车体其余五个分量来自求解。CONTACT 居中左轮刚度偏差和悬挂辨识证据边界沿用 VIII。[FRA 无摇枕构型说明](https://railroads.dot.gov/sites/fra.dot.gov/files/2022-01/HSR%20Noise%20Mitigation%20Procedures.pdf)
 
 性能工具分别记录 GLB 创建时延、双视窗提交计数、绘制调用、两视窗三角形，以及捕获画布后的视频呈现回调和帧时间分布。捕获视频计数反映浏览器捕获与合成路径，独立显示器刷新验收需在目标设备执行。单进程与两进程性能对照使用同样车辆模型、时长和积分容差。
+
+## 实际验收
+
+- 完整 Python 回归 783 项通过，另有 325 个子测试通过。教学动画修复后，轮轨和任务队列专项 17 项再次通过，Python 编译、JavaScript 语法、双版本契约、GLB 检查及 Git 差异检查通过。GLB 包含 54 个部件、58 个网格、47,948 个三角形，大小为 1,457,452 字节。
+- 隔离 Edge 检查覆盖 1366×768 与 1920×1080 深浅色、390px 导航、研究任务空状态及 115% 缩放。原有教学场景在首轮长套件中触发 800 ms 快照超时并停播。修复后周期教学模式可本地继续，显式暂停保持不动，历史批次仍遵守快照边界。该模型专项从低于 5 FPS 恢复到 11 FPS，并验证七种场景、剖切、书签、离线证据及 GLB 缺损回退。
+- 本地工程研究验证五类目标。横向优化算例实际调用 DOP853、Pareto 及独立 RK45。基准与候选横向加速度 RMS 分别为 0.054596 和 0.044834 m/s²，候选 RK45 复算为 0.0448340 m/s²。双批次比较、柔度校准、频谱及线路对比也执行各自的白名单工具。本机模拟云端根据第一轮异常结果发起依赖该步骤的频谱分析，两轮分别获得用户同意和执行审批。真实云端未验收。
+- 真实 Edge 双视窗原生图形路径在 2.36 秒内提交 142 帧，捕获视频回调 136 次，间隔 p50 / p95 为 16.7 / 16.9 ms。GLB 加载测点 371 ms，双视窗合计 358 个绘制调用、102,904 个三角形。捕获统计不代表屏幕刷新率。
+- 相同两项动力学工况串行 17.49 秒，两工作进程 14.57 秒，含进程启动，约 1.20×。进程峰值工作集约 79–80 MB，轨迹与证据一致。正常交互队列使用单并发，下列命令可在相同求解精度下重跑对照。
+
+```powershell
+.venv/Scripts/python.exe scripts/benchmark_workbench_jobs.py --output tmp/ix-compute.json
+.venv/Scripts/python.exe scripts/run_browser_checks.py --suite evolution-ix
+```
+
+### 界面证据
+
+- 1366×768 深色同分辨率比较：[VIII 首页](images/evolution-ix/home-before.png)、[IX 首页](images/evolution-ix/home-after.png)。
+- [宽屏双视窗计算回放](images/evolution-ix/dual-view.png)、[转向架拆解](images/evolution-ix/bogie-exploded.png)。
+- [便携 EXE 全屏回放](images/evolution-ix/solver-fullscreen.png)。
+- [浅色 115% 任务归档](images/evolution-ix/research-light.png)、[模拟服务第二轮改写工具计划](images/evolution-ix/mock-replanning.png)。
+
+### 验证边界
+
+制造级尺寸、净空和干涉，独立台架悬挂参数验证、实车接触验证、更多 CONTACT 载荷及长期 GPU 内存压力测试仍待补齐。新增三维几何来自参数化通用结构，31 自由度输入与名义求解参数沿用既有证据边界。VIII 的居中左轮切线刚度低估约 35.13%，拟合系数未用作整车默认参数。当前资源监视提供任务耗时和预算，交互并发调度规模及旧工具全量后台迁移仍待评估。
