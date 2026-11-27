@@ -185,7 +185,7 @@ def render_replay_return():
             render_original_report_link("bogie_original_report")
 
 
-def open_analysis(vehicle_id, batch_id=None, *, threshold=None, scope=None, page=ANALYSIS):
+def open_analysis(vehicle_id, batch_id=None, *, threshold=None, scope=None, page=ANALYSIS, saved=None):
     settings = {ANALYSIS_TARGET: {"vehicle_id": vehicle_id, "batch_id": batch_id},
                 "dynamics_vehicle_id": vehicle_id, WORKBENCH_SOURCE: "history", ANALYSIS_MODE: "single"}
     if batch_id is not None:
@@ -194,6 +194,8 @@ def open_analysis(vehicle_id, batch_id=None, *, threshold=None, scope=None, page
         settings[ANALYSIS_TARGET]["threshold"] = threshold
     if scope is not None:
         settings[ANALYSIS_TARGET]["scope"] = scope
+    if saved is not None:
+        settings[ANALYSIS_TARGET]["saved"] = saved
     navigate(page, **settings)
 
 

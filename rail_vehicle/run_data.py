@@ -346,7 +346,7 @@ def import_run_data(
     file_name: str,
     validation: CsvValidationResult,
     db_path: Path | str = DB_PATH,
-    *, engineering_manifest: dict | None = None,
+    *, engineering_manifest: dict | None = None, source_kind: str = "unknown",
 ) -> int:
     """Atomically save a validated batch and its running samples."""
     if not validation.is_valid:
@@ -354,13 +354,22 @@ def import_run_data(
     if not file_name.strip():
         raise ValueError("导入文件名不能为空。")
     intake = assess_intake(validation, engineering_manifest) if engineering_manifest is not None else None
+    from rail_vehicle.analysis_history import SOURCES, source_kind as resolved_source
+    if source_kind not in SOURCES:
+        raise ValueError("未知数据来源。")
+    if intake:
+        expected = resolved_source("unknown", json.dumps(intake))
+        if source_kind not in ("unknown", expected):
+            raise ValueError("所选来源与工程元数据的来源声明不同。")
+        source_kind = expected
 
     try:
         with get_connection(db_path) as connection:
             cursor = connection.execute(
-                "INSERT INTO import_batches (file_name, row_count, source_sha256, engineering_json) VALUES (?, ?, ?, ?)",
+                "INSERT INTO import_batches (file_name, row_count, source_sha256, engineering_json, source_kind) VALUES (?, ?, ?, ?, ?)",
                 (Path(file_name).name, validation.source_row_count,
-                 validation.source_sha256, json.dumps(intake, ensure_ascii=False, allow_nan=False) if intake else None),
+                 validation.source_sha256, json.dumps(intake, ensure_ascii=False, allow_nan=False) if intake else None,
+                 source_kind),
             )
             batch_id = int(cursor.lastrowid)
 
@@ -421,7 +430,7 @@ def list_vehicle_batches(
     """List import batches containing samples for the selected vehicle."""
     with get_connection(db_path) as connection:
         rows = connection.execute(
-            """SELECT b.id, b.file_name, b.imported_at, b.source_sha256, COUNT(s.id) AS sample_count
+            """SELECT b.id, b.file_name, b.imported_at, b.source_sha256, b.source_kind, b.engineering_json, COUNT(s.id) AS sample_count
                FROM import_batches AS b
                JOIN run_samples AS s ON s.batch_id = b.id
                WHERE s.vehicle_id = ?

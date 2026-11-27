@@ -1,6 +1,7 @@
 """Configuration tests for optional Streamlit secrets and environment fallback."""
 
 import unittest
+import json
 import os
 from pathlib import Path
 import tempfile
@@ -95,7 +96,8 @@ class AIConfigTests(unittest.TestCase):
         app.session_state["test_config"] = AIConfig(configuration_error="config_invalid")
         app.run()
         self.assertFalse(app.exception)
-        self.assertGreaterEqual(len(app.get("plotly_chart")), 3)
+        [chart] = app.get("plotly_chart")
+        self.assertEqual({trace["yaxis"] for trace in json.loads(chart.proto.spec)["data"]}, {"y", "y2", "y3"})
         app.button(key="batch_continue_分析报告").click().run()
         app.button(key="generate_analysis_report").click().run()
         self.assertFalse(app.exception)

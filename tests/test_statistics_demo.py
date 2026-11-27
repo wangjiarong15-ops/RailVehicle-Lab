@@ -1,6 +1,7 @@
 """Fictional statistics workflow must stay independent of private data and AI."""
 
 from contextlib import ExitStack
+import json
 from datetime import time
 import os
 from pathlib import Path
@@ -58,7 +59,8 @@ class StatisticsDemoTests(unittest.TestCase):
             self.assertFalse(app.exception)
             self.assertTrue(calculate.called)
             self.assertTrue(any("120" in item.value for item in app.markdown))
-            self.assertEqual(len(app.get("plotly_chart")), 3)
+            [chart] = app.get("plotly_chart")
+            self.assertEqual({trace["yaxis"] for trace in json.loads(chart.proto.spec)["data"]}, {"y", "y2", "y3"})
             self.assertTrue(all(app.sidebar.button(key=f"nav_{route}") for route in ("异常检测", "分析报告")))
             self.assertTrue(any("采样质量" in section.label for section in app.expander))
             self.assertTrue(any("内置虚构演示" in item.value for item in app.caption))

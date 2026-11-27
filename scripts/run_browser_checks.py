@@ -29,6 +29,7 @@ SUITES = {
     "frontend": "check_frontend_product_browser.cjs",
     "interface": "check_interface_browser.cjs",
     "sensors": "check_sensor_browser.cjs",
+    "workbench-trust": "check_workbench_trust_browser.cjs",
 }
 
 
@@ -150,7 +151,17 @@ def main() -> int:
             env = isolated_env(home)
             names = SUITES if args.suite == "all" else (args.suite,)
             results = []
-            offline = [name for name in names if name!="copilot-stream"]
+            if "workbench-trust" in names:
+                # Check recovery before other workflows import or analyze additional batches.
+                with local_app(home, env, output / "streamlit-workbench.log") as address:
+                    results.append(run_suite(node, "workbench-trust", address, output, env))
+                if results[-1]:
+                    restart_output = output / "restart"
+                    restart_output.mkdir()
+                    with local_app(home, env, restart_output / "streamlit.log") as address:
+                        results.append(run_suite(node, "workbench-trust", address, restart_output,
+                                                 dict(env, RAIL_WORKBENCH_RESTART="1")))
+            offline = [name for name in names if name not in ("copilot-stream", "workbench-trust")]
             if offline:
                 with local_app(home,env,output/"streamlit.log") as address:
                     results.extend(run_suite(node,name,address,output,env) for name in offline)

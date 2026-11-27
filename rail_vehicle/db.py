@@ -139,7 +139,15 @@ def init_db(db_path: Path | str = DB_PATH) -> None:
         }
         _add_columns(connection, "ai_analysis_history", history_migrations)
         connection.execute("CREATE INDEX IF NOT EXISTS idx_ai_history_type_id ON ai_analysis_history(analysis_type, id)")
-        _add_columns(connection, "import_batches", {"source_sha256": "TEXT", "engineering_json": "TEXT"})
+        _add_columns(connection, "import_batches", {"source_sha256": "TEXT", "engineering_json": "TEXT",
+                                                    "source_kind": "TEXT NOT NULL DEFAULT 'unknown'"})
+        connection.execute("""CREATE TABLE IF NOT EXISTS run_analysis_history (
+            id INTEGER PRIMARY KEY, fingerprint TEXT NOT NULL UNIQUE,
+            vehicle_id INTEGER NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
+            batch_id INTEGER NOT NULL REFERENCES import_batches(id) ON DELETE CASCADE,
+            source_sha256 TEXT, source_kind TEXT NOT NULL, threshold REAL NOT NULL,
+            first_row INTEGER NOT NULL, last_row INTEGER NOT NULL, batch_count INTEGER NOT NULL,
+            start_utc TEXT NOT NULL, end_utc TEXT NOT NULL, rule_version TEXT NOT NULL, analyzed_at TEXT NOT NULL)""")
         _add_columns(connection, "run_samples", {"csv_line": "INTEGER"})
         connection.execute("""CREATE TABLE IF NOT EXISTS sensor_devices (
             serial TEXT PRIMARY KEY, vehicle_id INTEGER NOT NULL REFERENCES vehicles(id))""")

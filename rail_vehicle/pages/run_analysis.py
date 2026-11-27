@@ -26,12 +26,14 @@ from rail_vehicle.ai.provider import input_fingerprint
 from rail_vehicle.batch_comparison import compare_run_batches
 from rail_vehicle.timestamp_utils import parse_iso_timestamp
 from rail_vehicle.dynamics import analyze_run_data
-from rail_vehicle.anomaly import EVENT_DURATION_NOTE, detect_anomalies_with_anchors
+from rail_vehicle.anomaly import EVENT_DURATION_NOTE, EVENT_MERGE_NOTE, detect_anomalies_with_anchors
+from rail_vehicle.analysis_history import RULE_VERSION, SOURCES, record_batch_analysis, source_kind, threshold_label
+from rail_vehicle.dashboard_chart import DASHBOARD_POINT_LIMIT, EVENTS_PER_PAGE, dashboard_chart, sample_label
 from rail_vehicle.event_anchor import anchors_by_evidence
 from rail_vehicle.pages.anomaly_review import render_event_review
 from rail_vehicle.pages.sampling_quality import render_sampling_quality
 from rail_vehicle.pages.ai_link import render_center_link, restore_source_widgets
-from rail_vehicle.pages.bogie_link import batch_replay_button, event_replay_target
+from rail_vehicle.pages.bogie_link import batch_replay_button, event_replay_button, event_replay_target
 from rail_vehicle.workspace_resume import INPUT
 from rail_vehicle.pages.data_workflow import (
     AI_REPLAY_SCOPE, ANALYSIS_REPLAY_SCOPE, ANALYSIS_TARGET, BATCH_HANDOFF, DEMO_EVIDENCE_SCOPE,
@@ -281,11 +283,13 @@ def _render_import() -> None:
                     )
             if intake_ok:
                 st.success("格式检查通过，可以导入。")
+            declared_source = st.selectbox("数据来源声明", SOURCES, format_func=SOURCES.get,
+                                           key=f"import_source_{st.session_state.get('import_upload_revision', 0)}")
             if st.button("导入到 SQLite", type="primary", disabled=not intake_ok):
                 try:
                     batch_id = import_run_data(uploaded_file.name, validation, **(
                         {"engineering_manifest": manifest} if manifest else {}
-                    ))
+                    ), **({"source_kind": declared_source} if declared_source != "unknown" else {}))
                 except ValueError as exc:
                     st.error(str(exc))
                 except (sqlite3.Error, OSError):
@@ -492,6 +496,14 @@ def _render_dynamics_analysis(*, demo: bool = False, view=ANALYSIS) -> None:
     )
     batch_identity = (vehicle_id, batch_id)
     batch_row = next(batch for batch in batches if batch["id"] == batch_id)
+    batch_source = "synthetic" if demo else source_kind(batch_row.get("source_kind"), batch_row.get("engineering_json"))
+    st.caption(f"所选批次来源 · {SOURCES[batch_source]}")
+    saved = target.get("saved") if target else None
+    if saved is not None and ((vehicle_id, batch_id) != (saved["vehicle_id"], saved["batch_id"])
+                              or saved["rule_version"] != RULE_VERSION or saved["source_kind"] != batch_source
+                              or saved["source_sha256"] != batch_row.get("source_sha256")):
+        st.warning("保存记录与当前批次、来源或算法版本不同，请重新选择批次。")
+        return
     comparison = st.session_state.get(REPORT_COMPARISON)
     if comparison is not None and (not isinstance(comparison, ReportComparison)
                                    or not comparison.matches_batch(vehicle_id, batch_id, demo)):
@@ -552,6 +564,9 @@ def _render_dynamics_analysis(*, demo: bool = False, view=ANALYSIS) -> None:
             if candidate.matches(timestamps):
                 st.session_state[ANALYSIS_REPLAY_SCOPE] = (batch_identity, candidate)
             else:
+                if saved is not None:
+                    st.warning("保存的样本范围与当前批次不匹配，请重新选择分析范围。")
+                    return
                 st.warning("三维窗口与当前批次的观测记录不匹配，请回到三维页重新选择窗口。")
         if "threshold" in target and (candidate is None or ANALYSIS_REPLAY_SCOPE in st.session_state):
             st.session_state[threshold_key] = target["threshold"]
@@ -568,7 +583,8 @@ def _render_dynamics_analysis(*, demo: bool = False, view=ANALYSIS) -> None:
         selected_start, selected_end = replay_scope.first_timestamp, replay_scope.last_timestamp
         replay_rows = [replay_scope.first_row + 1, replay_scope.last_row + 1]
         filtered_samples = samples[replay_scope.first_row:replay_scope.last_row + 1]
-        st.info(f"三维回放窗口 · 批次第 {replay_scope.first_row + 1:,}–{replay_scope.last_row + 1:,} 条观测。"
+        window_name = "恢复的分析窗口" if saved is not None else "按样本行筛选的窗口"
+        st.info(f"{window_name} · 批次第 {replay_scope.first_row + 1:,}–{replay_scope.last_row + 1:,} 条观测。"
                 "按样本行筛选，保留同一时间戳下的具体观测。")
         st.button("返回整批分析", key="analysis_clear_replay_scope", on_click=_clear_replay_scope,
                   args=(vehicle_id, batch_id))
@@ -611,6 +627,7 @@ def _render_dynamics_analysis(*, demo: bool = False, view=ANALYSIS) -> None:
         help="同一阈值用于统计占比和异常识别；绝对值严格大于阈值时标为数据异常点。",
     )
     threshold = 1.0 if threshold is None else threshold
+    parameter_columns[0].caption(f"{threshold_label(threshold)} · 当前批次无已核验标准限值")
     if replay_scope:
         parameter_columns[1].caption(f"当前范围：{selected_start.isoformat()} — {selected_end.isoformat()}")
     else:
@@ -622,7 +639,20 @@ def _render_dynamics_analysis(*, demo: bool = False, view=ANALYSIS) -> None:
         clear_result(st.session_state, ai_state_key)
         st.error(str(exc))
         return
-    anomaly_result, event_anchors = detect_anomalies_with_anchors(result["samples"], threshold)
+    anomaly_result, event_anchors = detect_anomalies_with_anchors(result["samples"], threshold, include_rows=True)
+    if not demo and view == ANALYSIS:
+        persisted_scope = playback_scope or ReplayEvidenceScope(
+            0, result["sample_count"]-1, result["sample_count"],
+            _analysis_timestamps(result["samples"][:1])[0], _analysis_timestamps(result["samples"][-1:])[0])
+        identity = (batch_identity, threshold, persisted_scope, batch_source, batch_row.get("source_sha256"))
+        if st.session_state.get("last_persisted_run_analysis") != identity:
+            try:
+                record_batch_analysis(vehicle_id, batch_id, batch_row.get("source_sha256"), batch_source, threshold,
+                                      persisted_scope)
+            except (sqlite3.Error, OSError):
+                st.caption("当前分析可继续使用，本次历史记录未保存。")
+            else:
+                st.session_state["last_persisted_run_analysis"] = identity
     if comparison is not None:
         coordinates = {"first_row": projected.first_row, "batch_count": projected.batch_count} if projected else {}
         if not comparison.matches_scope(
@@ -647,6 +677,7 @@ def _render_dynamics_analysis(*, demo: bool = False, view=ANALYSIS) -> None:
                  f"为 {either['count']} 条（{either['percentage']:.2f}%）；"
                  f"共识别 {len(anomaly_result['events'])} 个按方向合并的异常区段。")
         st.caption("以上由当前筛选样本直接计算，不调用 AI。阈值由用户设置；统计异常和未超阈值均不构成故障、运行安全或法规结论。")
+        st.caption(EVENT_MERGE_NOTE)
         st.markdown(
             "**计算口径：** 最大值/最小值为样本极值；平均值为算术平均；"
             "RMS = √(Σx² / n)。加速度峰值取绝对值最大点，同时显示该点的有符号原始值和时间。"
@@ -681,11 +712,21 @@ def _render_dynamics_analysis(*, demo: bool = False, view=ANALYSIS) -> None:
                 value = sampling_review[key]
                 column.metric(label, f"{value:.3f}" if value is not None else "—")
 
-    if view == ANALYSIS:
-        _render_run_curves(main_view, result, threshold=threshold, anomaly_result=anomaly_result,
-                           replay_scope=replay_scope, by_row=replay_scope is not None and selected_start == selected_end)
-
     selected_event = None
+    if view == ANALYSIS:
+        selected_event = _render_run_curves(main_view, result, threshold=threshold, anomaly_result=anomaly_result,
+                           replay_scope=replay_scope, by_row=replay_scope is not None and selected_start == selected_end,
+                           first_row=playback_scope.first_row if playback_scope else 0, context=batch_identity)
+        if selected_event is not None:
+            with main_view:
+                event = anomaly_result["events"][selected_event]
+                event_replay_button(label="在三维中定位高亮区段", key="analysis_chart_to_bogie", from_workbench=True,
+                                    vehicle_id=vehicle_id, batch_id=batch_id, threshold=threshold,
+                                    timestamp=event["start_timestamp"],
+                                    axis="lateral" if event["field"] == "lateral_accel" else "vertical",
+                                    fictional=demo, anchor=event_anchors[selected_event], scope=playback_scope,
+                                    row_span=replay_rows)
+
     if view == ANOMALIES:
         with main_view:
             selected_event = _render_anomaly_view(result, anomaly_result, threshold, vehicle_id, batch_id, selected_start,
@@ -757,7 +798,8 @@ def _render_dynamics_analysis(*, demo: bool = False, view=ANALYSIS) -> None:
                                 ai_payload, ai_selection, demo=demo)
 
 
-def _render_run_curves(container, result, *, threshold, anomaly_result, replay_scope, by_row):
+def _render_run_curves(container, result, *, threshold, anomaly_result, replay_scope, by_row, first_row=0, context=None):
+    selected = None
     with container:
         st.subheader("速度统计")
         speed_columns = st.columns(3)
@@ -777,10 +819,22 @@ def _render_run_curves(container, result, *, threshold, anomaly_result, replay_s
             st.caption("窗口内样本处于同一 UTC 时刻，按批次样本序号分开显示各条读值。")
             ordered_samples = [dict(sample, batch_row=row) for row, sample in
                                enumerate(ordered_samples, start=replay_scope.first_row + 1)]
-        if len(ordered_samples) > CURVE_POINT_LIMIT:
-            st.caption(f"长批次曲线预览：每条曲线或异常标记序列最多显示 {CURVE_POINT_LIMIT:,} 个原始点，"
+        point_limit = CURVE_POINT_LIMIT if by_row else DASHBOARD_POINT_LIMIT
+        if len(ordered_samples) > point_limit:
+            st.caption(f"长批次曲线预览：每条曲线或异常标记序列最多显示 {point_limit:,} 个原始点，"
                        "分段保留极值。缩小时间范围可查看细节；统计、事件、证据和 PDF 输入仍使用全部筛选样本。")
-        curve_tabs = st.tabs([spec[1] for spec in chart_specs])
+        if not by_row:
+            total = len(anomaly_result["events"])
+            pages = max(1, (total+EVENTS_PER_PAGE-1)//EVENTS_PER_PAGE)
+            page = st.selectbox("异常区段展示页", range(pages), format_func=lambda i: f"第 {i+1} / {pages} 页",
+                                key=f"analysis_chart_page_{context}") if pages > 1 else 0
+            section = range(page*EVENTS_PER_PAGE+1, min(total, (page+1)*EVENTS_PER_PAGE)+1)
+            selected = st.selectbox("高亮区段", [None, *section],
+                                    format_func=lambda i: "请选择区段" if i is None else f"#{i}",
+                                    key=f"analysis_chart_event_{context}_{threshold}_{first_row}_{len(ordered_samples)}_{page}") if total else None
+            plot_chart(dashboard_chart(result, anomaly_result, page, first_row=first_row, selected_event=selected),
+                       width="stretch", key="chart_run_unified")
+        curve_tabs = st.tabs([spec[1] for spec in chart_specs]) if by_row else []
         for curve_tab, (field, title, y_title) in zip(curve_tabs, chart_specs):
             preview = curve_preview(ordered_samples, field)
             figure = go.Figure(
@@ -811,10 +865,8 @@ def _render_run_curves(container, result, *, threshold, anomaly_result, replay_s
                 ]
                 if axis_points:
                     if by_row:
-                        flagged_rows = (sample["batch_row"] for sample in ordered_samples
-                                        if abs(sample[field]) > threshold)
-                        axis_points = [dict(point, batch_row=row) for point, row in
-                                       zip(axis_points, flagged_rows, strict=True)]
+                        axis_points = [dict(point, batch_row=ordered_samples[point["sample_index"]]["batch_row"])
+                                       for point in axis_points]
                     axis_points = curve_preview(axis_points, "value")
                     figure.add_trace(
                         go.Scatter(
@@ -824,7 +876,9 @@ def _render_run_curves(container, result, *, threshold, anomaly_result, replay_s
                             name="统计异常点",
                             marker={"color": "#d62728", "size": 10, "symbol": "diamond"},
                             customdata=[point["type"] for point in axis_points],
-                            hovertemplate="%{x}<br>%{customdata}<br>%{y:.4f} m/s²<extra></extra>",
+                            text=[sample_label(ordered_samples[p["sample_index"]], p["sample_index"], first_row)
+                                  for p in axis_points],
+                            hovertemplate="%{x}<br>%{customdata}<br>%{y:.4f} m/s²<br>%{text}<extra></extra>",
                         )
                     )
                 figure.add_hline(
@@ -894,15 +948,18 @@ def _render_run_curves(container, result, *, threshold, anomaly_result, replay_s
         )
 
 
+    return selected-1 if selected is not None else None
+
+
 def _render_anomaly_view(result, anomaly_result, threshold, vehicle_id, batch_id, selected_start,
                          selected_end, replay_rows, event_anchors, *, demo, playback_scope):
     with st.container():
         st.subheader("数据异常检测")
         st.caption(
             f"规则：横向或垂向加速度绝对值严格大于 {threshold:.3f} m/s² 时标记为统计异常点。"
-            "同一方向相邻异常样本合并为一个区段，遇到正常样本则分段。"
             "异常区段仅描述数据/统计异常，不用于判断车辆故障或安全事故。"
         )
+        st.caption(EVENT_MERGE_NOTE)
         st.caption(EVENT_DURATION_NOTE)
         anomaly_columns = st.columns(2)
         anomaly_columns[0].metric("数据异常点", len(anomaly_result["points"]), border=True)

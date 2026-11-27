@@ -16,6 +16,9 @@ EVENT_DURATION_NOTE = (
     "区段时长按首末异常样本的时间差计算；两者之间存在采样空档时，"
     "不代表空档内持续观测到异常。"
 )
+EVENT_MERGE_NOTE = ("每个方向独立判定 |a| 严格大于阈值。按 UTC 时刻排序后，"
+                    "同方向相邻超阈值采样合为一区段，符号变化和采样空档不分段，"
+                    "该方向出现未超阈值记录才分段。")
 
 
 def _parse_timestamp(value: Any) -> datetime:
@@ -44,12 +47,12 @@ def detect_anomalies(
     return _detect(samples, acceleration_threshold, with_anchors=False)[0]
 
 
-def detect_anomalies_with_anchors(samples, acceleration_threshold):
+def detect_anomalies_with_anchors(samples, acceleration_threshold, *, include_rows=False):
     """Return the same event results plus separate local replay anchors in event order."""
-    return _detect(samples, acceleration_threshold, with_anchors=True)
+    return _detect(samples, acceleration_threshold, with_anchors=True, include_rows=include_rows)
 
 
-def _detect(samples, acceleration_threshold, *, with_anchors):
+def _detect(samples, acceleration_threshold, *, with_anchors, include_rows=False):
     try:
         threshold = float(acceleration_threshold)
     except (TypeError, ValueError) as exc:
@@ -90,6 +93,7 @@ def _detect(samples, acceleration_threshold, *, with_anchors):
                     "type": anomaly_type,
                     "value": values[index],
                     "absolute_value": abs(values[index]),
+                    **({"sample_index": index} if include_rows else {}),
                 }
             )
 
@@ -116,6 +120,8 @@ def _detect(samples, acceleration_threshold, *, with_anchors):
                 "maximum_absolute_value": abs(values[peak_index]),
                 "maximum_signed_value": values[peak_index],
                 "maximum_timestamp": ordered[peak_index]["timestamp"],
+                **({"first_index": run[0], "last_index": run[-1], "peak_index": peak_index}
+                   if include_rows else {}),
             }
             indexed_events.append((instant, run[0], event))
 
