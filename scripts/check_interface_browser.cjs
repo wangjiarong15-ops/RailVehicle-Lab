@@ -167,6 +167,13 @@ async function checkMobile(browser, theme) {
       await page.screenshot({path:resolve(output,`390-${theme}-${name}.png`),animations:"disabled"});
       if (name === "home") {
         await page.locator(".st-key-home_speed .js-plotly-plot").scrollIntoViewIfNeeded();
+        const separations = await page.locator(".st-key-home_speed .js-plotly-plot").evaluate(chart => {
+          const legend = chart.querySelector(".legend").getBoundingClientRect();
+          const tools = chart.querySelector(".modebar").getBoundingClientRect();
+          const title = chart.querySelector(".annotation-text").getBoundingClientRect();
+          return {toolbar:legend.top-tools.bottom, title:title.top-legend.bottom};
+        });
+        assert(separations.toolbar >= 0 && separations.title >= 0, JSON.stringify(separations));
         await page.screenshot({path:resolve(output,`390-${theme}-home-curve.png`),animations:"disabled"});
       }
     }

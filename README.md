@@ -8,6 +8,8 @@ Phase 8 增加两端交叉验证、参考轴向残差导出及一系与二系耦
 
 Phase 9 可在「动力学仿真」运行整车垂向与点头试验，保存工况，比较四种空间轨面与两级悬挂参数，并按计算时序观察单台 GLB 转向架。[模型与操作说明](docs/phase9-dynamics.md) · [发布候选与比赛审计](docs/phase9-release.md)
 
+Evolution II 第一阶段统一了异常计数、来源声明和图表回查，并把三维观测窗口接入 Copilot 与报告。[工程质量审计与验收](docs/evolution-ii-quality-audit.md)
+
 ## 采样数据质量检查
 
 CSV 导入预览按车辆分别检查重复 UTC 时刻、原 CSV 行序中的时间倒序和长采样间隔，

@@ -152,8 +152,8 @@ def dashboard_chart(analysis, anomalies, event_page=0, *, timezone_name="UTC", f
     figure.layout.annotations = labels_on_plot
     figure.update_yaxes(gridcolor="rgba(128,151,180,0.15)", zerolinecolor="rgba(128,151,180,0.3)",
                         tickfont=dict(size=10))
-    figure.update_layout(height=550,margin=dict(l=38,r=16,t=82,b=30),showlegend=True,
-                         legend=dict(orientation="h", x=0, y=1.10, yanchor="bottom", font=dict(size=11),
+    figure.update_layout(height=556,margin=dict(l=38,r=16,t=104,b=30),showlegend=True,
+                         legend=dict(orientation="h", x=0, y=1.075, yanchor="bottom", font=dict(size=11),
                                      itemclick=False, itemdoubleclick=False),
                          hovermode="x unified", hoverlabel=dict(bgcolor="rgba(12,26,47,0.92)",
                          font=dict(color="white", size=12)))
