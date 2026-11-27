@@ -253,7 +253,11 @@ def _calibration():
             rows.append({"分组":label,"轮侧数":group["count"],"压入量 RMSE":f"{before[0]:.2%} → {after[0]:.2%}",
                          "切线刚度 RMSE":f"{before[1]:.2%} → {after[1]:.2%}"})
         st.dataframe(rows,hide_index=True)
-        st.caption("两轮按横移工况一起留出。拟合系数仅代表这一范围的有效柔度，主求解器继续使用原教学参数。")
+        st.caption("两轮按横移工况一起留出。")
+        if centred:=report["centred_left"]:
+            before,after=centred["initial_relative_error"][1],centred["fitted_relative_error"][1]
+            st.info(f"居中左轮的切线刚度偏差为 {before:+.2%} → {after:+.2%}。"
+                    "拟合系数只用于当前对照，主求解器继续使用原教学参数。")
         lo,hi=report["leave_one_fit_group_out_range_n_m32"]
         st.caption(f"逐组剔除的系数区间 {lo/1e9:.2f}–{hi/1e9:.2f} GN/m^1.5。该区间衡量样本敏感度。")
         st.download_button("下载 CONTACT 校准证据",json_text(
