@@ -25,6 +25,7 @@ dependencies = [
 knowledge = ["pypdf>=6,<7"]
 ml = ["scikit-learn>=1.6,<2.0"]
 signal = ["scipy>=1.10,<2.0"]
+stream = ["websockets>=15,<18"]
 test = ["pytest>=8,<10"]
 
 [tool.setuptools.packages.find]
