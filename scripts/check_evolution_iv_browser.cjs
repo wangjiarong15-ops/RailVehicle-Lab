@@ -44,6 +44,7 @@ async function audit(browser,width,height,theme) {
       for (const [key,,name,buffer] of fields) {
         await page.locator(`.st-key-${key} input[type=file]`).setInputFiles({name,mimeType:name.endsWith(".csv")?"text/csv":"application/json",buffer});
       }
+      await page.getByRole("button",{name:"下载与验证工况绑定的元数据模板",exact:true}).waitFor();
       await page.getByRole("button",{name:"核对并绑定观测",exact:true}).click();
       await page.getByRole("button",{name:"解除配对记录绑定",exact:true}).waitFor();
       await page.getByRole("heading",{name:"观测与计算回放",exact:true}).waitFor();

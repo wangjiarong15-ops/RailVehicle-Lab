@@ -98,11 +98,6 @@ def identify(case, observations, validation_case, validation, bounds, *, budget=
             info = quality(data.channels[key])
             if info["inferred_hz"] < 20 or info["jitter_fraction_p95"] > .35:
                 raise ValueError(f"{key} 需要至少 20 Hz 的采样率和可复核的时钟质量。")
-    training = _TransverseExperiment(case, observations, common)
-    testing = _TransverseExperiment(validation_case, validation, common, substeps=10)
-    if any(np.std(training.channels[key][1]) < CHANNELS[key][3]/4 for key in common):
-        raise ValueError("观测响应缺少足够变化，请核对激励、通道分辨率或安装位置。")
-
     contact=[]
     # The fit changes only the transverse block; one vertical validity check per input suffices.
     for excitation in (case,validation_case):
@@ -111,6 +106,10 @@ def identify(case, observations, validation_case, validation, bounds, *, budget=
         if reference["min_linear_contact_n"] <= 0:
             raise ValueError("工况包含非正线性接触载荷，超出当前模型的辨识适用范围。")
         contact.append({"evidence_id":reference["evidence_id"],"minimum_n":reference["min_linear_contact_n"]})
+    training = _TransverseExperiment(case, observations, common)
+    testing = _TransverseExperiment(validation_case, validation, common, substeps=10)
+    if any(np.std(training.channels[key][1]) < CHANNELS[key][3]/4 for key in common):
+        raise ValueError("观测响应缺少足够变化，请核对激励、通道分辨率或安装位置。")
     keys = tuple(bounds)
     unit = np.array([SCALE[key] for key in keys])
     lower, upper = np.asarray(list(bounds.values())).T/unit
