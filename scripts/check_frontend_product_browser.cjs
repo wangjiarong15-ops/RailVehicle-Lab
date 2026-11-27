@@ -148,6 +148,8 @@ async function audit(browser, width, height) {
     await button(page, "bogie_return_evidence").click();
     await heading(page, "AI 分析中心").waitFor();
     await verticalEvidence.waitFor();
+    await waitForRender();
+    await page.locator('[data-testid="stApp"][data-test-script-state="notRunning"]').waitFor();
     await button(page, "ai_center_original_report").click();
     await heading(page, "分析报告").waitFor();
     await expectThreshold();

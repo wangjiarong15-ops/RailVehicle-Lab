@@ -1,6 +1,7 @@
 """Event drill-down uses existing detection without changing analysis facts."""
 
 from copy import deepcopy
+from datetime import date, time
 import json
 import unittest
 from unittest.mock import patch
@@ -43,6 +44,21 @@ def analysis_app():
 
 
 class AnomalyReviewTests(unittest.TestCase):
+    def test_remounted_time_controls_keep_utc_scope_and_empty_scope_can_reset(self):
+        app = AppTest.from_function(analysis_app)
+        app.session_state["analysis_start_date_1_1"] = date(2026, 10, 26)
+        app.session_state["analysis_end_date_1_1"] = date(2026, 10, 26)
+        app.session_state["analysis_start_time_1_1"] = time(0, 0, 8)
+        app.session_state["analysis_end_time_1_1"] = time(0, 0, 9)
+        app.run()
+        self.assertFalse(app.exception)
+        self.assertEqual(app.time_input(key="analysis_end_time_1_1").proto.default, "00:00:09")
+        self.assertTrue(any("分析样本数：** 2 条" in item.value for item in app.markdown))
+        app.date_input(key="analysis_end_date_1_1").set_value(date(2026, 10, 25)).run()
+        app.button(key="analysis_reset_invalid_time").click().run()
+        self.assertFalse(app.exception)
+        self.assertTrue(any("分析样本数：** 5 条" in item.value for item in app.markdown))
+
     def test_report_uses_batch_declaration_and_independent_counts(self):
         from rail_vehicle.pages import run_analysis
 

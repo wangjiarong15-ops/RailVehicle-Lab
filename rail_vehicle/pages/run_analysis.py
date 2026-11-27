@@ -345,17 +345,20 @@ def _utc_window(start_date, start_time, end_date, end_time):
 def _analysis_time_range(bounds, vehicle_id, batch_id):
     batch_start, batch_end = (bound.replace(tzinfo=None, microsecond=0) for bound in bounds)
     start_date_key, start_time_key, end_date_key, end_time_key = _time_widget_keys(vehicle_id, batch_id)
-    for key, default in zip((start_date_key, start_time_key, end_date_key, end_time_key),
-                            (batch_start.date(), batch_start.time(), batch_end.date(), batch_end.time())):
-        st.session_state.setdefault(key, default)
+    # Send the restored bounds as widget defaults as well as retaining the keyed
+    # state. A remount after navigation can otherwise show the wall clock.
+    defaults = [st.session_state.get(key, value) for key, value in zip(
+        (start_date_key, start_time_key, end_date_key, end_time_key),
+        (batch_start.date(), batch_start.time(), batch_end.date(), batch_end.time()),
+    )]
     with st.expander("分析时间范围（UTC） · 调整筛选", expanded=False):
         start_col, end_col = st.columns(2)
         with start_col:
-            start_date = st.date_input("开始日期", key=start_date_key)
-            start_time = st.time_input("开始时间", step=timedelta(seconds=1), key=start_time_key)
+            start_date = st.date_input("开始日期", value=defaults[0], key=start_date_key)
+            start_time = st.time_input("开始时间", value=defaults[1], step=timedelta(seconds=1), key=start_time_key)
         with end_col:
-            end_date = st.date_input("结束日期", key=end_date_key)
-            end_time = st.time_input("结束时间", step=timedelta(seconds=1), key=end_time_key)
+            end_date = st.date_input("结束日期", value=defaults[2], key=end_date_key)
+            end_time = st.time_input("结束时间", value=defaults[3], step=timedelta(seconds=1), key=end_time_key)
     return _utc_window(start_date, start_time, end_date, end_time)
 
 
@@ -595,6 +598,8 @@ def _render_dynamics_analysis(*, demo: bool = False, view=ANALYSIS) -> None:
         if selected_start > selected_end:
             clear_result(st.session_state, ai_state_key)
             st.warning("开始时间不能晚于结束时间，请调整筛选范围。")
+            st.button("恢复整批时间范围", key="analysis_reset_invalid_time", on_click=_clear_replay_scope,
+                      args=(vehicle_id, batch_id))
             return
         if window is not None and (selected_start, selected_end) == window_request:
             projected = window
@@ -610,6 +615,8 @@ def _render_dynamics_analysis(*, demo: bool = False, view=ANALYSIS) -> None:
     if not filtered_samples:
         clear_result(st.session_state, ai_state_key)
         st.info("所选时间范围内没有运行数据，请调整开始或结束时间。")
+        st.button("恢复整批时间范围", key="analysis_reset_empty_time", on_click=_clear_replay_scope,
+                  args=(vehicle_id, batch_id))
         return
 
     playback_scope = replay_scope

@@ -13,6 +13,14 @@ const routes = [
   ["spectrum","振动与平稳性分析"], ["fleet","多车辆运行对比"], ["ml","机器学习异常检测"],
   ["cockpit","动态运行驾驶舱"], ["demo","演示中心"], ["demo-analysis","统计与异常演示"],
 ];
+const chartKeys = {home:"home_speed",analysis:"chart_run_unified",events:"anomaly_review_chart"};
+const renderedChart = (page, name) => {
+  const selector = `.st-key-${chartKeys[name]} .js-plotly-plot`;
+  return page.waitForFunction(selector => {
+    const chart = document.querySelector(selector);
+    return chart?.data?.length && chart.querySelector(".main-svg") && !chart.closest('[data-stale="true"]');
+  }, selector);
+};
 async function checkColdStart(browser, colorScheme) {
   const page = await browser.newPage({colorScheme});
   const base = new URL(address);
@@ -89,13 +97,7 @@ async function capture(browser,width,height,theme) {
       }
       await page.getByRole("button",{name:"Stop",exact:true}).waitFor({state:"hidden"});
       await main.locator('[data-stale="true"]').first().waitFor({state:"detached"});
-      if (!baseline && ["home","analysis","events"].includes(name)) {
-        const key = {home:"home_speed",analysis:"chart_run_unified",events:"anomaly_review_chart"}[name];
-        await page.waitForFunction(chartKey => {
-          const chart = document.querySelector(`.st-key-${chartKey} .js-plotly-plot`);
-          return chart?.data?.length && chart.querySelector(".main-svg") && !chart.closest('[data-stale="true"]');
-        }, key);
-      }
+      if (!baseline && chartKeys[name]) await renderedChart(page, name);
       if (!baseline) {
         const active = sidebar.locator('[class*="st-key-nav_"] button[data-testid="stBaseButton-primary"]');
         assert.equal(await active.count(),1,`Expected one active route in ${name}`);
@@ -146,6 +148,7 @@ async function checkMobile(browser, theme) {
       await expand.waitFor();
       await page.locator('[data-testid="stApp"][data-test-script-state="notRunning"]').waitFor();
       assert.equal(await page.getByTestId("stException").count(),0,name);
+      if (chartKeys[name]) await renderedChart(page, name);
       assert(await main.evaluate(node=>node.scrollWidth<=node.clientWidth+1),`${name} overflows`);
       if (name === "home") {
         const metrics = main.locator(".st-key-rv-home-kpis [data-testid='stColumn']");
@@ -162,6 +165,10 @@ async function checkMobile(browser, theme) {
         await model.locator('#workbench[data-model="glb"][data-status="ready"]').waitFor();
       }
       await page.screenshot({path:resolve(output,`390-${theme}-${name}.png`),animations:"disabled"});
+      if (name === "home") {
+        await page.locator(".st-key-home_speed .js-plotly-plot").scrollIntoViewIfNeeded();
+        await page.screenshot({path:resolve(output,`390-${theme}-home-curve.png`),animations:"disabled"});
+      }
     }
     await expand.click();
     const sidebar = page.getByTestId("stSidebar");
