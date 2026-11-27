@@ -22,6 +22,8 @@ Evolution VI 增加「工程验证中心」及「数字孪生 → 在线采集�
 
 Evolution VII 可在 Copilot 审批横向异常的三组悬挂对照，也可在 31 自由度实验室单独创建参数矩阵。支持按计算峰值定位三维和曲线、核对原始异常样本，并导出可复算的工况及证据。[试验流程、验证边界和验收记录](docs/evolution-vii-intelligence.md)
 
+Evolution VIII 增加公开 CONTACT 分组柔度校准及固定网格载荷对照、可恢复的受控工程研究、31 自由度 Pareto 试验和时间–频率联合悬挂辨识。[物理定义、证据与操作步骤](docs/evolution-viii-calibration.md)
+
 ## 采样数据质量检查
 
 CSV 导入预览按车辆分别检查重复 UTC 时刻、原 CSV 行序中的时间倒序和长采样间隔，

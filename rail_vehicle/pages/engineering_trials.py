@@ -226,7 +226,7 @@ def render_panel(data=None):
 def render_matrix(base):
     st.subheader("31 自由度参数试验")
     st.caption("同一基准独立改变一项参数，可比较一至三个值。局部灵敏度按端点割线给出。")
-    presets={"speed":"18, 22", "load":"0.9, 1.1", "primary_k":"0.85, 1.15",
+    presets={"speed":"18, 22", "load":"0.9, 1.1", "primary_k":"0.85, 1.15","primary_c":"0.85, 1.15",
              "secondary_k":"0.85, 1.15","secondary_c":"0.75, 1.25","radius":"550, 650",
              "cant":"60, 90","irregularity":"0.8, 1.2"}
     if not st.session_state.get(JOB):

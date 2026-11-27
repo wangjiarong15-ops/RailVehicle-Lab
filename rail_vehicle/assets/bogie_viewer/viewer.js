@@ -62,7 +62,33 @@ export async function mount(sendValue) {
   const gpu = gpuInfo ? gl.getParameter(gpuInfo.UNMASKED_RENDERER_WEBGL) : "";
   const software = /swiftshader|llvmpipe|warp|basic render/i.test(gpu);
   const pixelRatio = Math.min(window.devicePixelRatio || 1, 1.65);
-  renderer.setPixelRatio(pixelRatio);
+  const quality = document.querySelector("#render-quality");
+  let adaptive = software ? .6 : 1, currentRatio = 0, qualityLast = null, qualityFrames = [];
+  function renderQuality(playing, now) {
+    if (quality.value === "auto" && playing) {
+      if (qualityLast !== null) qualityFrames.push(Math.min(200, now-qualityLast));
+      qualityLast = now;
+      if (qualityFrames.length >= 20) {
+        const fps = 1000*qualityFrames.length/qualityFrames.reduce((sum, v) => sum+v, 0);
+        if (fps < (software ? 19 : 32)) adaptive = Math.max(software ? .40 : .55, adaptive-.10);
+        else if (fps > (software ? 32 : 54)) adaptive = Math.min(software ? .8 : 1, adaptive+.05);
+        qualityFrames = [];
+      }
+    } else {
+      qualityLast = null;
+      qualityFrames = [];
+    }
+    const scales = {high:1, balanced:playing && software ? .6 : .85, low:playing ? .42 : .65,
+      auto:playing ? adaptive : 1};
+    const ratio = Math.min(pixelRatio, Math.max(.40, scales[quality.value]*pixelRatio));
+    if (ratio !== currentRatio) {
+      renderer.setPixelRatio(ratio);
+      currentRatio = ratio;
+      workbench.dataset.renderDpr = String(ratio);
+    }
+    if (workbench.dataset.renderQuality !== quality.value) workbench.dataset.renderQuality = quality.value;
+  }
+  renderQuality(false, performance.now());
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.shadowMap.autoUpdate = false;
@@ -513,16 +539,20 @@ export async function mount(sendValue) {
   const observer = new ResizeObserver(size);
   observer.observe(surface);
   size();
+  quality.onchange = () => {
+    renderQuality(Boolean(args?.playing || simulationPlaying),performance.now());
+    invalidate();
+  };
 
   function frame(now) {
     if (!alive) return;
     raf = requestAnimationFrame(frame);
     if (!args || document.hidden) return;
     const pose = player.tick(now) ?? clock.tick(now);
+    renderQuality(Boolean(pose.running), now);
     if (simulationPlaying !== Boolean(args.simulation && pose.running)) {
       simulationPlaying = Boolean(args.simulation && pose.running);
       if (software) {
-        renderer.setPixelRatio(pixelRatio * (simulationPlaying ? .60 : 1));
         updateShadows();
         select(selection);
       }
@@ -734,8 +764,6 @@ export async function mount(sendValue) {
         previous.visible.join() !== args.visible.join() || args.playing)) clearMeasurement();
     else updateMeasurement();
     if (software && previous?.playing !== args.playing) {
-      const playbackScale = detailed ? .60 : .66;
-      renderer.setPixelRatio(pixelRatio * (args.playing ? playbackScale : 1));
       updateShadows();
     }
     const isolatedGroup = detailed?.parts.get(isolated)?.spec.group;

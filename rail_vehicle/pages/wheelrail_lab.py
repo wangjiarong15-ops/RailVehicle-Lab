@@ -295,7 +295,7 @@ def render_wheelrail(main):
     case=s.get("wr_case") or WheelRailCase()
     s.setdefault("wr_mode","整车与线路")
     s.setdefault("wr_options","入门模板")
-    mode=st.radio("轮轨工作区",("整车与线路","多工况审批","单轮对与稳定性","参数矩阵"),key="wr_mode")
+    mode=st.radio("轮轨工作区",("整车与线路","多工况审批","单轮对与稳定性","参数矩阵","多目标优化"),key="wr_mode")
     if mode=="整车与线路":
         st.radio("参数模式",("入门模板","专业参数"),key="wr_options")
         _parameters(case)
@@ -308,6 +308,10 @@ def render_wheelrail(main):
             from rail_vehicle.pages.engineering_trials import render_matrix
 
             render_matrix(case)
+        elif mode=="多目标优化":
+            from rail_vehicle.pages.research_agent import render
+
+            render(case=case)
         elif mode=="单轮对与稳定性":
             _single(case)
         else:

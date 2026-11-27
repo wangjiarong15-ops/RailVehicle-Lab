@@ -601,6 +601,16 @@ def render(public):
     if not public:
         from rail_vehicle.engineering_trials import check_binding
         from rail_vehicle.pages import engineering_trials as trial_ui
+        from rail_vehicle.pages import research_agent as agent_ui
+
+        with st.expander(agent_ui.TITLE,expanded=bool(s.get(agent_ui.JOB))):
+            if not s.get(agent_ui.JOB) and data is not None and st.button("制定减载与行程约束下的对照计划"):
+                try:
+                    agent_ui.propose(work,s.get("cp_wr_case"),"")
+                    st.rerun()
+                except ValueError as exc:
+                    st.warning(str(exc))
+            agent_ui.render(data)
 
         job=s.get(trial_ui.JOB)
         archive=s.get(trial_ui.ARCHIVE)
@@ -714,6 +724,13 @@ def render(public):
             from rail_vehicle.engineering_trials import lateral_intent
             from rail_vehicle.nonlinear_vehicle import WheelRailCase
 
+            if agent_ui.accepts(prompt):
+                try:
+                    agent_ui.propose(work,s.get("cp_wr_case"),prompt)
+                except ValueError as exc:
+                    st.warning(str(exc))
+                    return
+                st.rerun()
             try:
                 if trial_ui.revise_draft(s.get(trial_ui.JOB),data,prompt):
                     st.rerun()

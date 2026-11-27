@@ -25,6 +25,7 @@ PARAMETERS={
     "speed":("运行速度","m/s",5.,55.),
     "load":("车体质量比例","倍",.75,1.25),
     "primary_k":("一系横向刚度比例","倍",.6,1.3),
+    "primary_c":("一系横向阻尼比例","倍",.6,1.3),
     "secondary_k":("二系横向刚度比例","倍",.6,1.3),
     "secondary_c":("二系横向阻尼比例","倍",.6,1.3),
     "radius":("曲线半径","m",125.,2000.),
@@ -82,9 +83,9 @@ def vary(base,parameter,value):
     if parameter=="load":
         return replace(base,vehicle=replace(base.vehicle,body_mass_kg=base.vehicle.body_mass_kg*value,
                                             body_inertia_kg_m2=base.vehicle.body_inertia_kg_m2*value))
-    if parameter in ("primary_k","secondary_k","secondary_c"):
+    if parameter in ("primary_k","primary_c","secondary_k","secondary_c"):
         field={"primary_k":"primary_lateral_k_scale","secondary_k":"secondary_lateral_k_scale",
-               "secondary_c":"secondary_lateral_c_scale"}[parameter]
+               "primary_c":"primary_lateral_c_scale","secondary_c":"secondary_lateral_c_scale"}[parameter]
         return replace(base,**{field:getattr(base,field)*value})
     route=base.route
     if parameter=="irregularity":

@@ -163,19 +163,42 @@ def show_failure(message, *, dialog=True):
         ctypes.windll.user32.MessageBoxW(None, message, "RailVehicle-Lab", 0x10)
 
 
+def check_bundle():
+    """Check the packaged imports and critical resources without starting a service."""
+    from rail_vehicle.pages import copilot, research_agent, twin, validation_lab
+    from rail_vehicle.contact_calibration import load_reference
+    from rail_vehicle.ui import TWIN
+
+    bundle = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    required = ("app.py", "rail_vehicle/assets/bogie_viewer/bogie.glb",
+                "rail_vehicle/assets/bogie_viewer/viewer.js")
+    if not all((bundle / path).is_file() for path in required):
+        raise PortableError("缺少运行入口或三维资源。请重新完整解压。")
+    if not TWIN or not all(callable(page.render) for page in (copilot,research_agent,twin,validation_lab)):
+        raise PortableError("当前页面模块版本不匹配。请重新完整解压。")
+    reference = load_reference()
+    if len(reference["manchester"])!=42 or len(reference["module3"])!=2:
+        raise PortableError("公开轮轨基准数据不完整。请重新完整解压。")
+    print("程序检查通过：页面模块、GLB、JavaScript 和轮轨参考数据。实际界面需启动后在浏览器确认。", flush=True)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="RailVehicle-Lab Windows 便携公测版")
     parser.add_argument("--demo", action="store_true", help="启动仅含虚构数据的演示版")
     parser.add_argument("--port", type=int, help="固定本机端口；默认自动选择 8501–8510")
     parser.add_argument("--no-browser", action="store_true", help="只启动本机服务，不打开浏览器或弹窗")
+    parser.add_argument("--check", action="store_true", help="检查模块与静态资源，不启动服务")
     args = parser.parse_args(argv)
     try:
-        run(args.demo, args.port, open_browser=not args.no_browser)
+        if args.check:
+            check_bundle()
+        else:
+            run(args.demo, args.port, open_browser=not args.no_browser)
         return 0
     except KeyboardInterrupt:
         return 130
     except PortableError as exc:
-        show_failure(str(exc), dialog=not args.no_browser)
+        show_failure(str(exc), dialog=not (args.no_browser or args.check))
         return 1
     except Exception:
         # No raw exception, secret, request or user data in the log or message.
@@ -189,7 +212,7 @@ def main(argv=None):
             print("启动诊断：" + " > ".join(safe_frames), file=sys.stderr, flush=True)
         show_failure(f"启动失败（{kind}" + (f": {safe_module}" if safe_module else "") +
                      "）。请检查程序是否完整解压，以及本机数据目录是否可写。",
-                     dialog=not args.no_browser)
+                     dialog=not (args.no_browser or args.check))
         return 1
 
 
