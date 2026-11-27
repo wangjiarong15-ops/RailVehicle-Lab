@@ -14,7 +14,8 @@ async function audit(browser,width,height) {
   const nav = label=>page.getByTestId("stSidebar").getByRole("button",{name:new RegExp(label+"$")});
   const capture = name=>page.screenshot({path:resolve(out,width+"-"+name+".png")});
   const ask = async text=>{
-    const input = page.getByTestId("stChatInputTextArea");
+    await page.locator('[data-testid="stApp"][data-test-script-state="notRunning"]').waitFor();
+    const input = page.locator('[data-testid="stChatInputTextArea"]:visible').last();
     await input.fill(text);
     await input.press("Enter");
   };

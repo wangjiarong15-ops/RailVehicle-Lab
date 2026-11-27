@@ -97,8 +97,10 @@ export async function mount(sendValue) {
   const twinPanes = document.getElementById("twin-panes");
   const forcesButton=document.getElementById("wheelrail-forces");
   const wheelFocusButton=document.getElementById("wheelrail-focus");
+  const trackFocus=document.getElementById("wheelrail-target");
+  const trackShell=document.getElementById("wheelrail-shell");
   const vectorsNote=document.getElementById("wheelrail-vector-note");
-  let advanced, advancedOther, advancedId, showForces=false, focusWheel=false;
+  let advanced, advancedOther, advancedId, showForces=false;
   let overview, comparison, overviewActive = false, heat = false;
   function overviewLayout() {
     const split = (overviewActive || Boolean(advanced)) && Boolean(serverArgs?.simulation?.alternative);
@@ -112,12 +114,14 @@ export async function mount(sendValue) {
   }
   function configureAdvanced(next){
     const sim=next.simulation;
-    const identity=sim?.advanced ? JSON.stringify(sim.parameters):null;
+    const identity=sim?.advanced ? JSON.stringify([sim.parameters,sim.advanced.initial_focus]):null;
     if(identity===advancedId)return;
     advancedId=identity;
     const wasAdvanced=Boolean(advanced);
     advanced?.dispose();advancedOther?.dispose();advanced=advancedOther=null;
-    showForces=focusWheel=false;
+    showForces=false;
+    trackShell.setAttribute("aria-pressed","false");
+    trackShell.textContent="隐藏车体";
     forcesButton.setAttribute("aria-pressed","false");
     wheelFocusButton.textContent="前轴接触局部";
     wheelFocusButton.setAttribute("aria-pressed","false");
@@ -130,12 +134,13 @@ export async function mount(sendValue) {
       }
       modelStatus.textContent=wheelRailParts.length?"轮轨计算 · GLB 构架":"轮轨计算 · 兼容构架";
       workbench.dataset.wheelrailGlb=String(Boolean(wheelRailParts.length));
+      setTrackFocus(spec.initial_focus??"vehicle");
     } else if (wasAdvanced) {
       modelStatus.textContent=detailed?"Blender 精细模型":"兼容几何 · GLB 不可用";
     }
     const active=Boolean(advanced);
     rig.controls.enabled=!active&&!overviewActive;
-    forcesButton.hidden=wheelFocusButton.hidden=!active;
+    forcesButton.hidden=wheelFocusButton.hidden=trackFocus.hidden=trackShell.hidden=!active;
     vectorsNote.hidden=true;
     workbench.dataset.wheelrail=String(active);
     overviewLayout();
@@ -147,12 +152,25 @@ export async function mount(sendValue) {
     forcesButton.setAttribute("aria-pressed",String(showForces));
     invalidate();
   };
-  wheelFocusButton.onclick=()=>{
-    if(!advanced)return;
-    focusWheel=!focusWheel;
-    advanced.focus(focusWheel);advancedOther?.focus(focusWheel);
-    wheelFocusButton.textContent=focusWheel?"查看整车":"前轴接触局部";
-    wheelFocusButton.setAttribute("aria-pressed",String(focusWheel));
+  function setTrackFocus(target) {
+    if(!advanced) return;
+    trackFocus.value=target;
+    advanced.focus(target);advancedOther?.focus(target);
+    workbench.dataset.wheelrailFocus=target;
+    const wheel=target==="front_wheel";
+    wheelFocusButton.textContent=wheel?"查看整车":"前轴接触局部";
+    wheelFocusButton.setAttribute("aria-pressed",String(wheel));
+    player.refreshReadout();
+  }
+  trackFocus.onchange=()=>setTrackFocus(trackFocus.value);
+  wheelFocusButton.onclick=()=>setTrackFocus(trackFocus.value==="front_wheel"?"vehicle":"front_wheel");
+  trackShell.onclick=()=>{
+    const hidden=trackShell.getAttribute("aria-pressed")!=="true";
+    advanced?.setShell(hidden);advancedOther?.setShell(hidden);
+    trackShell.textContent=hidden?"显示车体":"隐藏车体";
+    trackShell.setAttribute("aria-pressed",String(hidden));
+    workbench.dataset.wheelrailShell=String(!hidden);
+    invalidate();
   };
   function changeOverview(active) {
     if (active && !overview) {

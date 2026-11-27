@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from rail_vehicle.flexible_track import CHANNELS, TrackCase
-from rail_vehicle.manchester_contact import DIRECTORY, REFERENCE, run_external_case
+from rail_vehicle.manchester_contact import DIRECTORY, REFERENCE, compare_loaded_compliance, run_external_case
 from rail_vehicle.profile_geometry import Pair, read_profile, sample_profiles
 from rail_vehicle.ui import page_title, plot_chart
 from rail_vehicle.validation_center import (CATALOG, LEVELS, Provenance, compare_reference, numerical_reference,
@@ -50,6 +50,21 @@ def _catalog():
         a.download_button("下载公开基准证据 JSON",json_text(report),"manchester-contact.json",on_click="ignore")
         b.download_button("导出换算后的轮面",wheel_csv,"manchester-wheel.csv","text/csv",on_click="ignore")
         c.download_button("导出换算后的轨面",rail_csv,"manchester-rail.csv","text/csv",on_click="ignore")
+    with st.expander("CONTACT 加载点的柔度对照"):
+        loaded=st.file_uploader("固定版本 contact_mbench.ref_out",type="ref_out",max_upload_size=1)
+        factor=st.number_input("等效 Hertz 系数（10⁹ N/m³ᐟ²）",2.,200.,80.)
+        if loaded and st.button("计算加载柔度对照"):
+            try:
+                result=compare_loaded_compliance(loaded.getvalue(),factor*1e9)
+            except ValueError as error:
+                st.warning(str(error))
+            else:
+                st.write(f"居中左轮 {result['wheel_normal_n']:g} N · "
+                         f"CONTACT 轮轴垂向接近量 {result['contact_vertical_approach_mm']:.4f} mm · "
+                         f"等效 Hertz 压缩 {result['effective_hertz_approach_mm']:.4f} mm。")
+                st.write(f"切线刚度相对差 {result['relative_stiffness_error']:.1%}。"
+                         "本对照用于量化柔度模型偏差，加载触点和压力分布仍待验证。")
+                st.download_button("下载加载柔度对照 JSON",json_text(result),"loaded-compliance.json",on_click="ignore")
 
 
 def _benchmark():

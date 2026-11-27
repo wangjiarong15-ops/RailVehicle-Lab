@@ -16,6 +16,12 @@
       <button id="vehicle-heat" type="button" aria-pressed="false" hidden>二系行程着色</button>
       <button id="wheelrail-forces" type="button" aria-pressed="false" hidden>接触力矢量</button>
       <button id="wheelrail-focus" type="button" aria-pressed="false" hidden>前轴接触局部</button>
+      <select id="wheelrail-target" aria-label="轮轨观察部位" hidden>
+        <option value="vehicle">整车</option><option value="front_frame">前转向架</option>
+        <option value="rear_frame">后转向架</option><option value="front_wheel">前轮对</option>
+        <option value="front_primary">前架一系</option><option value="front_secondary">前架二系</option>
+      </select>
+      <button id="wheelrail-shell" type="button" aria-pressed="false" hidden>隐藏车体</button>
       <button id="browse-parts" type="button" aria-controls="part-panel" aria-expanded="false" hidden>零件清单</button>
       <select id="surface-mode" aria-label="表面显示"><option value="solid">实体</option><option value="ghost">构架透视</option><option value="selected">所选零件透明</option><option value="wire">网格线框</option></select>
       <button id="full-screen" type="button" hidden>全屏</button>

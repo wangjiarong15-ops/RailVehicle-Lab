@@ -598,6 +598,36 @@ def render(public):
         inspection_state=inspection_state,
         coupled_case=coupled_case,
     )
+    if not public:
+        from rail_vehicle.engineering_trials import check_binding
+        from rail_vehicle.pages import engineering_trials as trial_ui
+
+        job=s.get(trial_ui.JOB)
+        archive=s.get(trial_ui.ARCHIVE)
+        if st.button("为当前横向异常设计三组对照",key="vii_quick_trial",disabled=data is None):
+            from rail_vehicle.nonlinear_vehicle import WheelRailCase
+
+            try:
+                trial_ui.set_draft(trial_ui.draft_from_prompt(work,s.get("cp_wr_case") or WheelRailCase(),""))
+                st.rerun()
+            except ValueError as exc:
+                st.warning(str(exc))
+        with st.expander("工程试验与历史",expanded=bool(job)):
+            trial_ui.render_panel(data)
+            current=job.request if job else archive[0] if archive else None
+            if current and current.observation:
+                try:
+                    check_binding(current,data)
+                except ValueError:
+                    st.caption("显示归档的观测证据。绑定相同车辆、批次与筛选范围后可定位原波形。")
+                else:
+                    if st.toggle("定位当前试验的原始异常波形",key="vii_observed_open"):
+                        from rail_vehicle.copilot.tools import events
+
+                        output=events(work,"lateral")
+                        output.events=[entry for entry in output.events if entry["evidence_id"]==current.observation["event_id"]]
+                        if output.events:
+                            _wave(output,data,"vii_observation")
     running = s.get("cp_running")
     if running and running[0] != active.id:
         interrupt()
@@ -680,6 +710,23 @@ def render(public):
         typed = st.chat_input(placeholder, key="cp_input", max_chars=1200)
     prompt = typed or prompt
     if prompt:
+        if not public:
+            from rail_vehicle.engineering_trials import lateral_intent
+            from rail_vehicle.nonlinear_vehicle import WheelRailCase
+
+            try:
+                if trial_ui.revise_draft(s.get(trial_ui.JOB),data,prompt):
+                    st.rerun()
+            except ValueError as exc:
+                st.warning(str(exc))
+                return
+            if lateral_intent(prompt):
+                try:
+                    trial_ui.set_draft(trial_ui.draft_from_prompt(work,s.get("cp_wr_case") or WheelRailCase(),prompt))
+                except ValueError as exc:
+                    st.warning(str(exc))
+                    return
+                st.rerun()
         from rail_vehicle.pages.state_lab import monitoring_intent
         if not public and monitoring_intent(prompt):
             from rail_vehicle.state_monitoring import diagnosis

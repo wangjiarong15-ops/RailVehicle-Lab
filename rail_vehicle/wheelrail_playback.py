@@ -55,8 +55,11 @@ def _payload(result):
                                          "bogie_half_spacing":case.vehicle.bogie_half_spacing_m}}}
 
 
-def playback(result,alternative=None):
+def playback(result,alternative=None,*,initial_focus="vehicle"):
     case,primary=_payload(result)
+    if initial_focus not in ("vehicle","front_frame","rear_frame","front_wheel","front_primary","front_secondary"):
+        raise ValueError("轮轨观察位置无效。")
+    primary["advanced"]["initial_focus"]=initial_focus
     if alternative is not None:
         other,alternate=_payload(alternative)
         if (case.route,case.speed_m_s,case.duration_s,case.vehicle,case.contact)!=(

@@ -99,6 +99,15 @@ async function audit(browser,width,height,theme) {
         assert(report.rigid_touch_error_mm<.00005 && report.lateral_difference_mm>1);
         await page.getByRole("heading",{name:"Manchester 公开截面复核",exact:true}).scrollIntoViewIfNeeded();
         await capture("public-benchmark");
+        await page.getByText("CONTACT 加载点的柔度对照",{exact:true}).click();
+        await uploads.nth(2).locator("input").setInputFiles(resolve(process.env.RAIL_CONTACT_FIXTURES,"..","contact_mbench.ref_out"));
+        await button(page,"计算加载柔度对照").click();
+        const compliance=JSON.parse((await download(page,"下载加载柔度对照 JSON")).toString());
+        assert.equal(compliance.wheel_normal_n,10000);
+        assert(Math.abs(compliance.contact_vertical_approach_mm-.016)<1e-8);
+        assert(compliance.relative_stiffness_error<-.4);
+        await page.getByText(/切线刚度相对差/).scrollIntoViewIfNeeded();
+        await capture("loaded-compliance");
       }
       await button(page,"数字孪生").click();
       await page.getByTestId("stRadio").getByText("在线采集与状态估计",{exact:true}).click();

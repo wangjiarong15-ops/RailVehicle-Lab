@@ -29,10 +29,13 @@ export function responsePlayer(invalidate) {
     const mm = v => (v*1000).toFixed(2);
     if (result.advanced) {
       const n=result.advanced.tread_normal_n[index];
+      const focus=get("wheelrail-target").value;
+      const mounts=result.advanced.mount_travel[index];
+      const observed=focus==="front_primary"?"前一系左/右 "+mounts.slice(4,6).map(mm).join("/")+" mm":
+        "前架二系左/右 "+[c.support_side_l_m[index],c.support_side_r_m[index]].map(mm).join("/")+" mm";
       get("sim-values").textContent = (index/result.sample_hz).toFixed(2) + " s　车体里程 " +
         result.advanced.station[index][0].toFixed(2) + " m　前轴左/右法向 " +
-        n[0].map(v=>(v/1000).toFixed(2)).join("/") + " kN　前架二系左/右 " +
-        [c.support_side_l_m[index],c.support_side_r_m[index]].map(mm).join("/") + " mm";
+        n[0].map(v=>(v/1000).toFixed(2)).join("/") + " kN　" + observed;
       return;
     }
     if (result.coupled) {
@@ -142,7 +145,11 @@ export function responsePlayer(invalidate) {
       Math.abs(c.front_travel_m[index]), Math.abs(c.rear_travel_m[index]), Math.abs(c.secondary_m[index]), 1e-12));
   }
   return {
+    refreshReadout() {
+      if (result?.advanced) updateReadout();
+    },
     partResponse(id) {
+      if (result?.advanced) return "";
       if (result?.coupled && id) {
         const data = result.coupled, c = result.channels, q = data.q[index], roll = q[14+3*data.index];
         const sign = id.endsWith("_l") ? -1 : id.endsWith("_r") ? 1 : 0;

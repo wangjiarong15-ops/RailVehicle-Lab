@@ -20,6 +20,8 @@ Evolution V 在「动力学仿真」加入 31 自由度轮轨实验，可计算�
 
 Evolution VI 增加「工程验证中心」及「数字孪生 → 在线采集与状态估计」。可核对公开 CONTACT 刚性首触基准、导入连续轮轨型面、复算柔性轨道组件，以及本地模拟断线恢复、滤波和离线 Copilot 假设比较。[数据契约、使用方式与验证等级](docs/evolution-vi-validation.md)
 
+Evolution VII 可在 Copilot 审批横向异常的三组悬挂对照，也可在 31 自由度实验室单独创建参数矩阵。支持按计算峰值定位三维和曲线、核对原始异常样本，并导出可复算的工况及证据。[试验流程、验证边界和验收记录](docs/evolution-vii-intelligence.md)
+
 ## 采样数据质量检查
 
 CSV 导入预览按车辆分别检查重复 UTC 时刻、原 CSV 行序中的时间倒序和长采样间隔，

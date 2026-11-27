@@ -59,13 +59,14 @@ def prompt_plan(text,default=StudyPlan()):
     return replace(default,**values)
 
 
-def _viewer(result,key,alternative=None):
+def _viewer(result,key,alternative=None,*,initial_focus="vehicle"):
     if not webgl_available():
         st.info("三维资源不可用。数值曲线与报告仍可下载。")
         return
     render_webgl(mode="正常运行",phase=0,state=ReplayState(),visible=PARTS,highlight=(),
                  view="整体视图",focus=None,labels=False,rails=True,exploded=False,spread=0,
-                 camera_revision=0,continuous=False,height=610,key=key,simulation=playback(result,alternative))
+                 camera_revision=0,continuous=False,height=610,key=key,
+                 simulation=playback(result,alternative,initial_focus=initial_focus))
 
 
 def _parameters(case):
@@ -294,7 +295,7 @@ def render_wheelrail(main):
     case=s.get("wr_case") or WheelRailCase()
     s.setdefault("wr_mode","整车与线路")
     s.setdefault("wr_options","入门模板")
-    mode=st.radio("轮轨工作区",("整车与线路","多工况审批","单轮对与稳定性"),key="wr_mode")
+    mode=st.radio("轮轨工作区",("整车与线路","多工况审批","单轮对与稳定性","参数矩阵"),key="wr_mode")
     if mode=="整车与线路":
         st.radio("参数模式",("入门模板","专业参数"),key="wr_options")
         _parameters(case)
@@ -303,6 +304,10 @@ def render_wheelrail(main):
         st.caption("31 自由度实验模型 · 教学构型与声明的接触假设 · 独立实车验收待开展")
         if mode=="多工况审批":
             _study(case)
+        elif mode=="参数矩阵":
+            from rail_vehicle.pages.engineering_trials import render_matrix
+
+            render_matrix(case)
         elif mode=="单轮对与稳定性":
             _single(case)
         else:
