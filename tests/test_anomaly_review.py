@@ -32,7 +32,8 @@ def analysis_app():
     from tests.test_anomaly_review import samples
     vehicle = dict(id=1, vehicle_code="FICTIONAL", vehicle_type="虚构演示车辆", vehicle_length_m=20,
                    mass_kg=40000, axle_count=4, bogie_count=2, max_speed_kmh=120, notes="")
-    batches = [dict(id=1, file_name="fictional.csv", imported_at="2026-10-26", sample_count=5)]
+    batches = [dict(id=1, file_name="fictional.csv", imported_at="2026-10-26", sample_count=5,
+                    source_kind=st.session_state.get("fixture_source_kind", "unknown"))]
     with patch.object(run_analysis, "list_vehicles", return_value=[vehicle]), \
          patch.object(run_analysis, "get_vehicle", return_value=vehicle), \
          patch.object(run_analysis, "list_vehicle_batches", return_value=batches), \
@@ -42,6 +43,24 @@ def analysis_app():
 
 
 class AnomalyReviewTests(unittest.TestCase):
+    def test_report_uses_batch_declaration_and_independent_counts(self):
+        from rail_vehicle.pages import run_analysis
+
+        app = AppTest.from_function(analysis_app)
+        app.session_state["navigation_page"] = "分析报告"
+        app.session_state["fixture_source_kind"] = "test"
+        with patch.object(run_analysis, "generate_analysis_report_pdf", return_value=b"%PDF-test") as generate:
+            app.run()
+            self.assertFalse(app.exception)
+            self.assertTrue(any("测试数据（用户声明）" in note.value for note in app.caption))
+            self.assertTrue(any("超阈值观测 3 条" in note.value and "通道超阈 6 次" in note.value
+                                for note in app.caption))
+            app.button(key="generate_analysis_report").click().run()
+        payload = generate.call_args.args[0]
+        self.assertEqual(payload["provenance"]["source"], "测试数据（用户声明）")
+        self.assertEqual(payload["provenance"]["independent_measurement"], "pending")
+        self.assertEqual(len(payload["anomaly_events"]), 4)
+
     def test_closed_window_keeps_only_supplied_filtered_data(self):
         rows = samples()
         detected = detect_anomalies(rows, 1)

@@ -46,6 +46,27 @@ def test_dense_display_keeps_exact_anomaly_and_common_indices():
     assert not figure.data[4].y
 
 
+def test_connected_samples_keep_gaps_same_time_event_and_exact_hover():
+    stamp = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    rows = [dict(timestamp=(stamp+timedelta(seconds=t)).isoformat(), speed_kmh=50.,
+                 lateral_accel=x, vertical_accel=y, csv_line=i+2)
+            for i, (t, x, y) in enumerate([(0, 0, 0), (1, 2, 2), (1, -3, 0), (2, 1, 0), (12, 0, 0)])]
+    result = analyze_run_data(rows, 1.)
+    report, _ = detect_anomalies_with_anchors(rows, 1., include_rows=True)
+    figure = dashboard_chart(result, report, selected_event=1, light=True)
+    assert result["threshold"]["either"]["count"] == 2
+    assert len(report["points"]) == 3 and len(report["events"]) == 2
+    assert report["events"][0]["duration_seconds"] == 0 and report["events"][0]["sample_count"] == 2
+    trace, markers = figure.data[1:3]
+    assert trace.mode == "lines+markers" and trace.connectgaps is False
+    assert list(trace.y) == [0., 2., None, -3., 1., None, 0.]
+    assert all((x, y) in zip(trace.x, trace.y) for x, y in zip(markers.x, markers.y))
+    assert "CSV 第 3 行 · 超阈值" in trace.text[1] and markers.hoverinfo == "skip"
+    assert {shape.name for shape in figure.layout.shapes if shape.showlegend} == {"同刻区段", "阈值"}
+    assert all(shape.x0 == shape.x1 for shape in figure.layout.shapes if shape.name == "同刻区段")
+    assert figure.layout.legend.itemclick is False
+
+
 def test_history_survives_new_connection_with_exact_scope_and_batch_isolation(tmp_path):
     path = tmp_path/"history.sqlite3"
     db.init_db(path)

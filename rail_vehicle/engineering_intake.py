@@ -142,8 +142,12 @@ def configuration_review(intake, channels):
 
 
 def source_label(snapshot, fallback="历史导入 · 数据来源未声明"):
+    from rail_vehicle.analysis_history import SOURCES
+
     intake = snapshot.get("engineering")
-    return SOURCE_LABELS[intake["manifest"]["source_kind"]] if intake else fallback
+    if intake:
+        return SOURCE_LABELS[intake["manifest"]["source_kind"]]
+    return SOURCES.get(snapshot.get("source_kind"), fallback)
 
 
 def report_provenance(snapshot, *, fallback="历史导入 · 数据来源未声明", source_sha256=None):

@@ -188,7 +188,8 @@ class FrontendTests(unittest.TestCase):
         self.assertFalse(app.exception)
         values = {metric.label: metric.value for metric in app.metric}
         self.assertEqual(values["采样点总数"], "120 点")
-        self.assertEqual(values["统计异常点"], "5")
+        self.assertEqual(values["超阈值观测（按行去重）"], "5")
+        self.assertTrue(any("按通道计 5 次超阈值" in caption.value for caption in app.caption))
         self.assertEqual(values["统计异常区段"], "2")
         self.assertEqual(list(app.dataframe[0].value["编号"]), ["#1", "#2"])
         self.assertEqual(len(app.get("plotly_chart")), 1)

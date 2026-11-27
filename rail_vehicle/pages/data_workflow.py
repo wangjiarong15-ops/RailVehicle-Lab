@@ -48,8 +48,53 @@ def open_copilot():
     handoff = st.session_state.get(BATCH_HANDOFF)
     settings = {}
     if handoff and handoff.get("copilot_data"):
+        remember_workbench_selection()
         settings = dict(cp_handoff=handoff, cp_source="当前分析窗口")
     navigate(COPILOT, **settings)
+
+
+def open_replay_copilot(selection, track, window, threshold):
+    from rail_vehicle.copilot.context import MAX_ROWS
+    from rail_vehicle.pages.bogie import DEMO
+    from rail_vehicle.replay_evidence import ReplayEvidenceScope
+    from rail_vehicle.ui import COPILOT
+    import sqlite3
+
+    scope = ReplayEvidenceScope.from_window(track, window)
+    if scope.count > MAX_ROWS:
+        st.session_state["cp_window_notice"] = f"回放窗口超过 {MAX_ROWS:,} 条，请缩小窗口后再进入 Copilot。"
+        return
+    fictional = selection[0] == DEMO
+    batch_id = selection[-1]
+    if fictional:
+        from rail_vehicle.demo_data import analysis_demo_data
+        vehicle, batches, _ = analysis_demo_data()
+    else:
+        from rail_vehicle.run_data import list_vehicle_batches
+        from rail_vehicle.vehicle_data import get_vehicle
+        try:
+            vehicle = get_vehicle(selection[1])
+            batches = list_vehicle_batches(selection[1]) if vehicle else ()
+        except (sqlite3.Error, OSError):
+            vehicle, batches = None, ()
+    batch = next((row for row in batches if row["id"] == batch_id), None)
+    if not vehicle or not batch or batch["sample_count"] != scope.batch_count:
+        st.session_state["cp_window_notice"] = "回放批次已变化或暂时不可用，请重新选择批次核查。"
+        return
+    rows = [dict(row, timestamp=row.get("source_time", row["timestamp"]))
+            for row in track.samples[scope.first_row:scope.last_row+1]]
+    current = st.session_state.get(BATCH_HANDOFF)
+    preferred = None
+    if current:
+        target = current["target"]
+        if (target["vehicle_id"], target["batch_id"], target["threshold"], target.get("scope")) == (
+                vehicle["id"], batch_id, threshold, scope):
+            preferred = current["evidence_id"]
+    navigate(COPILOT, cp_source="当前分析窗口", cp_handoff={
+        "target": dict(fictional=fictional, scope=scope),
+        "evidence_selection": dict(threshold=threshold, row_span=(scope.first_row+1, scope.last_row+1)),
+        "copilot_data": (vehicle, batch, rows), "evidence_id": preferred,
+    })
 
 
 def select_workspace_page(page):
@@ -65,6 +110,10 @@ def select_workspace_page(page):
     if handoff and page == COPILOT:
         open_copilot()
         return
+    if handoff and page == SIMULATION:
+        remember_workbench_selection()
+        navigate(SIMULATION)
+        return
     if page == COPILOT and current == COMPARISON:
         from rail_vehicle.ai.center_state import current_context
         context = current_context(st.session_state,"batch")
@@ -78,7 +127,13 @@ def select_workspace_page(page):
                          **{"cp_batch_"+prefix:ids[0],"cp_other_"+prefix:ids[1]})
                 return
     if page == COPILOT and current in (BOGIE, LINKED):
+        from rail_vehicle.pages.bogie import LOOP_KEY
         selected = st.session_state.get("bogie_selection",())
+        loop = st.session_state.get(LOOP_KEY)
+        track = st.session_state.get("bogie_track")
+        if loop and track is not None and loop["track"] is track:
+            open_replay_copilot(selected, track, loop["window"], loop["threshold"])
+            return
         if selected and selected[0] in ("历史运行批次","内置虚构演示") and len(selected)>=2:
             demo = selected[0]=="内置虚构演示"
             if demo or len(selected)==3:
@@ -147,10 +202,10 @@ def return_to_evidence():
 
 
 def clear_workbench_navigation(page):
-    from rail_vehicle.ui import SIMULATION
+    from rail_vehicle.ui import COPILOT, SIMULATION
     if page != SIMULATION:
         st.session_state.pop("frame_sensor_target", None)
-    if page not in (AI, BOGIE):
+    if page not in (AI, BOGIE, COPILOT, SIMULATION):
         st.session_state.pop(WORKBENCH_RETURN, None)
         st.session_state.pop(AI_REPLAY_SCOPE, None)
     if page != BOGIE:

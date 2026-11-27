@@ -507,8 +507,23 @@ def render(public):
         else:
             st.caption("工具在本机执行，使用规则规划，无需 API 密钥。")
     if data:
-        st.caption(f"{SOURCE_LABELS[data.source]}　/　{data.vehicle['vehicle_code']}　/　{data.batch['file_name']}　·　"
+        category = SOURCE_LABELS[data.source]
+        provenance = data.source_description
+        source = f"{category} · {provenance}" if category != provenance else category
+        st.caption(f"{source}　/　{data.vehicle['vehicle_code']}　/　{data.batch['file_name']}　·　"
                    f"{len(data.rows):,} 行　·　阈值 {data.threshold:g} m/s²")
+        if data.row_span:
+            st.caption(f"当前窗口 · 批次第 {data.row_span[0]:,}–{data.row_span[1]:,} 条观测 · "
+                       f"{data.rows[0]['timestamp']} 至 {data.rows[-1]['timestamp']}")
+        if s.get("cp_source") == "当前分析窗口":
+            from rail_vehicle.pages.data_workflow import analysis_button, render_workbench_return
+            from rail_vehicle.ui import REPORT
+            with st.container(horizontal=True, gap="small"):
+                render_workbench_return("cp_return_analysis")
+                if data.source == "history" and data.replay_scope:
+                    analysis_button(st, label="准备当前窗口报告", key="cp_window_report", page=REPORT,
+                                    vehicle_id=data.vehicle["id"], batch_id=data.batch["id"],
+                                    scope=data.replay_scope, threshold=data.threshold)
     work = Work(
         data,
         other,

@@ -78,11 +78,12 @@ class StatisticsDemoTests(unittest.TestCase):
         app.button(key="statistics_demo_calculate").click().run()
         app.sidebar.button(key="nav_异常检测").click().run()
         metrics = {metric.label: metric.value for metric in app.metric}
-        self.assertEqual(metrics["数据异常点"], "5")
+        self.assertEqual(metrics["通道超阈次数"], "5")
+        self.assertEqual(metrics["超阈值观测（按行去重）"], "5")
         self.assertEqual(metrics["统计异常区段"], "2")
         app.number_input(key="demo_analysis_threshold").set_value(10.).run()
         self.assertFalse(app.exception)
-        self.assertEqual({metric.label: metric.value for metric in app.metric}["数据异常点"], "0")
+        self.assertEqual({metric.label: metric.value for metric in app.metric}["通道超阈次数"], "0")
         self.assertTrue(any("0 条（0.00%）" in item.value for item in app.markdown))
         self.assertEqual(len(app.get("plotly_chart")), 0)
 
@@ -168,7 +169,7 @@ class StatisticsDemoTests(unittest.TestCase):
         app.sidebar.button(key="nav_异常检测").click().run()
         app.time_input(key="analysis_end_time_-1_-1").set_value(time(9, 30, 10)).run()
         self.assertTrue(any("11" in item.value for item in app.markdown if "分析样本数" in item.value))
-        self.assertEqual({metric.label: metric.value for metric in app.metric}["数据异常点"], "0")
+        self.assertEqual({metric.label: metric.value for metric in app.metric}["通道超阈次数"], "0")
         app.time_input(key="analysis_start_time_-1_-1").set_value(time(10)).run()
         self.assertTrue(any("开始时间不能晚于" in warning.value for warning in app.warning))
         self.assertEqual(app.session_state["ai_single_batch_result"], {"private": "preserve"})

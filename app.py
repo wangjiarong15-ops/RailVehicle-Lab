@@ -16,7 +16,7 @@ from rail_vehicle.pages import ai_center
 from rail_vehicle.pages import copilot
 from rail_vehicle.pages import bogie
 from rail_vehicle.pages.suspension_lab import render_lab
-from rail_vehicle.pages.data_workflow import clear_workbench_navigation, select_workspace_page
+from rail_vehicle.pages.data_workflow import clear_workbench_navigation, render_workbench_return, select_workspace_page
 from rail_vehicle.workspace_resume import finish_workspace, render_resume_notice, restore_workspace
 from rail_vehicle.ui import (
     ANALYSIS, ANOMALIES, COMPARISON, COPILOT, LINKED, SIMULATION, REPORT, apply_design, initialize_theme, page_title, render_navigation,
@@ -28,7 +28,7 @@ def main() -> None:
         page_title="轨道车辆异常分析与三维可视化平台",
         page_icon="🚆",
         layout="wide",
-        initial_sidebar_state="expanded",
+        initial_sidebar_state="auto",
     )
     public_demo = public_demo_enabled()
     if not public_demo:
@@ -69,6 +69,7 @@ def main() -> None:
         bogie.render(linked=page == LINKED)
     elif page == SIMULATION:
         page_title("动力学仿真", "给定轨道激励，比较构架与悬挂的计算响应。")
+        render_workbench_return("simulation_return_analysis")
         parameters, model = st.columns([1, 4.5])
         with parameters:
             render_lab(model)

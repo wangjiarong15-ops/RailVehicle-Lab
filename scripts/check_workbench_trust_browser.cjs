@@ -36,10 +36,12 @@ assert.equal(address.hostname,"127.0.0.1");
       return evidence;
     };
     const threshold = () => page.locator(".st-key-analysis_threshold input");
-    const record = () => page.getByText(/批次 #2 · 来源未确认.*1\.2 m\/s²/);
+    const record = (last = 120) => page.locator("[class*='st-key-home_history_']")
+      .filter({hasText:/批次 #2 · 来源未确认.*1\.2 m\/s²/})
+      .filter({hasText:`第 1–${last} 条观测`});
     const restore = async filename => {
       await record().waitFor();
-      await page.getByRole("button",{name:"恢复分析范围",exact:true}).first().click();
+      await record().getByRole("button",{name:"恢复分析范围",exact:true}).click();
       await page.getByRole("heading",{name:"运行分析",exact:true}).waitFor();
       assert.equal(Number(await threshold().inputValue()),1.2);
       await testAxis("chart_run_unified");
@@ -50,6 +52,7 @@ assert.equal(address.hostname,"127.0.0.1");
     await page.goto(address.href);
     await page.getByRole("heading",{name:"工程工作台"}).waitFor();
     if (process.env.RAIL_WORKBENCH_RESTART === "1") {
+      await record(76).waitFor();
       await restore("analysis-after-service-restart.png");
       console.log("Fresh Edge and restarted Streamlit restored the same SQLite analysis.");
       return;
@@ -93,6 +96,40 @@ assert.equal(address.hostname,"127.0.0.1");
     await page.screenshot({path:resolve(output,"home-restored-history.png")});
     await restore("analysis-restored.png");
     console.log("Source label, exact CSV provenance, shared highlights, replay, and restored SQLite analysis passed.");
+    await page.locator(".st-key-analysis_clear_replay_scope button").click();
+    await page.getByText("分析时间范围（UTC） · 调整筛选",{exact:true}).click();
+    const seconds = page.locator('[class*="st-key-analysis_end_time_"]').getByRole("spinbutton",{name:/second|秒/i});
+    await seconds.press("1");
+    await seconds.press("5");
+    await seconds.press("Tab");
+    await page.getByText(/分析样本数：.*76 条/).waitFor();
+    await nav("动力学仿真");
+    await page.getByRole("heading",{name:"动力学仿真",exact:true}).waitFor();
+    await page.locator(".st-key-simulation_return_analysis button").click();
+    await page.getByText(/分析样本数：.*76 条/).waitFor();
+    await page.locator('[data-testid="stApp"][data-test-script-state="notRunning"]').waitFor();
+    await testAxis("chart_run_unified");
+    const chartEvent = page.locator("[class*='st-key-analysis_chart_event_']");
+    const firstOption = page.getByRole("option",{name:"#1",exact:true});
+    await chartEvent.evaluate(node=>node.scrollIntoView({block:"center",behavior:"instant"}));
+    await chartEvent.getByRole("button",{name:"Open",exact:true}).click();
+    if (!await firstOption.waitFor({timeout:2000}).then(()=>true,()=>false)) {
+      await chartEvent.getByRole("combobox").press("ArrowDown");
+    }
+    await firstOption.click();
+    await page.locator(".st-key-analysis_chart_to_bogie button").click();
+    await page.getByText("已定位到所选统计证据的异常样本。",{exact:true}).waitFor();
+    await page.locator(".st-key-bogie_window_copilot button").click();
+    await page.getByRole("heading",{name:"RailVehicle Copilot",exact:true}).waitFor();
+    await page.getByText(/当前窗口 · 批次第 1–76 条观测/).waitFor();
+    await page.getByText(/demo_run_2\.csv.*76 行.*阈值 1\.2 m\/s²/).waitFor();
+    await page.screenshot({path:resolve(output,"copilot-window.png")});
+    await page.locator(".st-key-cp_window_report button").click();
+    await page.getByText(/报告范围：批次第 1–76 条观测/).waitFor();
+    await page.locator(".st-key-generate_analysis_report button").click();
+    await page.getByRole("button",{name:"下载 PDF 报告",exact:true}).waitFor();
+    assert.deepEqual(errors,[]);
+    console.log("76-row scope and 1.2 m/s² threshold survived simulation return, replay, Copilot and PDF generation.");
   } catch (error) {
     await page?.screenshot({path:resolve(output,"failure.png")}).catch(()=>{});
     throw error;

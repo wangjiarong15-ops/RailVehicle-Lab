@@ -306,7 +306,7 @@ def report(w):
         ai_context=w.anonymous_payload if w.verified else None,
         ai_result=w.verified,
         ai_selection_fingerprint=w.data.identity,
-        provenance=report_provenance(w.data.sensors, fallback=SOURCE_LABELS[w.data.source],
+        provenance=report_provenance(w.data.sensors, fallback=w.data.source_description,
                                      source_sha256=w.data.batch.get("source_sha256")),
     )
     data["title"] = f"{SOURCE_LABELS[w.data.source]} · {data['title']}"

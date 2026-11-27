@@ -12,7 +12,8 @@ from rail_vehicle.analysis_history import SOURCES, source_kind, threshold_label,
 from rail_vehicle.pages.bogie_link import batch_replay_button, event_replay_button
 from rail_vehicle.pages.data_workflow import WORKBENCH_SOURCE, analysis_button, import_button, open_analysis
 from rail_vehicle.pages.demo_center import render_walkthrough
-from rail_vehicle.ui import ANALYSIS, ANOMALIES, REPORT, ANALYSIS_MODE, navigate, plot_chart, page_title, kpi, chart_container, empty_state, data_table, source_caption
+from rail_vehicle.ui import (ANALYSIS, ANOMALIES, REPORT, ANALYSIS_MODE, navigate, plot_chart, page_title, kpi,
+                             chart_container, empty_state, data_table, source_caption, light_theme_active)
 from rail_vehicle.dashboard_chart import (dashboard_chart, dashboard_events, display_timestamp, sample_label,
                                          DASHBOARD_POINT_LIMIT, DISPLAY_TIMEZONES, EVENTS_PER_PAGE, HOME_PLOT_CONFIG)
 
@@ -62,7 +63,8 @@ def render():
             timezone_name = "UTC"
             st.warning("该批次时间超出北京时间可显示范围，暂按 UTC 显示。")
     _render_next_step(data, preview, threshold)
-    columns = st.columns(4)
+    with st.container(key="rv-home-kpis", gap=None):
+        columns = st.columns(4, gap="small")
     for column, title, key, detail in zip(columns[:3], ("登记车辆", "导入批次", "采样点总数"),
             ("vehicle_count", "batch_count", "sample_count"), ("数据库车辆档案", "已成功导入", "数据库完整计数")):
         value = f"{data[key]:,}{' 点' if key == 'sample_count' else ''}" if data else "—"
@@ -89,14 +91,12 @@ def render():
                 with source_column:
                     st.caption(f"{preview['vehicle_code']} · 批次 #{preview['batch_id']} · {SOURCES[kind]} · "
                                f"{preview['sample_count']:,} 个采样点 · {timezone_name}")
-                    st.html('<div class="rv-legend"><span><b>◆</b> 超阈值采样点</span>'
-                            '<span><b>▰</b> 异常区段</span><span><b>│</b> 首末时间相同的区段</span>'
-                            '<span>┄ 阈值线</span></div>')
                 selected = event_column.selectbox("高亮区段", [None, *(index for index, _ in visible)],
                                                   format_func=lambda n: "请选择区段" if n is None else f"#{n}",
                                                   key=f"home_event_{preview['vehicle_id']}_{preview['batch_id']}_{threshold}_{event_page}") if visible else None
                 plot_chart(dashboard_chart(analysis, anomalies, event_page, timezone_name=timezone_name,
-                                           selected_event=selected), key="home_speed", width="stretch", config=HOME_PLOT_CONFIG)
+                                           selected_event=selected, light=light_theme_active()),
+                           key="home_speed", width="stretch", config=HOME_PLOT_CONFIG)
                 if selected is not None:
                     event = events[selected-1]
                     event_replay_button(label="在三维中定位该区段", key="home_event_replay", vehicle_id=preview["vehicle_id"],
@@ -110,6 +110,7 @@ def render():
                     data_table([{"编号": f"#{index}", "通道": "横向" if event["field"] == "lateral_accel" else "垂向",
                                  f"开始时间（{timezone_name}）": display_timestamp(event["start_timestamp"], timezone_name).isoformat(),
                                  f"结束时间（{timezone_name}）": display_timestamp(event["end_timestamp"], timezone_name).isoformat(),
+                                 "超阈值样本数": event["sample_count"],
                                  "峰值加速度（m/s²，带符号）": event["maximum_signed_value"],
                                  "原始峰值记录": sample_label(analysis["samples"][event["peak_index"]], event["peak_index"])}
                                 for index, event in visible])
@@ -118,7 +119,8 @@ def render():
                 with st.expander("数据范围与绘图说明"):
                     st.caption(f"预览使用整个车辆批次计算，绘图每通道最多 {DASHBOARD_POINT_LIMIT:,} 条，"
                                "分段保留极值和本页区段的首末及峰值记录。")
-                    st.caption("时区切换不改变样本、指标或事件数量。空档不插值，也不证明空档内持续异常。")
+                    st.caption("重复时刻与长采样间隔处断线。经抽点的批次只画原始点。"
+                               "同刻区段以竖线表示，可能包含多条同一时刻的超阈值观测。")
                     st.caption(EVENT_MERGE_NOTE)
                     st.caption("预置和自定义阈值供分析使用。当前批次无已核验标准限值。")
             st.warning("⚠️ 数据异常仅用于分析参考，不构成车辆故障或运行安全结论。")
@@ -138,11 +140,14 @@ def render():
             st.subheader("最近分析")
             saved = data.get("recent", []) if data else []
             for row in saved[:5]:
-                st.caption(f"{row['vehicle_code']} · 批次 #{row['batch_id']} · {SOURCES[source_kind(row['source_kind'])]} · "
-                           f"{row['analyzed_at']} · |a| > {row['threshold']:g} m/s²")
-                st.button("恢复分析范围", key=f"home_restore_{row['id']}", on_click=open_analysis,
-                          args=(row["vehicle_id"], row["batch_id"]),
-                          kwargs=dict(threshold=row["threshold"], scope=saved_scope(row), saved=row))
+                with st.container(key=f"home_history_{row['id']}", gap="xxsmall"):
+                    st.caption(f"{row['vehicle_code']} · 批次 #{row['batch_id']} · {SOURCES[source_kind(row['source_kind'])]} · "
+                               f"|a| > {row['threshold']:g} m/s²")
+                    analyzed_at = row["analyzed_at"].replace("T", " ").replace("+00:00", " UTC")
+                    st.caption(f"第 {row['first_row']+1:,}–{row['last_row']+1:,} 条观测 · {analyzed_at}")
+                    st.button("恢复分析范围", key=f"home_restore_{row['id']}", on_click=open_analysis,
+                              args=(row["vehicle_id"], row["batch_id"]),
+                              kwargs=dict(threshold=row["threshold"], scope=saved_scope(row), saved=row))
             records = [row for row in st.session_state.get("recent_analysis_records", [])
                        if not saved or row["分析类型"] != "单批次统计分析" or row["来源"] == "虚构演示"]
             if not records and not saved:
@@ -163,8 +168,8 @@ def render():
                 st.subheader("当前批次摘要")
                 st.caption(f"{preview['vehicle_code']} · 批次 #{preview['batch_id']}")
                 st.metric("平均速度（km/h）", f"{analysis['speed']['mean']:.2f}")
-                st.metric("统计异常点", len(anomalies["points"]))
-                st.caption(f"加速度绝对值 > {threshold:g} m/s²；按通道计数。")
+                st.metric("超阈值观测（按行去重）", analysis["threshold"]["either"]["count"])
+                st.caption(f"按通道计 {len(anomalies['points'])} 次超阈值；横向与垂向分开计算。")
 
 
 

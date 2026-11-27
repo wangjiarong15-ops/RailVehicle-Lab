@@ -43,7 +43,8 @@ from rail_vehicle.pages.data_workflow import (
 from rail_vehicle.ai.center_state import clear_context
 from rail_vehicle.curve_preview import CURVE_POINT_LIMIT, curve_preview
 from rail_vehicle.replay_evidence import ReplayEvidenceScope, ReportComparison
-from rail_vehicle.ui import AI, ANALYSIS, ANOMALIES, BOGIE, REPORT, plot_chart, record_analysis, source_caption, workflow_caption, navigate
+from rail_vehicle.ui import (AI, ANALYSIS, ANOMALIES, BOGIE, REPORT, light_theme_active, plot_chart, record_analysis,
+                             source_caption, workflow_caption, navigate)
 from rail_vehicle.run_data import (
     MAX_CSV_SIZE_MB,
     PREVIEW_LIMIT,
@@ -725,7 +726,8 @@ def _render_dynamics_analysis(*, demo: bool = False, view=ANALYSIS) -> None:
     if view == ANALYSIS:
         selected_event = _render_run_curves(main_view, result, threshold=threshold, anomaly_result=anomaly_result,
                            replay_scope=replay_scope, by_row=replay_scope is not None and selected_start == selected_end,
-                           first_row=playback_scope.first_row if playback_scope else 0, context=batch_identity)
+                           first_row=playback_scope.first_row if playback_scope else 0, context=batch_identity,
+                           gap_cutoff=sampling_review["gap_cutoff_seconds"])
         if selected_event is not None:
             with main_view:
                 event = anomaly_result["events"][selected_event]
@@ -807,7 +809,8 @@ def _render_dynamics_analysis(*, demo: bool = False, view=ANALYSIS) -> None:
                                 ai_payload, ai_selection, demo=demo)
 
 
-def _render_run_curves(container, result, *, threshold, anomaly_result, replay_scope, by_row, first_row=0, context=None):
+def _render_run_curves(container, result, *, threshold, anomaly_result, replay_scope, by_row, first_row=0, context=None,
+                       gap_cutoff=None):
     selected = None
     with container:
         st.subheader("速度统计")
@@ -841,7 +844,8 @@ def _render_run_curves(container, result, *, threshold, anomaly_result, replay_s
             selected = st.selectbox("高亮区段", [None, *section],
                                     format_func=lambda i: "请选择区段" if i is None else f"#{i}",
                                     key=f"analysis_chart_event_{context}_{threshold}_{first_row}_{len(ordered_samples)}_{page}") if total else None
-            plot_chart(dashboard_chart(result, anomaly_result, page, first_row=first_row, selected_event=selected),
+            plot_chart(dashboard_chart(result, anomaly_result, page, first_row=first_row, selected_event=selected,
+                                       light=light_theme_active(), gap_cutoff=gap_cutoff),
                        width="stretch", key="chart_run_unified")
         curve_tabs = st.tabs([spec[1] for spec in chart_specs]) if by_row else []
         for curve_tab, (field, title, y_title) in zip(curve_tabs, chart_specs):
@@ -970,9 +974,10 @@ def _render_anomaly_view(result, anomaly_result, threshold, vehicle_id, batch_id
         )
         st.caption(EVENT_MERGE_NOTE)
         st.caption(EVENT_DURATION_NOTE)
-        anomaly_columns = st.columns(2)
-        anomaly_columns[0].metric("数据异常点", len(anomaly_result["points"]), border=True)
-        anomaly_columns[1].metric("统计异常区段", len(anomaly_result["events"]), border=True)
+        anomaly_columns = st.columns(3)
+        anomaly_columns[0].metric("超阈值观测（按行去重）", result["threshold"]["either"]["count"], border=True)
+        anomaly_columns[1].metric("通道超阈次数", len(anomaly_result["points"]), border=True)
+        anomaly_columns[2].metric("统计异常区段", len(anomaly_result["events"]), border=True)
         event_index = render_event_review(result["samples"], anomaly_result, {
             "vehicle_id": vehicle_id, "batch_id": batch_id,
             "start": selected_start.isoformat(), "end": selected_end.isoformat(),
@@ -1027,7 +1032,8 @@ def _render_report_view(vehicles, selected_vehicle, vehicle_id, batch_id, batche
                 else:
                     st.info("最近一次标定复核与当前批次、范围或配置版本不一致，报告将使用当前运行分析。")
         selected_batch = next(batch for batch in batches if batch["id"] == batch_id)
-        provenance = report_provenance(snapshot, fallback="内置虚构演示" if demo else "历史导入 · 数据来源未声明",
+        declaration = source_kind(selected_batch.get("source_kind"), selected_batch.get("engineering_json"))
+        provenance = report_provenance(snapshot, fallback="内置虚构演示" if demo else SOURCES[declaration],
                                        source_sha256=selected_batch.get("source_sha256"))
         st.markdown("**报告内容预览**")
         st.write(f"{'虚构演示' if demo else '历史导入'} · 车辆 {selected_vehicle['vehicle_code']} · 批次 #{batch_id}")
@@ -1044,6 +1050,8 @@ def _render_report_view(vehicles, selected_vehicle, vehicle_id, batch_id, batche
         end_text = selected_end.replace(tzinfo=None).isoformat(sep=" ", timespec=timespec)
         st.caption(f"{range_label}：{start_text} 至 {end_text}")
         st.write(f"{result['sample_count']:,} 条观测 · {len(anomaly_result['events']):,} 个规则异常区段")
+        st.caption(f"超阈值观测 {result['threshold']['either']['count']:,} 条（按行去重） · "
+                   f"通道超阈 {len(anomaly_result['points']):,} 次。")
         st.caption(f"异常规则：加速度绝对值大于 {threshold:g} m/s²。")
         st.caption("包含运行统计、曲线、异常记录和采样质量。AI 解读仅在与本报告证据及范围完全匹配时附入。")
         report_state_key = "demo_analysis_report_key" if demo else "analysis_report_key"

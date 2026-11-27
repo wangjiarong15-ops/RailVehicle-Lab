@@ -24,7 +24,8 @@ from rail_vehicle.engineering_intake import source_label
 from rail_vehicle.sensor_mapping import CHANNELS
 from rail_vehicle.sensor_store import active_channels
 from rail_vehicle.sensor_evidence import viewer_sensors
-from rail_vehicle.pages.data_workflow import WORKBENCH_RETURN, analysis_button, render_replay_return, return_to_workbench
+from rail_vehicle.pages.data_workflow import (WORKBENCH_RETURN, analysis_button, open_replay_copilot,
+                                               render_replay_return, return_to_workbench)
 from rail_vehicle.replay import ReplayState, advance_replay, comparison_reference, control_replay, prepare_replay
 from rail_vehicle.replay_evidence import (
     MAX_WINDOW_EXPORT_ROWS, ReplayEvidenceScope, ReportComparison, comparison_evidence_csv, replay_evidence_csv,
@@ -647,6 +648,8 @@ def render(*, linked=False):
     window = active_loop["window"] if active_loop else None
     static_window = window is not None and not window.timed
     with main:
+        if notice := st.session_state.pop("cp_window_notice", None):
+            st.warning(notice)
         state = st.session_state.get(STATE_KEY, ReplayState())
         duration = track.duration if track is not None else ILLUSTRATION_PERIOD
         transport = st.container(key="bogie_transport", gap="small")
@@ -663,6 +666,8 @@ def render(*, linked=False):
                 status.info(f"循环窗口：{window.label} · 批次相对时间 {window.start:.6g}–{window.end:.6g} 秒")
             exit_loop.button("退出逐帧核查" if static_window else "退出循环", key="bogie_exit_loop",
                              on_click=_clear_loop, kwargs={"pause": True})
+            st.button("在 Copilot 核查此窗口", key="bogie_window_copilot", on_click=open_replay_copilot,
+                      args=(selection, track, window, threshold), icon=":material/forum:")
             _window_evidence(track, window, selection, threshold)
         with transport, st.container(horizontal=True, vertical_alignment="bottom"):
             action = None
@@ -725,7 +730,7 @@ def render(*, linked=False):
         snapshot = channel = None
         if source == HISTORY and track is not None:
             snapshot = read_snapshot(selection[1], selection[2])
-            if snapshot.get("engineering"):
+            if snapshot:
                 st.caption(f"数据来源 · {source_label(snapshot)}。波形与异常使用源 CSV，三维运动为示意。")
             bindings = active_channels(snapshot)
             if bindings:

@@ -40,6 +40,16 @@ class Dataset:
             json.dumps(fields, sort_keys=True, default=str, allow_nan=False).encode()
         ).hexdigest()
 
+    @property
+    def source_description(self):
+        if self.source != "history":
+            return SOURCE_LABELS[self.source]
+        from rail_vehicle.analysis_history import SOURCES, source_kind
+        from rail_vehicle.engineering_intake import source_label
+
+        declared = source_kind(self.batch.get("source_kind"), self.batch.get("engineering_json"))
+        return source_label(self.sensors, SOURCES[declared])
+
 
 def csv_datasets(content, filename, threshold):
     if len(content) > 2_000_000:

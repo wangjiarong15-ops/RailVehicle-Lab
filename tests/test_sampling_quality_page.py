@@ -47,7 +47,7 @@ class SamplingQualityPageTests(unittest.TestCase):
             context = deepcopy(ai.call_args.kwargs["payload"])
             metrics = {metric.label: metric.value for metric in app.metric}
             app.button(key="batch_continue_异常检测").click().run()
-            anomaly_points = {metric.label: metric.value for metric in app.metric}["数据异常点"]
+            anomaly_points = {metric.label: metric.value for metric in app.metric}["通道超阈次数"]
             app.button(key="batch_continue_分析报告").click().run()
             app.button(key="generate_analysis_report").click().run()
             self.assertFalse(app.exception)
@@ -72,7 +72,7 @@ class SamplingQualityPageTests(unittest.TestCase):
             self.assertEqual(metrics["平均速度（km/h）"], updated["平均速度（km/h）"])
             app.button(key="batch_continue_异常检测").click().run()
             updated = {metric.label: metric.value for metric in app.metric}
-            self.assertEqual(anomaly_points, updated["数据异常点"])
+            self.assertEqual(anomaly_points, updated["通道超阈次数"])
 
     def test_rule_changes_recompute_gaps_and_keep_other_results(self):
         app = AppTest.from_function(quality_app)

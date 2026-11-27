@@ -89,6 +89,17 @@ async function capture(browser,width,height,theme) {
       }
       await page.getByRole("button",{name:"Stop",exact:true}).waitFor({state:"hidden"});
       await main.locator('[data-stale="true"]').first().waitFor({state:"detached"});
+      if (!baseline && ["home","analysis","events"].includes(name)) {
+        const key = {home:"home_speed",analysis:"chart_run_unified",events:"anomaly_review_chart"}[name];
+        await page.waitForFunction(chartKey => {
+          const chart = document.querySelector(`.st-key-${chartKey} .js-plotly-plot`);
+          return chart?.data?.length && chart.querySelector(".main-svg") && !chart.closest('[data-stale="true"]');
+        }, key);
+      }
+      if (!baseline) {
+        const active = sidebar.locator('[class*="st-key-nav_"] button[data-testid="stBaseButton-primary"]');
+        assert.equal(await active.count(),1,`Expected one active route in ${name}`);
+      }
       assert.equal(await page.getByTestId("stException").count(),0,name);
       assert(await main.evaluate(n=>n.scrollWidth<=n.clientWidth+1),name);
       await main.evaluate(n=>{ for(let x=n;x;x=x.parentElement) if(x.scrollTop) x.scrollTop=0; });
@@ -114,6 +125,56 @@ async function capture(browser,width,height,theme) {
     throw new Error(width+"/"+theme+"/"+current+" "+error.message);
   } finally {await page.close();}
 }
+async function checkMobile(browser, theme) {
+  const page = await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
+  const main = page.getByTestId("stMainBlockContainer");
+  const expand = page.getByTestId("stExpandSidebarButton");
+  const url = new URL(address);
+  url.searchParams.set("embed_options",theme+"_theme");
+  const expected = new Map([
+    ["home","工程工作台"],["vehicles","车辆参数"],["data","CSV 数据导入"],
+    ["analysis","运行分析"],["events","异常检测"],["studio","三维诊断工作台"],
+    ["simulation","动力学仿真"],["copilot","RailVehicle Copilot"],["report","分析报告"],
+  ]);
+  let current = "home";
+  try {
+    for (const [name,route] of routes.filter(([name])=>expected.has(name))) {
+      current = name;
+      url.searchParams.set("rail_page",route);
+      await page.goto(url.href);
+      await main.getByRole("heading",{name:expected.get(name),exact:true}).first().waitFor();
+      await expand.waitFor();
+      await page.locator('[data-testid="stApp"][data-test-script-state="notRunning"]').waitFor();
+      assert.equal(await page.getByTestId("stException").count(),0,name);
+      assert(await main.evaluate(node=>node.scrollWidth<=node.clientWidth+1),`${name} overflows`);
+      if (name === "home") {
+        const metrics = main.locator(".st-key-rv-home-kpis [data-testid='stColumn']");
+        const boxes = await metrics.evaluateAll(items=>items.map(node=>node.getBoundingClientRect().toJSON()));
+        assert.equal(boxes.length,4);
+        assert(boxes[0].x < boxes[1].x && boxes[0].top === boxes[1].top && boxes[2].top > boxes[0].top);
+      }
+      if (name === "copilot") {
+        const box = await main.getByTestId("stChatInputTextArea").boundingBox();
+        assert(box && box.y+box.height < 844,"Mobile Copilot composer outside first screen");
+      }
+      if (["studio","simulation"].includes(name)) {
+        const model=page.frameLocator("iframe[title*=bogie_viewer]").first();
+        await model.locator('#workbench[data-model="glb"][data-status="ready"]').waitFor();
+      }
+      await page.screenshot({path:resolve(output,`390-${theme}-${name}.png`),animations:"disabled"});
+    }
+    await expand.click();
+    const sidebar = page.getByTestId("stSidebar");
+    await sidebar.getByRole("button",{name:/设置$/}).click();
+    await page.getByRole("link",{name:/浅色/}).waitFor();
+    await page.screenshot({path:resolve(output,`390-${theme}-settings.png`),animations:"disabled"});
+    assert.equal(await page.getByTestId("stException").count(),0);
+    console.log(390,theme,expected.size,"mobile routes and settings passed");
+  } catch(error) {
+    await page.screenshot({path:resolve(output,`390-${theme}-${current}-failure.png`)});
+    throw error;
+  } finally {await page.close();}
+}
 (async()=>{
   await mkdir(output,{recursive:true});
   const browser=await chromium.launch({executablePath:process.env.RAIL_BROWSER_PATH,
@@ -126,6 +187,7 @@ async function capture(browser,width,height,theme) {
     for (const theme of ["dark","light"]) {
       const results=await Promise.allSettled([[1366,768],[1920,1080]].map(([w,h])=>capture(browser,w,h,theme)));
       for(const result of results) if(result.status==="rejected") throw result.reason;
+      if (!baseline) await checkMobile(browser,theme);
     }
   } finally {await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

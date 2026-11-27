@@ -26,7 +26,8 @@ class DashboardVisualTests(unittest.TestCase):
         self.assertEqual(len(figure.data), 5)
         for index, field in ((0,"speed_kmh"),(1,"lateral_accel"),(3,"vertical_accel")):
             self.assertEqual(list(figure.data[index].y), [row[field] for row in self.analysis["samples"]])
-            self.assertEqual(figure.data[index].mode, "markers")
+            self.assertEqual(figure.data[index].mode, "lines+markers")
+            self.assertFalse(figure.data[index].connectgaps)
         # Anomaly traces must not consume a color slot and change channel identity.
         self.assertEqual([figure.data[i].marker.color for i in (0, 1, 3)],
                          ["#4299E8", "#24B9B0", "#A38CF0"])

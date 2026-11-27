@@ -28,6 +28,11 @@ def plot_chart(figure, *, config=None, **kwargs):
     return st.plotly_chart(figure, theme="streamlit", config=chart_config, **kwargs)
 
 
+def light_theme_active():
+    modes = st.query_params.get_all("embed_options")
+    return "light_theme" in modes or ("dark_theme" not in modes and st.context.theme.type == "light")
+
+
 def apply_design():
     if (not {"light_theme", "dark_theme"}.intersection(st.query_params.get_all("embed_options"))
             and st.query_params.get(RESUME_PARAM) != "1"):
@@ -74,6 +79,18 @@ def apply_design():
       outline-offset:1px}
     [data-testid="stChatInput"] textarea {font-size:1.05rem}
     @media(max-height:800px){.rv-nav-label{padding-top:.22rem}[class*="st-key-nav_"] button{min-height:1.7rem}}
+    @media(max-width:640px){
+      [data-testid="stMainBlockContainer"] {padding-inline:1rem}
+      [data-testid="stHeading"] h1 {font-size:1.6rem}
+      [data-testid="stHeading"] h2 {font-size:1.4rem}
+      .st-key-rv-home-kpis [data-testid="stHorizontalBlock"] {
+        display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.55rem;
+      }
+      .st-key-rv-home-kpis [data-testid="stColumn"] {width:auto;min-width:0}
+      .st-key-rv-home-kpis [class*="st-key-rv-kpi-"] {padding-inline:.55rem}
+      .st-key-rv-home-kpis [data-testid="stMetricValue"] {font-size:1.4rem}
+      [class*="st-key-nav_"] button {min-height:2.45rem}
+    }
     </style>""")
 
 
