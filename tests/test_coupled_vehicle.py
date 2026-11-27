@@ -3,7 +3,6 @@ import json
 
 import numpy as np
 import pytest
-from scipy.integrate import solve_ivp
 
 from rail_vehicle.coupled_vehicle import (CoupledCase, case_config, force_at, frequency_response, matrices,
                                           read_case, simulate, spatial_input, summary)
@@ -33,6 +32,7 @@ def test_matrices_zero_input_and_static_translation():
 
 
 def test_dop853_reference_convergence_equilibrium_and_decay():
+    integration = pytest.importorskip("scipy.integrate")
     case = CoupledCase(duration_s=2)
     m, c, k, rows, _ = matrices(case)
     n = len(m)
@@ -46,8 +46,8 @@ def test_dop853_reference_convergence_equilibrium_and_decay():
     coarse = simulate(case, substeps=5, include_modes=False)
     fine = simulate(case, substeps=10, include_modes=False)
     t = fine["time_s"]
-    independent = solve_ivp(rhs, (0, case.duration_s), np.zeros(2*n), method="DOP853",
-                            t_eval=t, max_step=.004, atol=2e-12, rtol=2e-10)
+    independent = integration.solve_ivp(rhs, (0, case.duration_s), np.zeros(2*n), method="DOP853",
+                                        t_eval=t, max_step=.004, atol=2e-12, rtol=2e-10)
     assert independent.success
     error = np.max(np.abs(np.array(coarse["q"])-independent.y[:n].T))
     refined_error = np.max(np.abs(np.array(fine["q"])-independent.y[:n].T))

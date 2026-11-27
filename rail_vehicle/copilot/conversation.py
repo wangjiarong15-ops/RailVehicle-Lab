@@ -113,8 +113,9 @@ class Job:
             else:
                 plan = local_plan(task, previous)
             validate_plan(plan)
-            computations = [step for step in plan if step["tool"] != "report"]
-            reports = [step for step in plan if step["tool"] == "report"]
+            report_tools = {"report", "coupled_report"}
+            computations = [step for step in plan if step["tool"] not in report_tools]
+            reports = [step for step in plan if step["tool"] in report_tools]
             self.queue.put(dict(status="plan", calls=computations + reports))
             reviewed = set()
 
@@ -123,7 +124,7 @@ class Job:
                     for event in execute(work, steps, cancelled=self.cancel.is_set, deadline=deadline):
                         checkpoint()
                         self.queue.put(event)
-                        if event["status"] == "done" and event["tool"] != "report":
+                        if event["status"] == "done" and event["tool"] not in report_tools:
                             work.report_items.append(event)
                         if event["status"] == "done" and event["result"].scene:
                             work.previous_scene = event["result"].scene

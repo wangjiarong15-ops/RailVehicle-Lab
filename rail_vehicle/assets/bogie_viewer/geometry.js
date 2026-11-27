@@ -168,7 +168,7 @@ export function createAssembly(scene, data, material, detailed) {
     links.push({node, a: start, b: end, segments, part});
   }
 
-  let visible = new Set(), highlight = new Set(), selected, spread = 0, wheelTravel = [0, 0], deckAllowed = false;
+  let visible = new Set(), highlight = new Set(), selected, spread = 0, wheelTravel = [0, 0], wheelY = [0, 0], deckAllowed = false;
   const shadowCasters = objects.filter(mesh => mesh.castShadow);
   // Keep the imported steel, rubber and paint finishes readable during inspection.
   const tinted = new Map();
@@ -196,7 +196,9 @@ export function createAssembly(scene, data, material, detailed) {
       to.addScaledVector(link.offset, spread);
     } else {
       from.applyMatrix4(wheel.matrixWorld);
-      from.z += wheelTravel[link.a.x > 0 ? 0 : 1];
+      const axle = link.a.x > 0 ? 0 : 1;
+      from.z += wheelTravel[axle];
+      from.y += wheelY[axle];
       to.applyMatrix4(frame.matrixWorld);
     }
   }
@@ -247,16 +249,23 @@ export function createAssembly(scene, data, material, detailed) {
     },
     pose(phase, lateral, vertical, yaw, pitch = 0, wheelOffsets, body) {
       // Tilt about the midpoint of the upper seats, in the two-wheel support plane.
+      const coupled = Boolean(body?.wheelY);
       frame.position.set(seatHeight*Math.sin(pitch), lateral, vertical+seatHeight*(1-Math.cos(pitch)));
+      if (coupled) frame.position.set(0, lateral, vertical);
+      frame.rotation.x = body?.frameRoll ?? 0;
       frame.rotation.y = -pitch;
       frame.rotation.z = yaw;
       // Wheelset stays at rail height. Brake discs rotate with axles; calipers and axleboxes do not.
-      wheel.position.y = lateral * (body?.rigidSupport ? 1 : data.wheelPoseGain);
-      wheel.rotation.z = yaw * data.wheelPoseGain;
-      wheelTravel = detailed && wheelOffsets ? wheelOffsets : [0, 0];
+      wheel.position.y = coupled ? 0 : lateral * (body?.rigidSupport ? 1 : data.wheelPoseGain);
+      wheel.rotation.z = coupled ? 0 : yaw * data.wheelPoseGain;
+      wheelTravel = (detailed || coupled) && wheelOffsets ? wheelOffsets : [0, 0];
+      wheelY = body?.wheelY ?? [0, 0];
       for (const holder of wheel.children) {
         const end = holder.userData.wheelEnd;
-        if (end !== undefined) holder.position.z = holder.userData.offset.z * spread + wheelTravel[end];
+        if (end !== undefined) {
+          holder.position.y = holder.userData.offset.y * spread + wheelY[end];
+          holder.position.z = holder.userData.offset.z * spread + wheelTravel[end];
+        }
       }
       for (const axle of spins) axle.rotation.y = phase;
       if (deck) {

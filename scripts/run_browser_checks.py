@@ -26,6 +26,7 @@ SUITES = {
     "model": "check_bogie_browser.cjs",
     "evolution": "check_evolution_browser.cjs",
     "evolution-ii": "check_evolution_ii_browser.cjs",
+    "evolution-iii": "check_evolution_iii_browser.cjs",
     "resume": "check_workspace_resume_browser.cjs",
     "frontend": "check_frontend_product_browser.cjs",
     "interface": "check_interface_browser.cjs",

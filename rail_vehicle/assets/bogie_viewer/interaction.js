@@ -60,7 +60,7 @@ export function inspection(canvas, data, assembly, rig, onSelect, reset, parts, 
   const matches = (mesh, part) => mesh.userData.id === part || mesh.userData.part === part;
   const active = (mesh) => mesh.visible && mesh.parent.visible;
   function start(event) {
-    down = event.button === 0 ? [event.clientX, event.clientY] : null;
+    down = measure.enabled?.() !== false && event.button === 0 ? [event.clientX, event.clientY] : null;
   }
   function pick(event) {
     if (!down || Math.hypot(event.clientX - down[0], event.clientY - down[1]) > 5) return;
@@ -92,7 +92,7 @@ export function inspection(canvas, data, assembly, rig, onSelect, reset, parts, 
   }
   canvas.addEventListener("pointerdown", start);
   canvas.addEventListener("pointerup", pick);
-  const doubleClick = () => { if (!measure.active()) zoom(); };
+  const doubleClick = () => { if (measure.enabled?.() !== false && !measure.active()) zoom(); };
   canvas.addEventListener("dblclick", doubleClick);
   focus.addEventListener("click", zoom);
   resetButton.addEventListener("click", reset);

@@ -17,6 +17,7 @@ from rail_vehicle.bogie_model_spec import part_label
 from rail_vehicle.bogie_replay import TEACHING
 from rail_vehicle.copilot.context import Dataset, SOURCE_LABELS
 from rail_vehicle.copilot.knowledge import search
+from rail_vehicle.coupled_vehicle import CoupledCase, playback as coupled_playback
 from rail_vehicle.data_quality import review_sampling_timestamps
 from rail_vehicle.dynamics import analyze_run_data
 from rail_vehicle.event_anchor import anchors_by_evidence
@@ -29,6 +30,7 @@ from rail_vehicle.sensor_evidence import scope_evidence
 from rail_vehicle.timestamp_utils import parse_iso_timestamp
 from rail_vehicle.vibration import analyze_vibration, VibrationUnavailableError
 from rail_vehicle.vehicle_dynamics import TRACKS, VehicleCase, bogie_playback, compare_vehicle_cases, summary
+from rail_vehicle.virtual_trials import TrialPlan, run_trial, trial_pdf
 
 
 @dataclass
@@ -54,6 +56,7 @@ class Work:
     report_items: list = field(default_factory=list)
     lateral_case: LateralCase | None = None
     inspection_state: dict | None = None
+    coupled_case: CoupledCase | None = None
 
     @cached_property
     def anonymous_payload(self):
@@ -396,12 +399,58 @@ def lateral_comparison(w, speed, anti_roll_factor):
                   scene={"simulation": lateral_playback(after)})
 
 
+def optimize_coupled(w, speeds, stiffness, damping, max_roll_mrad, max_travel_mm, *, checkpoint):
+    case = w.coupled_case or CoupledCase()
+    plan = TrialPlan(speeds or (case.speed_m_s,), stiffness, damping, max_roll_mrad, max_travel_mm)
+    assessment, response = run_trial(case, plan, checkpoint=checkpoint)
+    choice = assessment["recommendation"]
+    message = (f"实际计算 {len(assessment['candidates'])} 个整车教学工况。"
+               f"约束为侧滚 ≤ {plan.max_roll_mrad:g} mrad、二系横向行程 ≤ {plan.max_travel_mm:g} mm。")
+    if w.coupled_case is None:
+        message += "使用内置教学工况。"
+    rows = [{"速度 m/s": row["speed_m_s"], "横向刚度倍数": row["stiffness_factor"], "横向阻尼倍数": row["damping_factor"],
+             "横向 RMS m/s²": row["metrics"]["body_y_rms_m_s2"], "侧滚 mrad": row["metrics"]["roll_peak_mrad"],
+             "行程 mm": row["metrics"]["secondary_y_peak_mm"], "初筛通过": not row["violations"],
+             "计算证据": row["metrics"]["evidence_id"]} for row in assessment["candidates"]]
+    provenance = {"coupled_trial": assessment}
+    if choice is None:
+        return Output(message + "网格内没有复算通过的候选方案。", rows=rows, provenance=provenance)
+    base = assessment["refined_baseline"]["metrics"]["body_y_rms_m_s2"]
+    metric = choice["metrics"]
+    winning_row = assessment["candidates"][choice["index"]]
+    message += (f"网格最优可行工况为 {winning_row['speed_m_s']:g} m/s，二系横向刚度与阻尼为基准的 "
+                f"{winning_row['stiffness_factor']:g}× 和 {winning_row['damping_factor']:g}×。"
+                f"两次复算的横向 RMS 分别为 {base:.5g} 和 {metric['body_y_rms_m_s2']:.5g} m/s²，"
+                f"候选峰值发生在 {metric['peak_y_time_s']:.3f} s。[{metric['evidence_id']}]")
+    if metric["body_y_rms_m_s2"] >= base:
+        message += "当前网格未找到低于基准 RMS 的响应。"
+    return Output(message, rows=rows, provenance=provenance,
+                  scene={"simulation": coupled_playback(response, gain=2),
+                         "transport": {"action": "pause", "seconds": metric["peak_y_time_s"]}},
+                  plot=series(response["time_s"], {"车体横向加速度": [row[10] for row in response["ddq"]]},
+                              "试验时间（s）", "车体横向加速度（m/s²）"))
+
+
+def coupled_report(w):
+    study = next(((entry["result"].provenance or {}).get("coupled_trial") for entry in reversed(w.report_items)
+                  if entry["tool"] == "optimize_coupled"), None)
+    if study is None:
+        raise ValueError("请先在此会话计算整车参数扫描，再导出试验报告。")
+    return Output(f"已生成整车教学试验 PDF。证据编号 {study['study_id']}。",
+                  pdf=trial_pdf(study), provenance={"coupled_trial": study})
+
+
 def enum(values):
     return {"type": "string", "enum": list(values)}
 
 
 def number(low, high):
     return {"type": "number", "minimum": low, "maximum": high}
+
+
+def scan_axis(low, high, minimum=1):
+    return {"type": "array", "items": number(low, high), "minItems": minimum, "maxItems": 3,
+            "uniqueItems": True}
 
 
 @dataclass(frozen=True)
@@ -480,6 +529,11 @@ TOOLS = {
     "simulate_lateral": Tool("计算车体横移与侧滚工况对照", lateral_comparison,
                              {"speed": {**number(2, 60), "type": ["number", "null"]},
                               "anti_roll_factor": number(.5, 2)}),
+    "optimize_coupled": Tool("扫描并复算整车二系横向参数", optimize_coupled,
+                             {"speeds": scan_axis(2, 70, 0), "stiffness": scan_axis(.5, 1.5),
+                              "damping": scan_axis(.5, 1.5), "max_roll_mrad": number(.01, 100),
+                              "max_travel_mm": number(.01, 200)}),
+    "coupled_report": Tool("生成整车教学试验 PDF", coupled_report),
     "report": Tool("生成当前范围 PDF", report),
 }
 
@@ -506,26 +560,29 @@ def validate_plan(plan):
 
 
 UNBOUND_TOOLS = frozenset({"knowledge", "inspect", "current_inspection", "cases", "simulate", "simulate_vehicle",
-                           "simulate_lateral", "transport"})
+                           "simulate_lateral", "transport", "optimize_coupled", "coupled_report"})
 
 
 def execute(w, plan, *, cancelled=lambda: False, deadline=None):
     validate_plan(plan)
     if w.data is None and any(step["tool"] not in UNBOUND_TOOLS for step in plan):
         raise ValueError("这项操作需要运行数据。请从「数据来源与附件」选择批次，或使用内置虚构批次体验。")
-    for call in plan:
+    def checkpoint():
         if cancelled() or (deadline is not None and monotonic() >= deadline):
             raise TimeoutError("任务已停止或超过时间预算。")
+
+    for call in plan:
+        checkpoint()
         start = monotonic()
         key = call["tool"]
         yield {"status": "running", "tool": key, "args": call["args"]}
-        result = TOOLS[key].handler(w, **call["args"])
+        arguments = {**call["args"], "checkpoint": checkpoint} if key == "optimize_coupled" else call["args"]
+        result = TOOLS[key].handler(w, **arguments)
         if result.refs:
             ids = collect_evidence_ids(w.payload)
             if not set(result.refs) <= ids:
                 raise ValueError("工具引用的证据不属于当前计算结果。")
-        if cancelled() or (deadline is not None and monotonic() >= deadline):
-            raise TimeoutError("任务已停止或超过时间预算。")
+        checkpoint()
         yield {
             "status": "done",
             "tool": key,

@@ -28,11 +28,38 @@ def resolve_event_reference(prompt, previous, selected):
     return f"复核 {eid}，{prompt}"
 
 
+def coupled_plan(text, previous_args=None):
+    args = dict(previous_args or {"speeds": [], "stiffness": [.7, 1., 1.3], "damping": [.7, 1., 1.3],
+                                 "max_roll_mrad": 5., "max_travel_mm": 20.})
+    value = r"[-+]?\d+(?:\.\d+)?"
+    values = rf"{value}(?:\s*[,，、/]\s*{value})*"
+    for key, pattern in (("speeds", rf"(?:速度\s*[:：]?\s*)?({values})\s*m/s(?![²2])"),
+                         ("stiffness", rf"刚度(?:倍数|倍率|系数)\s*[:：]?\s*({values})"),
+                         ("damping", rf"阻尼(?:倍数|倍率|系数)\s*[:：]?\s*({values})")):
+        if match := re.search(pattern, text):
+            args[key] = [float(v) for v in re.findall(value, match[1])]
+    for key, label, unit in (("max_roll_mrad", "侧滚", "mrad"), ("max_travel_mm", "行程", "mm")):
+        if match := re.search(rf"{label}(?:峰值)?\s*(?:不超过|小于等于|≤|上限(?:调整为|改为|到|为|[:：])?)\s*({value})\s*{unit}", text):
+            args[key] = float(match[1])
+    return args
+
+
 def local_plan(prompt, previous=()):
     text = prompt.strip().lower()
     history = {item["tool"]: item["args"] for item in previous}
     previous_axis = next((c["args"]["axis"] for c in reversed(previous) if "axis" in c["args"]), "lateral")
     axis = "vertical" if "垂向" in text else "lateral" if "横向" in text else previous_axis
+    asks_for_report = any(word in text for word in ("报告", "pdf"))
+    if (any(word in text for word in ("参数扫描", "整车试验扫描", "整车优化"))
+            or ("刚度" in text and "阻尼" in text and any(word in text for word in ("优化", "降低", "扫描", "比较"))
+                and any(word in text for word in ("二系", "横向", "整车")))
+            or ("optimize_coupled" in history and "上限" in text and any(word in text for word in ("复算", "再", "改")))):
+        steps = [call("optimize_coupled", **coupled_plan(text, history.get("optimize_coupled")))]
+        if asks_for_report:
+            steps.append(call("coupled_report"))
+        return validate_plan(steps)
+    if asks_for_report and ("试验报告" in text or "整车报告" in text) and "optimize_coupled" in history:
+        return [call("coupled_report")]
     if any(phrase in text for phrase in ("当前三维检查", "已记录的三维", "刚才选中的部件")):
         return [call("current_inspection")]
     if any(word in text for word in ("导出", "报告", "pdf")):

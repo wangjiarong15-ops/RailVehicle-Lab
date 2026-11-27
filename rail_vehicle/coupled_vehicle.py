@@ -243,7 +243,6 @@ def playback(result, bogie="front", gain=1):
     q, dq, ddq, rail_y, rail_z = (np.asarray(result[key]) for key in ("q", "dq", "ddq", "rail_y_m", "rail_z_m"))
     raw = result["case"]
     half = raw["vehicle"]["bogie_half_spacing_m"]
-    mount = raw["transverse"]["body_mount_height_m"]
     # Bound displacement over the full recording, including angular motion at outer mounts.
     motion = max(np.max(np.abs(q[:, [0, 2, 4, 6, 7, 8, 9, 10, 13, 16]])),
                  np.max(np.abs(q[:, [1, 12]]))*(half+2),
@@ -269,7 +268,6 @@ def playback(result, bogie="front", gain=1):
     return {"vehicle_model": MODEL, "sample_hz": OUTPUT_HZ, "channels": channels,
             "parameters": {"evidence_id": result["evidence_id"], "bogie": bogie, "gain": gain},
             "coupled": {"q": result["q"], "rail_y": result["rail_y_m"], "display_gain": display_gain, "index": i,
-                        "half_spacing": half, "half_wheelbase": b, "body_mount": mount,
-                        "upper_mount": raw["transverse"]["bogie_upper_height_m"],
+                        "half_spacing": half, "half_wheelbase": b, "dimensions": DIMENSIONS,
                         "body_peak_sample": int(np.argmax(np.abs(ddq[:, 10])))},
             "wheelbase_m": 2*b}

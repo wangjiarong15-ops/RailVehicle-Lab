@@ -9,6 +9,7 @@ from rail_vehicle.bogie_viewer import render_webgl, webgl_available
 from rail_vehicle.deployment import public_demo_enabled
 from rail_vehicle.pages.sensors import read_snapshot
 from rail_vehicle.pages.lateral_lab import render_lateral_lab
+from rail_vehicle.pages.coupled_lab import render_coupled_lab
 from rail_vehicle.pages.vehicle_lab import render_vehicle_lab
 from rail_vehicle.replay import ReplayState
 from rail_vehicle.sensor_evidence import project_frame_response
@@ -29,13 +30,17 @@ def _calculate(case):
 
 def render_lab(main):
     labels = {**SCENARIOS, "two_stage": "一系与二系耦合浮沉", "vehicle": "整车垂向与点头（10 自由度）",
-              "lateral_roll": "车体横移与侧滚（2 自由度）"}
-    scenario = st.selectbox("计算工况", list(labels), index=1, format_func=labels.get, key="sim_case")
+              "lateral_roll": "车体横移与侧滚（2 自由度）", "coupled": "整车虚拟试验台（19 自由度）"}
+    st.session_state.setdefault("sim_case", list(labels)[1])
+    scenario = st.selectbox("计算工况", list(labels), format_func=labels.get, key="sim_case")
     if scenario == "vehicle":
         render_vehicle_lab(main)
         return
     if scenario == "lateral_roll":
         render_lateral_lab(main)
+        return
+    if scenario == "coupled":
+        render_coupled_lab(main)
         return
     two_stage = scenario == "two_stage"
     speed = st.slider("初速（m/s）", 1, 10, 6)

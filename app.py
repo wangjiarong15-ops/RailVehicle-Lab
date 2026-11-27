@@ -70,7 +70,10 @@ def main() -> None:
     elif page == SIMULATION:
         page_title("动力学仿真", "给定轨道激励，比较构架与悬挂的计算响应。")
         render_workbench_return("simulation_return_analysis")
-        parameters, model = st.columns([1, 4.5])
+        if st.session_state.get("sim_case") == "coupled":
+            model, parameters = st.columns([4, 1.45])
+        else:
+            parameters, model = st.columns([1, 4.5])
         with parameters:
             render_lab(model)
     elif page == "机器学习异常检测":

@@ -3,10 +3,11 @@
 import json
 
 from rail_vehicle.copilot.context import read_inspection_state
+from rail_vehicle.coupled_vehicle import case_config as coupled_config, read_case as read_coupled_case
 from rail_vehicle.lateral_dynamics import case_config, read_case
 
 
-def export_chat(chat, *, lateral_case=None, inspection_state=None):
+def export_chat(chat, *, lateral_case=None, inspection_state=None, coupled_case=None):
     turns = []
     for t in chat.turns:
         steps = [
@@ -36,6 +37,8 @@ def export_chat(chat, *, lateral_case=None, inspection_state=None):
         result["engineering_case"] = case_config(lateral_case)
     if inspection_state is not None:
         result["inspection_state"] = inspection_state
+    if coupled_case is not None:
+        result["coupled_case"] = coupled_config(coupled_case)
     return json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False).encode("utf-8")
 
 
@@ -45,6 +48,8 @@ def read_engineering_context(content):
     context = {}
     if "engineering_case" in archive:
         context["cp_lateral_case"] = read_case(json.dumps(archive["engineering_case"]))
+    if "coupled_case" in archive:
+        context["cp_coupled_case"] = read_coupled_case(json.dumps(archive["coupled_case"]))
     if "inspection_state" in archive:
         state = read_inspection_state(archive["inspection_state"])
         if state is None:

@@ -1,6 +1,10 @@
 * { box-sizing: border-box; }
 #workbench:has(#response:not([hidden])) {grid-template-rows:auto minmax(0,1fr) auto auto;}
 #workbench:fullscreen {width:100vw;height:100vh!important;border:0;border-radius:0;}
+#workbench[data-vehicle-overview="true"] :is(#browse-parts,#part-panel,#surface-mode,#focus,#hide,#restore,
+  #measure,#section-toggle,#section-controls,#export-inspection,#bookmarks-toggle,#bookmarks-controls,
+  #labels,#axle-labels,#mount-overlay,#mount-readout,#sensor-overlay,footer) {display:none;}
+#workbench[data-vehicle-overview="true"]:has(#response:not([hidden])) {grid-template-rows:auto minmax(0,1fr) auto;}
 #response {padding:6px 10px;background:#152538;border-top:1px solid #34485e;}
 .response-bar {display:flex;align-items:center;gap:7px;flex-wrap:wrap;}
 #sim-time {flex:1;min-width:75px;accent-color:#50d3c3;}

@@ -19,6 +19,7 @@ from rail_vehicle.lateral_dynamics import read_case as read_lateral_case
 from rail_vehicle.copilot.conversation import Conversation, Job, prior_calls
 from rail_vehicle.copilot.knowledge import document_passages
 from rail_vehicle.copilot.tools import TOOLS, Work
+from rail_vehicle.coupled_vehicle import TRACKS as COUPLED_TRACKS, read_case as read_coupled_case
 from rail_vehicle.demo_data import analysis_demo_data
 from rail_vehicle.event_anchor import resolve_event_row
 from rail_vehicle.pages.bogie_link import event_replay_button
@@ -27,7 +28,7 @@ from rail_vehicle.sensor_evidence import viewer_sensors
 from rail_vehicle.sensor_store import active_channels
 from rail_vehicle.replay import ReplayState, prepare_replay
 from rail_vehicle.run_data import list_batch_samples, list_vehicle_batches
-from rail_vehicle.ui import page_title, plot_chart
+from rail_vehicle.ui import SIMULATION, navigate, page_title, plot_chart
 from rail_vehicle.vehicle_data import list_vehicles
 
 
@@ -317,8 +318,9 @@ def _turn(turn, work, detail, live_keys):
                 continue
             key = f"cp_{turn.id}_{i}"
             if o.provenance:
+                file_name = "coupled-trial-evidence.json" if "coupled_trial" in o.provenance else "channel-evidence.json"
                 st.download_button("下载计算证据与配置版本", json.dumps(o.provenance, ensure_ascii=False, indent=2),
-                                   file_name="channel-evidence.json", mime="application/json", key=key+"_provenance")
+                                   file_name=file_name, mime="application/json", key=key+"_provenance")
             if o.rows:
                 st.dataframe(o.rows, hide_index=True)
             if r["tool"] == "sensors" and active_channels(work.data.sensors) and webgl_available():
@@ -362,6 +364,12 @@ def _turn(turn, work, detail, live_keys):
             if (case := (o.provenance or {}).get("replayable_case")) is not None:
                 st.download_button("保存此对照工况", json.dumps(case, ensure_ascii=False, allow_nan=False),
                                    "copilot-lateral-experiment.json", "application/json", key=key+"_case")
+            if r["tool"] == "optimize_coupled" and (choice := o.provenance["coupled_trial"]["recommendation"]):
+                st.button("在试验台打开复算工况", on_click=navigate, args=(SIMULATION,), key=key+"_use_coupled",
+                          kwargs={"sim_case":"coupled", "coupled_case":read_coupled_case(json.dumps(choice["case"])),
+                                  "coupled_substeps":choice["solver"]["substeps"],
+                                  "coupled_revision": st.session_state.get("coupled_revision", 0)+1,
+                                  "coupled_trial": (o.provenance["coupled_trial"], None)})
         if turn.verified:
             with st.expander("AI 辅助解读 · 已核对证据范围", expanded=detail):
                 render_validated_result(turn.verified, work.anonymous_payload, st)
@@ -456,9 +464,10 @@ def render(public):
         s["cp_bound_batch"] = (data.source, data.vehicle["id"], data.batch["id"], data.threshold)
     lateral_case = s.get("cp_lateral_case")
     inspection_state = s.get("cp_inspection_state")
+    coupled_case = s.get("cp_coupled_case")
     scope = (data.identity if data else "unbound", other.identity if other else "",
              tuple((p.id, p.title) for p in notes), lateral_case,
-             tuple(sorted(inspection_state.items())) if inspection_state else None)
+             tuple(sorted(inspection_state.items())) if inspection_state else None, coupled_case)
     pool = s.setdefault("cp_threads", [])
     active = next((c for c in pool if c.id == s.get("cp_active") and c.scope == scope), None)
     if active is None:
@@ -487,7 +496,8 @@ def render(public):
                 st.rerun()
         if active.turns:
             st.download_button(
-                "保存对话记录", export_chat(active, lateral_case=lateral_case, inspection_state=inspection_state),
+                "保存对话记录", export_chat(active, lateral_case=lateral_case, inspection_state=inspection_state,
+                                             coupled_case=coupled_case),
                 "railvehicle-conversation.json", "application/json"
             )
         if not public:
@@ -545,7 +555,6 @@ def render(public):
                                     vehicle_id=data.vehicle["id"], batch_id=data.batch["id"],
                                     scope=data.replay_scope, threshold=data.threshold)
     if lateral_case is not None:
-        from rail_vehicle.ui import SIMULATION, navigate
         st.caption(f"当前仿真 · 横移与侧滚 · {lateral_case.speed_m_s:g} m/s · {lateral_case.duration_s} s · "
                    f"抗侧滚刚度 {lateral_case.anti_roll_k_nm_rad/1000:g} kN·m/rad")
         with st.container(horizontal=True, gap="small"):
@@ -553,6 +562,11 @@ def render(public):
                       kwargs={"sim_case": "lateral_roll", "lateral_experiment": lateral_case,
                               "lateral_form_revision": s.get("lateral_form_revision", 0)+1})
             st.button("解除当前仿真绑定", on_click=s.pop, args=("cp_lateral_case", None))
+    if coupled_case is not None:
+        st.caption(f"整车工况已绑定 · {COUPLED_TRACKS[coupled_case.track]} · {coupled_case.speed_m_s:g} m/s · "
+                   f"{coupled_case.duration_s} s · 19 自由度教学模型")
+        st.caption("可输入「比较不同二系刚度和阻尼，侧滚不超过 5 mrad，行程不超过 20 mm，并生成试验报告」。")
+        st.button("解除整车工况绑定", on_click=s.pop, args=("cp_coupled_case", None))
     if inspection_state:
         st.caption("此会话可查询本机已记录的三维检查状态。")
     work = Work(
@@ -561,9 +575,10 @@ def render(public):
         notes,
         active.last_scene(),
         active.last_verified(),
-        [r for turn in active.turns for r in turn.results if r["tool"] != "report"],
+        [r for turn in active.turns for r in turn.results if r["tool"] not in ("report", "coupled_report")],
         lateral_case=lateral_case,
         inspection_state=inspection_state,
+        coupled_case=coupled_case,
     )
     running = s.get("cp_running")
     if running and running[0] != active.id:

@@ -14,6 +14,7 @@ import {sectionPlane} from "./section-plane.js";
 import {exportInspectionPng} from "./inspection-export.js";
 import {viewBookmarks} from "./view-bookmarks.js";
 import {sensorMarker} from "./sensor-marker.js";
+import {vehicleOverview} from "./vehicle-overview.js";
 
 async function readAssembly(path) {
   const response = await fetch(path);
@@ -87,6 +88,33 @@ export async function mount(sendValue) {
   let simulationPlaying = false;
   const invalidate = () => { dirty = true; };
   const player = responsePlayer(invalidate);
+  const overviewButton = document.getElementById("vehicle-overview");
+  const shellButton = document.getElementById("vehicle-shell");
+  let overview, overviewActive = false;
+  function changeOverview(active) {
+    if (active && !overview) {
+      overview = vehicleOverview(canvas, invalidate, scene.environment, serverArgs.simulation.coupled.dimensions);
+      overview.resize(width,height);
+    }
+    overviewActive = active;
+    if (overview) overview.controls.enabled = active;
+    rig.controls.enabled = !active;
+    workbench.dataset.vehicleOverview = String(active);
+    overviewButton.setAttribute("aria-pressed", String(active));
+    overviewButton.textContent = active ? "检查转向架 GLB" : "整车总览";
+    shellButton.hidden = !active;
+    modelStatus.textContent = active ? "刚体整车示意 · " + (detailed ? "数值驱动" : "局部 GLB 不可用") :
+      detailed ? "Blender 精细模型" : "兼容几何 · GLB 不可用";
+    canvas.setAttribute("aria-label", active ? "可旋转的整车与前后转向架" : "可旋转的三维转向架");
+    if (active) overview.reset(args?.view);
+    invalidate();
+  }
+  overviewButton.onclick = () => changeOverview(!overviewActive);
+  shellButton.onclick = () => {
+    const transparent = shellButton.getAttribute("aria-pressed") !== "true";
+    shellButton.setAttribute("aria-pressed", String(transparent));
+    overview.setShellTransparency(transparent);
+  };
   const surfaceMode = document.querySelector("#surface-mode");
   const copilotInspection = document.querySelector("#copilot-inspection");
   copilotInspection.onclick = () => {
@@ -222,7 +250,11 @@ export async function mount(sendValue) {
   }
   measureControl.addEventListener("click", toggleMeasurement);
   clearMeasurementControl.addEventListener("click", clearMeasurement);
-  const reset = () => { if (args) rig.reset(args.view, args); };
+  const reset = () => {
+    if (overviewActive) overview.reset(args?.view);
+    // The hidden inspection camera must be initialized before its first switch.
+    if (args) rig.reset(args.view, args);
+  };
   function select(part) {
     selection = part;
     const mode = surfaceMode.value;
@@ -273,6 +305,7 @@ export async function mount(sendValue) {
       " m/s² · 安装点未知" : "此批次无该部件专用通道";
   }
   const picker = inspection(canvas, data, assembly, rig, select, reset, detailed?.parts, section, {
+    enabled: () => !overviewActive,
     active: () => measuring,
     hit(point) {
       if (measureControl.disabled) return;
@@ -384,6 +417,7 @@ export async function mount(sendValue) {
     height = h;
     renderer.setSize(w, h);
     rig.resize(w, h);
+    overview?.resize(w,h);
     if (first && args) reset();
     invalidate();
   }
@@ -416,15 +450,30 @@ export async function mount(sendValue) {
       updateMeasurement();
       updateExportButton();
     }
-    rig.controls.update();
+    (overviewActive ? overview.controls : rig.controls).update();
     if (!(dirty || pose.running || pose.settling)) return;
     angle = pose.angle;
+    if (overviewActive && pose.vehicle) {
+      const clipping = renderer.clippingPlanes;
+      renderer.clippingPlanes = [];
+      try { overview.draw(renderer, pose.vehicle, angle); }
+      finally { renderer.clippingPlanes = clipping; }
+      dirty = false;
+      Object.assign(workbench.dataset, {
+        frames: ++frames, phase: angle.toFixed(4), playing: String(simulationPlaying),
+        triangles: renderer.info.render.triangles, calls: renderer.info.render.calls,
+        vehicleBody: [0,1,10,11,12].map(i=>pose.vehicle.q[i]).join(","),
+        vehicleWheel: pose.vehicle.q.slice(6,10).join(","),
+      });
+      return;
+    }
     assembly.pose(angle, pose.lateral, pose.vertical, pose.yaw, pose.pitch, pose.wheelOffsets, pose.body);
     const partResponse = player.partResponse(selection);
     const partOutput = document.getElementById("simulation-part-response");
     if (partOutput.textContent !== partResponse) partOutput.textContent = partResponse;
     const nextShadowPose = [pose.lateral, pose.vertical, pose.yaw, pose.pitch ?? 0, ...(pose.wheelOffsets ?? []),
-      pose.body?.y ?? 0, pose.body?.roll ?? 0, pose.body?.heave ?? 0]
+      pose.body?.y ?? 0, pose.body?.roll ?? 0, pose.body?.heave ?? 0, pose.body?.frameRoll ?? 0,
+      ...(pose.body?.wheelY ?? [])]
       .map((value) => value.toFixed(3)).join(",");
     // The rotating steel parts are axially symmetric. Reuse their shadow in normal running.
     if (shadowDirty || shadowPose !== nextShadowPose) {
@@ -482,6 +531,7 @@ export async function mount(sendValue) {
     for (const pair of variants.values()) for (const mat of Object.values(pair)) mat.dispose();
     batches?.dispose();
     assembly.dispose();
+    overview?.dispose();
     gauge.dispose();
     section.dispose();
     const disposable = new Set(Object.values(finishes).flat());
@@ -514,6 +564,7 @@ export async function mount(sendValue) {
 
   function chooseView() {
     localView = viewControl.value;
+    if (overviewActive) overview.reset(localView);
     apply(serverArgs);
   }
   function apply(next, transition = false) {
@@ -621,8 +672,12 @@ export async function mount(sendValue) {
     const newSeek = seek && seek.id !== previousCommand?.seek?.id;
     if (applyCommand && (!previousCommand || !command.transport?.action) &&
         ["solid","ghost","wire"].includes(command.surface)) surfaceMode.value = command.surface;
+    const hasCoupled = Boolean(next.simulation?.coupled);
+    const enteredCoupled = hasCoupled && !serverArgs?.simulation?.coupled;
     serverArgs = next;
     player.load(next.simulation);
+    overviewButton.hidden = !hasCoupled || !detailed;
+    if (enteredCoupled || (!hasCoupled && overviewActive)) changeOverview(enteredCoupled);
     if (applyCommand && next.simulation && command.transport) {
       player.command(command.transport.action, newSeek ? seek.seconds : null);
     }

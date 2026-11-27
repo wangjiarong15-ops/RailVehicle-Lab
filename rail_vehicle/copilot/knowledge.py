@@ -49,6 +49,14 @@ CATALOG = tuple(
         "RailVehicle-Lab · docs/project-evolution.md",
         "双轴算例按轴距与速度给定前后轮座输入的时间差，再计算构架浮沉与点头。轮轨接触力、磨耗和脱轨安全指标不在此模型的求解范围内。",
     ),
+    Passage(
+        "dynamics.coupled_vehicle",
+        "19 自由度整车虚拟试验、侧滚与摇头",
+        "RailVehicle-Lab · docs/evolution-iii-lab.md",
+        "对称线性模型使用二系悬挂连接车体和前后构架，一系连接构架和两组轮对。"
+        "轮对垂向响应参与求解，横向轮轨位移作为规定输入。"
+        "参数扫描在有限候选网格里比较车体横向加速度 RMS，不能据此判断蛇行临界速度或实车性能。",
+    ),
 )
 
 
