@@ -52,3 +52,11 @@ Flinear = (−Cx ξx,σ, −Cy ξy,σ)
 - `python -m scripts.run_browser_checks --suite evolution-v` 在 Edge 或 Chromium 核对两个桌面分辨率。包括同一帧的曲线与姿态、GLB 构架、接触视角、逐帧播放、预算审批、RK45 复算双视窗和报告下载。可设置 `RAIL_BROWSER_PATH` 使用指定浏览器。
 - `python scripts/validate_bogie_glb.py` 检查原有 54 部件装配契约。 `node scripts/check_phase8_contract.mjs` 核对 Python 与竞赛网页的 CSV、时间和三维资源夹具。
 - `powershell -NoProfile -ExecutionPolicy Bypass -File packaging/build_portable.ps1` 创建本地 x64 便携构建。使用 `-OutputRoot` 可分开保存不同阶段构建，既有公测产物保留在原处。独立无 Python 的 Windows 设备与实测台架验收分别记录。
+
+## 本机交付验证
+
+- 运行代码提交 `ec5337cf` 的全量 pytest 为 754 项测试、324 个子测试通过，失败 0。Python 编译、JavaScript 语法、GLB 54 部件契约、跨版本黄金夹具和 Windows 源码启动预检通过。
+- Windows PowerShell 5.1 完成 x64 便携构建。构建清单记录干净的运行代码来源，共 8,035 个清单项，经文件名筛查，私有配置、CSV 与数据库为 0 项。便携目录共 440,107,434 字节，EXE SHA-256 为 `e2e8d851b2ad536887f0f9158853977f341d3c0a516ec9360eb9c3b1a112537e`。使用隔离 `LOCALAPPDATA` 和不含 Python 路径的 PATH 启动，健康检查及真实 Edge 的两分辨率专项通过。独立干净 Windows 设备仍待验收。
+- 首轮便携专项发现打开复算双视窗会重复积分。修复后双视窗直接读取同一任务已核验的两条响应，本机这次从点击到显示为 1,274 ms。两组 1 s 直线工况的本机评估中，串行中位耗时 3.244 s，双线程 3.629 s，轨迹逐元素一致。工作台沿用后台串行求解和预算限制。
+- 便携专项完成离线审批、6 次求解、同步双窗、JSON/PDF 下载及两种主题截图。导出的合成工况 PDF 已渲染检查中文、单位和摘要。工程优化中心的 19／31 自由度同输入对照也在 Edge 独立核验。
+- 最终 `python -m scripts.run_browser_checks --suite all` 在隔离数据目录使用真实 Edge 退出成功，覆盖 13 个专项和重启恢复。旧三维回归在教学动画恢复后核对实际连续帧，数字孪生六文件上传逐次等待服务确认，参考源摘要不符时等待旧证据下载按钮撤下。AI 服务异常、流式、限流与重试通过本机模拟接口，离线工程工作流完成实际求解。
