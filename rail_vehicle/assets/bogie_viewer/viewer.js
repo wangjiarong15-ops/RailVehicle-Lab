@@ -51,6 +51,7 @@ export async function mount(sendValue) {
   const measureControl = document.querySelector("#measure");
   const measurementPanel = document.querySelector("#measurement-panel");
   const measurementStatus = document.querySelector("#measurement-status");
+  const measurementKind = document.querySelector("#measurement-kind");
   const clearMeasurementControl = document.querySelector("#clear-measurement");
   const exportControl = document.querySelector("#export-inspection");
   const exportStatus = document.querySelector("#export-status");
@@ -334,7 +335,7 @@ export async function mount(sendValue) {
         (args.spread ? " · 拆解 " + Math.round(args.spread * 100) + "%" : ""),
       part: [part, isolatedName ? "仅显示 " + isolatedName : ""].filter(Boolean).join(" · "),
       section: section.enabled ? document.querySelector("#section-value").textContent : "",
-      measurement: gauge.getState().count === 2 ? measurementStatus.textContent : "",
+      measurement: gauge.getState().count === gauge.getState().target ? measurementStatus.textContent : "",
       observation: args.exportContext,
       reference: args.reference,
     };
@@ -353,10 +354,11 @@ export async function mount(sendValue) {
   }
   exportControl.addEventListener("click", requestExport);
   function updateMeasurement() {
-    const {count, distance, delta} = gauge.getState();
+    const {count, target, distance, delta, angle} = gauge.getState();
     workbench.dataset.measuring = String(measuring);
     workbench.dataset.measurePoints = String(count);
     workbench.dataset.measureDistance = distance ?? "";
+    workbench.dataset.measureAngle = angle ?? "";
     measureControl.setAttribute("aria-pressed", String(measuring));
     measureControl.disabled = !args || Boolean(args.simulation) || args.playing || Boolean(args.spread) || settling;
     clearMeasurementControl.disabled = count === 0;
@@ -364,9 +366,15 @@ export async function mount(sendValue) {
     measurementPanel.hidden = !measuring;
     if (!measuring) return;
     const format = (value) => (Math.abs(value) < .0005 ? 0 : value).toFixed(3);
-    measurementStatus.textContent = count === 2
-      ? `直线距离 ${format(distance)} m · ΔX ${format(delta[0])} · ΔY ${format(delta[1])} · ΔZ ${format(delta[2])} m（模型示意）`
-      : (count ? "点击第二个表面测点" : "点击第一个表面测点") + " · 模型示意";
+    if (count === target && target === 2) {
+      measurementStatus.textContent = `直线距离 ${format(distance)} m · ΔX ${format(delta[0])} · ΔY ${format(delta[1])} · ΔZ ${format(delta[2])} m（模型示意）`;
+    } else if (count === target) {
+      measurementStatus.textContent = angle === null ? "测点过近，无法定义夹角 · 模型示意"
+        : `夹角 ${angle.toFixed(2)}° · 第二测点为顶点（模型示意）`;
+    } else {
+      measurementStatus.textContent = ["点击第一个表面测点", "点击第二个表面测点", "点击第三个表面测点"][count]
+        + (target === 3 ? " · 第二测点为顶点" : "") + " · 模型示意";
+    }
   }
   function clearMeasurement() {
     gauge.clear();
@@ -388,6 +396,8 @@ export async function mount(sendValue) {
     clearMeasurement();
   }
   measureControl.addEventListener("click", toggleMeasurement);
+  const changeMeasurementKind = () => { gauge.setMode(measurementKind.value); updateMeasurement(); };
+  measurementKind.addEventListener("change", changeMeasurementKind);
   clearMeasurementControl.addEventListener("click", clearMeasurement);
   const reset = () => {
     if (advanced) advanced.reset(args?.view);
@@ -710,11 +720,13 @@ export async function mount(sendValue) {
     if (!alive) return;
     alive = false;
     cancelAnimationFrame(raf);
+    window.removeEventListener("pagehide", handlePageHide);
     observer.disconnect();
     viewControl.removeEventListener("change", chooseView);
     hideControl.removeEventListener("click", hideSelected);
     restoreControl.removeEventListener("click", restoreHidden);
     measureControl.removeEventListener("click", toggleMeasurement);
+    measurementKind.removeEventListener("change", changeMeasurementKind);
     clearMeasurementControl.removeEventListener("click", clearMeasurement);
     exportControl.removeEventListener("click", requestExport);
     cameras.dispose();
@@ -742,7 +754,8 @@ export async function mount(sendValue) {
     renderer.dispose();
     renderer.forceContextLoss();
   }
-  window.addEventListener("pagehide", (event) => { if (!event.persisted) dispose(); }, {once: true});
+  const handlePageHide = (event) => { if (!event.persisted) dispose(); };
+  window.addEventListener("pagehide", handlePageHide);
   canvas.addEventListener("webglcontextlost", () => {
     if (!alive) return;
     dispose();

@@ -572,6 +572,16 @@ async function audit(browser, width, height, complete = true) {
     await checkInspectionExport(page, frame, canvas);
     await clearPoints.click();
     await until(data, (d) => d.measurePoints === "0" && !d.measureDistance, "Clear did not remove measurement points");
+    await frame.locator("#measurement-kind").selectOption("angle");
+    await measureAt(.40, .50);
+    await measureAt(.60, .50);
+    await measureAt(.45, .56);
+    const angle = await until(data, (d) => d.measurePoints === "3" && Number(d.measureAngle) > 0,
+      "Third surface click did not produce an angle");
+    assert(Number(angle.measureAngle) <= 180);
+    assert.match(await measurementStatus.textContent(), /第二测点为顶点/);
+    await screenshot(page, "bogie-glb-angle");
+    await frame.locator("#measurement-kind").selectOption("distance");
     await measureAt(.40, .50);
     await until(data, (d) => d.measurePoints === "1", "Could not place a new point after clearing");
     await measure.click();

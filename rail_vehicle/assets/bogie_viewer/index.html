@@ -141,6 +141,10 @@
       <span id="channel-context"></span>
       <span id="simulation-part-response"></span>
       <div id="measurement-panel" hidden>
+        <select id="measurement-kind" aria-label="几何测量类型">
+          <option value="distance">两点距离</option>
+          <option value="angle">三点夹角</option>
+        </select>
         <span id="measurement-status" role="status"></span>
         <button id="clear-measurement" type="button" disabled>清除测点</button>
       </div>
