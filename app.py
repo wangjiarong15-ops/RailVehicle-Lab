@@ -22,7 +22,8 @@ from rail_vehicle.pages.suspension_lab import render_lab
 from rail_vehicle.pages.data_workflow import clear_workbench_navigation, render_workbench_return, select_workspace_page
 from rail_vehicle.workspace_resume import finish_workspace, render_resume_notice, restore_workspace
 from rail_vehicle.ui import (
-    ANALYSIS, ANOMALIES, COMPARISON, COPILOT, LINKED, SIMULATION, TWIN, REPORT, VALIDATION, apply_design, initialize_theme, page_title, render_navigation,
+    ANALYSIS, ANOMALIES, BOGIE, COMPARISON, COPILOT, LINKED, SIMULATION, TWIN, REPORT, VALIDATION, apply_design,
+    initialize_theme, page_title, render_navigation,
 )
 
 
@@ -42,7 +43,11 @@ def main() -> None:
     restore_workspace(resume_slot, public=public_demo)
     page = render_navigation(public_demo, on_select=select_workspace_page)
     if not public_demo:
-        engineering_platform.project_bar(page)
+        if page in (BOGIE, LINKED, SIMULATION):
+            with st.sidebar:
+                engineering_platform.project_bar()
+        else:
+            engineering_platform.project_bar()
     if page != COPILOT:
         copilot.interrupt()
     render_resume_notice(page)

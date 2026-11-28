@@ -124,6 +124,14 @@ def _result(record, proof):
                 st.json(data["metrics"],expanded=False)
             if data.get("references"):
                 st.caption(" · ".join(data["references"]))
+            if "navigation" in data:
+                from rail_vehicle.ui import ANALYSIS, BOGIE, REPORT, SIMULATION, TWIN, VALIDATION, navigate
+
+                destinations = {"analysis": ANALYSIS, "bogie": BOGIE, "simulation": SIMULATION,
+                                "twin": TWIN, "validation": VALIDATION, "report": REPORT}
+                if destination := destinations.get(data["navigation"]):
+                    st.button(f"确认打开 {destination}", key=f"x_open_{step['id']}",
+                              on_click=navigate, args=(destination,))
             if data.get("scene") and st.toggle("打开结构视图",key="ix_scene_open_"+step["id"]):
                 _scene(data["scene"],"ix_scene_"+step["id"],None,None)
             if data.get("response") and st.toggle("打开求解回放",key="ix_sim_"+step["id"]):

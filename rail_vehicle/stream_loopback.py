@@ -30,7 +30,8 @@ class LoopbackCapture:
                 channel.send(json_text({"resume":start}))
                 try:
                     header=json.loads(channel.recv(timeout=2))
-                    if set(header)!={"resume","declaration"} or header["resume"]!=start:
+                    if (not isinstance(header, dict) or set(header)!={"resume","declaration"}
+                            or type(header["resume"]) is not int or header["resume"]!=start):
                         raise ValueError("采集桥未确认预期的续传位置。")
                     incoming=read_declaration(header["declaration"])
                     if self.record is None:
@@ -39,7 +40,7 @@ class LoopbackCapture:
                         raise ValueError("重新连接后采集源发生变化，拒绝拼接。")
                     for index in range(start,start+budget):
                         message=json.loads(channel.recv(timeout=2))
-                        if message=={"end":index}:
+                        if isinstance(message, dict) and set(message) == {"end"} and type(message["end"]) is int and message["end"] == index:
                             self.complete=True
                             break
                         if set(message)!={"index","packet"} or type(message["index"]) is not int or message["index"]!=index:

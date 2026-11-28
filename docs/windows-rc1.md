@@ -37,3 +37,25 @@ Get-FileHash -Algorithm SHA256 dist/Evolution-X/RailVehicle-Lab-V1.0-RC1-Windows
 - 31 自由度模型采用教学悬挂和接触假设。公开数值、合成案例、独立积分器和软件回归分别记录。完整 CONTACT 载荷范围、真实台架与实车仍待验证。
 - 云端能力取决于已配置的服务和用户授权。无密钥工程流程在本机执行。
 - 核心运行组件包括 Python、Streamlit、NumPy、SciPy、Plotly、Three.js、OpenAI Python SDK、ReportLab、pypdf、websockets 和 PyInstaller。随包构建清单记录实际文件，全量许可需按运行分发件逐项核对。
+
+## 核心组件许可元数据
+
+以下为本机构建环境的包声明与仓库内三维许可文件。
+
+| 组件 | 版本 | 标识或元数据标签 |
+| --- | --- | --- |
+| Streamlit | 1.67.0 | Apache-2.0 |
+| NumPy | 2.5.3 | BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 |
+| SciPy | 1.18.1 | BSD License |
+| Plotly | 6.9.0 | MIT |
+| OpenAI Python SDK | 2.54.0 | Apache Software License |
+| ReportLab | 4.5.1 | BSD License |
+| pypdf | 6.21.4 | BSD-3-Clause |
+| websockets | 17.2 | BSD-3-Clause |
+| PyInstaller | 6.22.3 | GPLv2 分类标签，详细许可见随包源码与分发说明 |
+| Pillow | 13.0.0 | MIT-CMU |
+| PyArrow | 25.0.1 | Apache-2.0 |
+| jsonschema | 4.26.0 | MIT |
+| scikit-learn | 1.9.1 | BSD-3-Clause |
+| pandas | 3.0.6 | BSD License |
+| Three.js | 仓库内置 | [MIT 许可文件](../rail_vehicle/assets/bogie_viewer/vendor/LICENSE) |

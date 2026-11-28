@@ -56,6 +56,16 @@ async function approve(page) {
     url.searchParams.set("embed_options","dark_theme");
     await page.goto(url.href);
     await heading(page, "工程工作台").waitFor();
+    if (process.argv.includes("--verify-restart")) {
+      await button(page, "工程研究").click();
+      await heading(page, "历史复算 · 检索二系悬挂公式资料").waitFor();
+      const restored = JSON.parse((await download(page, "导出研究证据 JSON")).toString());
+      assert.equal(restored.task.rounds[0].origin, "replay");
+      assert(restored.tools.r0_reference.output.citations.some(item => item.id.startsWith("library.")));
+      await page.screenshot({path:resolve(output,"1366-exe-restart.png")});
+      console.log("EXE restart restored the original local reference and archived replay results.");
+      return;
+    }
     await page.screenshot({path:resolve(output, "1366-home-after.png")});
     await configureProject(page);
     await button(page, "工程研究").click();
@@ -91,8 +101,8 @@ async function approve(page) {
     await light.screenshot({path:resolve(output, "1920-project-light-115.png")});
     await light.keyboard.press("Escape");
     await cdp.send("Emulation.setPageScaleFactor",{pageScaleFactor:1});
-    await nav(light, "数字孪生工作台").click();
-    await light.getByText("在线采集与状态估计",{exact:true}).first().click();
+    await nav(light, "数字孪生").click();
+    await light.getByTestId("stRadio").getByText("在线采集与状态估计",{exact:true}).click();
     await heading(light, "在线采集与状态估计").waitFor();
     await button(light, "建立本地模拟采集").click();
     await button(light, "连接或恢复").click();
@@ -102,8 +112,8 @@ async function approve(page) {
     await button(light, "将当前原始记录保存为新档案").click();
     await light.getByText("原始包已写入独立采集档案。",{exact:true}).waitFor();
     await light.reload();
-    await nav(light, "数字孪生工作台").click();
-    await light.getByText("在线采集与状态估计",{exact:true}).first().click();
+    await nav(light, "数字孪生").click();
+    await light.getByTestId("stRadio").getByText("在线采集与状态估计",{exact:true}).click();
     await heading(light, "在线采集与状态估计").waitFor();
     await light.getByText("持久化采集与恢复",{exact:true}).click();
     await button(light, "恢复历史采集").click();

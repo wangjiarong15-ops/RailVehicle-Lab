@@ -36,9 +36,11 @@ def append_packets(identifier, offset, acquisition, db_path=DB_PATH):
                             (identifier,)).fetchone()
         if not header or header["packet_count"] != offset or header["declaration"] != json_text(acquisition.declaration()):
             raise ValueError("记录已移动或设备声明发生变化，请重新读取保存位置。")
-        if offset and db.execute("SELECT packet FROM acquisition_packets WHERE session_id=? AND offset=?",
-                                 (identifier, offset - 1)).fetchone()[0] != json_text(asdict(acquisition.packets[offset - 1])):
-            raise ValueError("原始采集位置无法对齐。")
+        if offset:
+            previous = db.execute("SELECT packet FROM acquisition_packets WHERE session_id=? AND offset=?",
+                                  (identifier, offset - 1)).fetchone()
+            if not previous or previous["packet"] != json_text(asdict(acquisition.packets[offset - 1])):
+                raise ValueError("原始采集位置无法对齐。")
         checksum = header["digest"]
         pending = []
         for position, packet in enumerate(acquisition.packets[offset:], offset):

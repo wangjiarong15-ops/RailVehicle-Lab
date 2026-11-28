@@ -80,6 +80,11 @@ def _review_context(work, args, deps, checkpoint):
             "metrics": work.engineering, "references": ["context." + digest(work.engineering)]}
 
 
+def _navigation(work, args, deps, checkpoint):
+    return {"text": "已核对工作区入口。可在结果中确认打开。", "source": "engineering_context",
+            "navigation": args["destination"], "references": []}
+
+
 def _robust_vehicle(work, args, deps, checkpoint):
     from rail_vehicle.vehicle_uncertainty import paired_study
 
@@ -182,6 +187,9 @@ TOOLS = {
                 "current_inspection", "sensors")
 }
 TOOLS.update({
+    "open_workspace": Tool("核对目标工作区", schema(destination=legacy.enum((
+        "analysis", "bogie", "simulation", "twin", "validation", "report"))), "工作区",
+        1, "local", "approved navigation suggestion", _navigation),
     "project_context": Tool("核对工程任务上下文", schema(), "继承原证据单位", 1, "local",
                             "frozen project and analysis context", _review_context),
     "active_solve": Tool("执行已绑定的 31 自由度工况", schema(accuracy=legacy.enum(("standard", "independent"))),

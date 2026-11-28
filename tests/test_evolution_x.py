@@ -18,7 +18,7 @@ from rail_vehicle.vehicle_uncertainty import paired_study
 from rail_vehicle.wheel_track import template
 from rail_vehicle.workbench_planning import local_proposal
 from rail_vehicle.workbench_queue import (archived_round, create, duplicate_for_replay, job, record_round,
-                                          results, run_queue)
+                                          results, run_queue, validate)
 
 
 @pytest.fixture
@@ -103,6 +103,17 @@ def test_task_context_detects_tampering(database):
         connection.execute("UPDATE workbench_jobs SET context=? WHERE id=?", (json.dumps(changed), identifier))
     with pytest.raises(ValueError, match="摘要"):
         job(identifier, database)
+
+
+def test_navigation_plan_constrains_engineering_pages(database):
+    identifier = create("打开动力学仿真", Work(None), db_path=database)
+    plan = local_proposal("打开动力学仿真")
+    record_round(identifier, plan, "local", database)
+    run_queue(database)
+    assert results(identifier, database)["r0_workspace"]["output"]["navigation"] == "simulation"
+    plan[0]["args"]["destination"] = "https://invalid.example"
+    with pytest.raises(ValueError):
+        validate(plan)
 
 
 def test_backup_and_restore_retain_project_revisions_without_replacing_source(database, tmp_path):

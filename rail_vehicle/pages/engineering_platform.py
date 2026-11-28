@@ -57,7 +57,7 @@ def _library(project):
         st.download_button("下载对应原文", content, name, on_click="ignore")
 
 
-def project_bar(page):
+def project_bar():
     """Keep project selection available across pages without intercepting existing routes."""
     state = st.session_state
     try:

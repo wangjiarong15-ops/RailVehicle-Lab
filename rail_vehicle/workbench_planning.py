@@ -26,7 +26,12 @@ def local_proposal(question, previous=(), last=None, engineering=None):
 
     axis = "vertical" if "垂向" in text else "lateral"
     last_solves = [step for step in previous if step["tool"]=="solve31" and last.get(step["id"],{}).get("status")=="done"]
-    if last_solves and "复算" in text:
+    destinations = {"运行分析": "analysis", "三维转向架": "bogie", "动力学仿真": "simulation",
+                    "数字孪生": "twin", "工程验证": "validation", "分析报告": "report"}
+    destination = next((value for name, value in destinations.items() if name in text), None)
+    if text.startswith("打开") and destination:
+        add("workspace", "open_workspace", destination=destination)
+    elif last_solves and "复算" in text:
         chosen = next((step for step in reversed(last_solves) if step["args"]["accuracy"]=="standard"),None)
         if chosen and not any(step["tool"]=="solve31" and step["args"]=={**chosen["args"],"accuracy":"independent"} for step in previous):
             independent = add("verify","solve31",(chosen["id"],),**{**chosen["args"],"accuracy":"independent"})
