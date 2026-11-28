@@ -15,17 +15,19 @@ VERSION = "V0.5 Windows x64 Beta"
 BUNDLE_NAME = "RailVehicle-Lab-Beta"
 EXE_NAME = "RailVehicle-Lab.exe"
 ZIP_NAME = "RailVehicle-Lab-V0.5-Windows-x64-Beta.zip"
+RC_VERSION = "V1.0 RC1 Windows x64"
+RC_ZIP_NAME = "RailVehicle-Lab-V1.0-RC1-Windows-x64.zip"
 BLOCKED_SUFFIXES = {".csv", ".db", ".sqlite", ".sqlite3", ".log", ".key", ".pfx", ".p12"}
 BLOCKED_NAMES = {".venv", "__pycache__", ".git", ".ssh", ".aws", ".git-credentials", ".netrc", "_netrc", "secrets.toml", ".env"}
 
 
-def add_release_documents(bundle: Path, commit: str) -> None:
+def add_release_documents(bundle: Path, commit: str, version: str = VERSION) -> None:
     templates = Path(__file__).resolve().parent
     for source, target in (("PORTABLE_README.txt", "使用说明.txt"), ("PORTABLE_FEEDBACK.txt", "公测反馈模板.txt")):
         with (bundle / target).open("x", encoding="utf-8-sig", newline="\r\n") as stream:
             stream.write((templates / source).read_text(encoding="utf-8"))
     with (bundle / "VERSION.txt").open("x", encoding="utf-8-sig", newline="\r\n") as stream:
-        stream.write(f"RailVehicle-Lab {VERSION}\n源码提交：{commit}\n"
+        stream.write(f"RailVehicle-Lab {version}\n源码提交：{commit}\n"
                      "类型：免安装目录式用户公测；未签名，非正式发布。\n"
                      "无 Python 的干净 Windows：尚未验证。\n"
                      "BUILD-METADATA.json 记录程序及资源文件哈希；哈希不是数字签名。\n")
@@ -64,7 +66,7 @@ def bundle_files(bundle: Path) -> list[Path]:
     return sorted(files)
 
 
-def write_build_metadata(bundle: Path, commit: str, clean: bool) -> None:
+def write_build_metadata(bundle: Path, commit: str, clean: bool, version: str = VERSION) -> None:
     """Record every build file before distribution; this is not a signature."""
     bundle = Path(bundle)
     if not re.fullmatch(r"[0-9a-f]{40,64}", commit):
@@ -76,7 +78,9 @@ def write_build_metadata(bundle: Path, commit: str, clean: bool) -> None:
     inventory = {path.relative_to(bundle).as_posix(): sha256_file(path) for path in files}
     if EXE_NAME not in inventory:
         raise ValueError("构建缺少启动程序。")
-    metadata = {"version": VERSION, "source_commit": commit, "source_clean": clean,
+    if version not in (VERSION, RC_VERSION):
+        raise ValueError("构建渠道无效。")
+    metadata = {"version": version, "source_commit": commit, "source_clean": clean,
                 "exe_sha256": inventory[EXE_NAME], "files_sha256": inventory}
     with manifest.open("x", encoding="utf-8", newline="\n") as stream:
         json.dump(metadata, stream, ensure_ascii=False, sort_keys=True, indent=2)
@@ -106,7 +110,7 @@ def create_archive(bundle: Path, output: Path) -> tuple[Path, str]:
         commit = metadata["source_commit"]
         expected_hash = metadata["exe_sha256"]
         inventory = metadata["files_sha256"]
-        if (metadata.get("version") != VERSION or metadata.get("source_clean") is not True or not isinstance(commit, str)
+        if (metadata.get("version") not in (VERSION, RC_VERSION) or metadata.get("source_clean") is not True or not isinstance(commit, str)
                 or not re.fullmatch(r"[0-9a-f]{40,64}", commit)
                 or not isinstance(expected_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_hash)
                 or not isinstance(inventory, dict)):
@@ -118,7 +122,7 @@ def create_archive(bundle: Path, output: Path) -> tuple[Path, str]:
     except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
         raise ValueError("构建版本信息无效或文件已改变，请重新运行构建脚本。") from exc
     output.mkdir(parents=True, exist_ok=True)
-    archive = output / ZIP_NAME
+    archive = output / (RC_ZIP_NAME if metadata["version"] == RC_VERSION else ZIP_NAME)
     checksum = archive.with_name(archive.name + ".sha256")
     if archive.exists() or checksum.exists():
         raise FileExistsError("输出文件已存在；请选择其他输出目录。")
@@ -155,15 +159,17 @@ def main() -> int:
     parser.add_argument("output", type=Path, nargs="?", help="压缩包输出目录")
     parser.add_argument("--record-build", metavar="COMMIT", help=argparse.SUPPRESS)
     parser.add_argument("--source-clean", choices=("true", "false"), help=argparse.SUPPRESS)
+    parser.add_argument("--rc", action="store_true", help="记录 V1.0 RC1 构建渠道")
     args = parser.parse_args()
     try:
         if args.record_build:
             if args.output is not None or args.source_clean is None:
                 parser.error("记录构建时需要 --source-clean，不能指定输出目录。")
-            add_release_documents(args.bundle, args.record_build)
-            write_build_metadata(args.bundle, args.record_build, args.source_clean == "true")
+            version = RC_VERSION if args.rc else VERSION
+            add_release_documents(args.bundle, args.record_build, version)
+            write_build_metadata(args.bundle, args.record_build, args.source_clean == "true", version)
             return 0
-        if args.output is None or args.source_clean is not None:
+        if args.output is None or args.source_clean is not None or args.rc:
             parser.error("打包时需要指定输出目录。")
         archive, digest = create_archive(args.bundle, args.output)
     except ValueError as exc:

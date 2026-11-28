@@ -1,7 +1,8 @@
 param(
     [string]$Tools = "",
     [string]$Python = ".venv/Scripts/python.exe",
-    [string]$OutputRoot = "dist"
+    [string]$OutputRoot = "dist",
+    [switch]$Rc
 )
 $ErrorActionPreference = 'Stop'
 Set-Location (Join-Path $PSScriptRoot '..')
@@ -39,7 +40,9 @@ $railClean = $railClean -and $railAfter -eq $railCommit -and $railDirtyAfter.Cou
 if (-not $railClean) { Write-Warning 'Source was modified during or before the build; this build cannot be packaged as a versioned test ZIP.' }
 $railBundle = Join-Path $railBuild 'dist/RailVehicle-Lab-Beta'
 Copy-Item -LiteralPath 'packaging/Start-Demo.bat' -Destination $railBundle
-& $railPython 'packaging/package_portable.py' $railBundle --record-build $railCommit --source-clean ($railClean.ToString().ToLowerInvariant())
+$railMetadataArgs = @($railBundle, '--record-build', $railCommit, '--source-clean', $railClean.ToString().ToLowerInvariant())
+if ($Rc) { $railMetadataArgs += '--rc' }
+& $railPython 'packaging/package_portable.py' @railMetadataArgs
 if ($LASTEXITCODE -ne 0) { throw 'Failed to record build metadata.' }
 New-Item -ItemType Directory -Force -Path $railOutput | Out-Null
 [IO.Directory]::Move($railBundle, $railDestination)

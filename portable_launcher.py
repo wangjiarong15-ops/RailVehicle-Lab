@@ -165,17 +165,20 @@ def show_failure(message, *, dialog=True):
 
 def check_bundle():
     """Check the packaged imports and critical resources without starting a service."""
-    from rail_vehicle.pages import copilot, research_agent, twin, validation_lab, workbench_research
+    from rail_vehicle.pages import copilot, engineering_platform, research_agent, state_lab, twin, validation_lab, workbench_research
     from rail_vehicle.contact_calibration import load_reference
     from rail_vehicle.ui import TWIN
 
     bundle = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
     required = ("app.py", "rail_vehicle/assets/bogie_viewer/bogie.glb",
-                "rail_vehicle/assets/bogie_viewer/viewer.js", "rail_vehicle/assets/bogie_viewer/vehicle-details.js")
+                "rail_vehicle/assets/bogie_viewer/viewer.js", "rail_vehicle/assets/bogie_viewer/vehicle-details.js",
+                "rail_vehicle/assets/bogie_viewer/measurement.js")
     if not all((bundle / path).is_file() for path in required):
         raise PortableError("缺少运行入口或三维资源。请重新完整解压。")
     if not TWIN or not all(callable(page.render) for page in (copilot,research_agent,twin,validation_lab,workbench_research)):
         raise PortableError("当前页面模块版本不匹配。请重新完整解压。")
+    if not callable(engineering_platform.project_bar) or not callable(state_lab.render):
+        raise PortableError("工程项目或采集入口不可用。")
     reference = load_reference()
     if len(reference["manchester"])!=42 or len(reference["module3"])!=2:
         raise PortableError("公开轮轨基准数据不完整。请重新完整解压。")

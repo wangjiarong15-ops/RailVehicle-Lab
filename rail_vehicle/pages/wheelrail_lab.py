@@ -325,6 +325,14 @@ def render_wheelrail(main):
             _viewer(result,"wr_vehicle_view")
             st.caption("三维轨道使用参与求解的线路和左右不平顺。姿态及矢量来自同一输出帧。")
             _performance(result)
+            with st.expander("积分与静平衡诊断"):
+                solver = result["solver"]
+                st.write(f"{solver['method']} · 最大内部步长 {solver['max_step_s']:.3g} s · "
+                         f"输出 {solver['sample_hz']} Hz · 状态方程调用 {result['rhs_count']:,} 次")
+                st.write(f"相对容差 {solver['rtol']:.2g} · 绝对容差 {solver['atol']:.2g} · "
+                         f"静平衡分量最大残差 {result['static_residual']:.3g}")
+                st.caption("平衡残差包含平动加速度与角加速度分量。独立积分验证可在工程研究中执行。")
+                st.code(result["configuration_sha256"], language=None)
             st.button("将轮轨工况交给 Copilot", on_click=navigate, args=(COPILOT,),
                       kwargs={"cp_wr_case": case, "cp_mode_ix": "对话"})
             st.button("在工程研究中复算当前工况", on_click=navigate, args=(COPILOT,),

@@ -280,7 +280,7 @@ def _calibration():
 
 def render():
     page_title("工程验证中心","对照已登记的参考、求解结果与有效时钟。")
-    choices=("基准对照","轮轨型面","不确定性","外部资料","物理校准")
+    choices=("基准对照","轮轨型面","不确定性","外部资料","物理校准","验证矩阵")
     if entry:=st.session_state.pop("ix_validation_entry",None):
         if entry in choices:
             st.session_state["ix_validation_choice"]=entry
@@ -293,5 +293,13 @@ def render():
         _uncertainty()
     elif selected=="物理校准":
         _calibration()
+    elif selected=="验证矩阵":
+        from rail_vehicle.verification_matrix import SCENARIOS
+
+        st.subheader("工程场景验收目录")
+        st.dataframe([{"场景": item.name, "输入": item.inputs, "判据": item.expected, "验证类别": item.validation}
+                      for item in SCENARIOS], hide_index=True)
+        st.caption("本目录登记输入和判据。运行状态以对应版本的验证 JSON 为准。"
+                   "真实台架、实车和独立部署仍需专项验收。")
     else:
         _catalog()

@@ -25,7 +25,8 @@ for name in tracked:
         parts.pop()
     hidden.append(".".join(parts))
 binaries = []
-for package in ("streamlit", "plotly", "reportlab", "sklearn", "scipy", "numpy", "jsonschema", "jsonschema_specifications", "referencing", "openai", "pydeck"):
+for package in ("streamlit", "plotly", "reportlab", "sklearn", "scipy", "numpy", "jsonschema", "jsonschema_specifications",
+                "referencing", "openai", "pydeck", "pypdf", "websockets"):
     package_data, package_binaries, package_hidden = collect_all(package)
     datas += package_data
     binaries += package_binaries

@@ -28,6 +28,8 @@ Evolution IX 将工程研究接入独立工作区、结构化多轮工具图和�
 
 [工程工作台](docs/images/evolution-ix/home-after.png) · [整车双视窗回放](docs/images/evolution-ix/dual-view.png) · [工程任务归档](docs/images/evolution-ix/research-light.png)
 
+Evolution X 支持工程项目上下文与资料版本、本机采集检查点、跨页面工况复算和 31 自由度配对扰动。 [工程流程与验证边界](docs/evolution-x-platform.md) · [V1.0 RC1 公测说明](docs/windows-rc1.md)
+
 ## 采样数据质量检查
 
 CSV 导入预览按车辆分别检查重复 UTC 时刻、原 CSV 行序中的时间倒序和长采样间隔，
