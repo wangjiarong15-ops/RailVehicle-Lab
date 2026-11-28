@@ -10,7 +10,7 @@ from jsonschema import Draft202012Validator
 from rail_vehicle.copilot import tools as legacy
 from rail_vehicle.copilot.context import Dataset
 from rail_vehicle.engineering_trials import vary
-from rail_vehicle.nonlinear_vehicle import WheelRailCase, performance, run_vehicle
+from rail_vehicle.nonlinear_vehicle import WheelRailCase, performance, read_case, run_vehicle
 from rail_vehicle.wheel_track import template
 
 
@@ -49,7 +49,7 @@ def _legacy(name):
                                                   for item in output.events[:100]],
                 "scene": output.scene, "citations": output.citations,
                 "source": "knowledge" if name == "knowledge" else
-                "schematic" if name == "inspect" else "observation_analysis"}
+                "schematic" if name in ("inspect", "current_inspection") else "observation_analysis"}
     return invoke
 
 
@@ -58,9 +58,55 @@ def _vehicle(work, args, deps, checkpoint):
     case = WheelRailCase(route=route, speed_m_s=args["speed_m_s"], duration_s=args["duration_s"])
     case = vary(case, "secondary_k", args["secondary_k"])
     case = vary(case, "secondary_c", args["secondary_c"])
-    response = run_vehicle(case, accuracy=args["accuracy"], checkpoint=checkpoint)
+    return _response(case, args["accuracy"], checkpoint)
+
+
+def _response(case, accuracy, checkpoint):
+    response = run_vehicle(case, accuracy=accuracy, checkpoint=checkpoint)
     return {"text": "31 自由度教学模型已完成求解。", "source": "simulation", "response": response,
             "metrics": performance(response), "references": [response["evidence_id"]]}
+
+
+def _active_case(work, args, deps, checkpoint):
+    if not work.engineering or "simulation" not in work.engineering:
+        raise ValueError("请先从动力学页面绑定具体工况。")
+    return _response(read_case(serialize(work.engineering["simulation"])), args["accuracy"], checkpoint)
+
+
+def _review_context(work, args, deps, checkpoint):
+    if not work.engineering:
+        raise ValueError("当前任务没有工程上下文。")
+    return {"text": "已读取任务创建时冻结的项目、数据与工况配置。", "source": "engineering_context",
+            "metrics": work.engineering, "references": ["context." + digest(work.engineering)]}
+
+
+def _robust_vehicle(work, args, deps, checkpoint):
+    from rail_vehicle.vehicle_uncertainty import paired_study
+
+    context = work.engineering or {}
+    case = read_case(serialize(context["simulation"])) if "simulation" in context else WheelRailCase(duration_s=1.25)
+    output = paired_study(case, **args, checkpoint=checkpoint)
+    return {"text": "已配对扰动 31 自由度模型并独立复算最不利样本。经验比例只描述声明的模拟样本。",
+            "source": "simulation_comparison", "metrics": output,
+            "references": [output["evidence_id"], *output["independent"]["references"]]}
+
+
+def _verification(work, args, deps, checkpoint):
+    runs = [item for item in deps.values() if item.get("source") == "simulation"]
+    if len(runs) != 2 or any("response" not in item for item in runs):
+        raise ValueError("独立复算对照须依赖两项求解。")
+    first, second = (item["response"] for item in runs)
+    if (first["case"] != second["case"] or first["model"] != second["model"]
+            or first["solver"]["method"] == second["solver"]["method"]):
+        raise ValueError("须固定模型和工况并改变积分器。")
+    errors = {key: abs(runs[0]["metrics"][key] - runs[1]["metrics"][key])
+              for key in ("body_y_rms_m_s2", "body_z_rms_m_s2", "secondary_travel_peak_mm", "wheel_unloading")}
+    passed = (max(errors["body_y_rms_m_s2"], errors["body_z_rms_m_s2"]) <= args["rms_tolerance_m_s2"]
+              and errors["secondary_travel_peak_mm"] <= args["travel_tolerance_mm"]
+              and errors["wheel_unloading"] <= args["unloading_tolerance"])
+    return {"text": "独立积分器对照通过所设数值容差。" if passed else "超出所设复算容差，需检查积分误差。",
+            "source": "simulation_comparison", "metrics": {"passed": passed, **errors, "tolerances": args},
+            "references": [first["evidence_id"], second["evidence_id"]]}
 
 
 def _calibration(work, args, deps, checkpoint):
@@ -132,9 +178,23 @@ TOOLS = {
     key: Tool(legacy.TOOLS[key].label, legacy.TOOLS[key].schema, _UNITS.get(key, "声明字段"), 1,
               "two_batches" if key == "compare" else "batch" if key not in legacy.UNBOUND_TOOLS else "local",
               "text, evidence references, optional plot/scene", _legacy(key))
-    for key in ("vehicle", "quality", "statistics", "events", "review", "vibration", "compare", "knowledge", "inspect", "sensors")
+    for key in ("vehicle", "quality", "statistics", "events", "review", "vibration", "compare", "knowledge", "inspect",
+                "current_inspection", "sensors")
 }
 TOOLS.update({
+    "project_context": Tool("核对工程任务上下文", schema(), "继承原证据单位", 1, "local",
+                            "frozen project and analysis context", _review_context),
+    "active_solve": Tool("执行已绑定的 31 自由度工况", schema(accuracy=legacy.enum(("standard", "independent"))),
+                         "m, m/s, s", 3, "local", "response for the frozen case", _active_case),
+    "verify_solve": Tool("核对同工况独立积分器", schema(rms_tolerance_m_s2=legacy.number(1e-8, .05),
+                         travel_tolerance_mm=legacy.number(1e-6, 2), unloading_tolerance=legacy.number(1e-7, .05)),
+                         "m/s², mm, 比例", 1, "local", "independent numerical verification", _verification),
+    "robust31": Tool("31 自由度随机配对试验",
+                     schema(draws={"type": "integer", "minimum": 4, "maximum": 8},
+                            seed={"type": "integer", "minimum": 0, "maximum": 2**32 - 1},
+                            spread=legacy.number(.01, .15), unloading_ratio=legacy.number(.02, .95),
+                            travel_mm=legacy.number(4, 100)),
+                     "m/s², mm, 比例", 12, "local", "seeded response quantiles and independent check", _robust_vehicle),
     "solve31": Tool("求解 31 自由度车辆动力学", schema(track=legacy.enum(("straight", "curve", "reverse")),
                    radius_m=legacy.number(125, 2000), speed_m_s=legacy.number(5, 55),
                    duration_s={"enum": [1., 1.25, 1.5, 2., 3.]},

@@ -472,10 +472,16 @@ def render(public):
         s.pop("cp_bound_batch", None)
     else:
         s["cp_bound_batch"] = (data.source, data.vehicle["id"], data.batch["id"], data.threshold)
+    if not public:
+        from rail_vehicle.pages.engineering_platform import context
+        from rail_vehicle.ui import COPILOT
+
+        project_context = context(COPILOT, data)
+        s["x_page_context"] = project_context
     if research_view:
         from rail_vehicle.pages.workbench_research import render as render_research
 
-        render_research(Work(data,other),None)
+        render_research(Work(data, other, engineering=project_context), None)
         return
     lateral_case = s.get("cp_lateral_case")
     inspection_state = s.get("cp_inspection_state")

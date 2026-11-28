@@ -57,6 +57,7 @@ class Work:
     lateral_case: LateralCase | None = None
     inspection_state: dict | None = None
     coupled_case: CoupledCase | None = None
+    engineering: dict | None = None
 
     @cached_property
     def anonymous_payload(self):

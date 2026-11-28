@@ -11,15 +11,15 @@ from rail_vehicle.ai.config import AIConfig
 from rail_vehicle.ai.provider import AIProviderUnavailable
 from rail_vehicle.copilot.planning import planning_client
 from rail_vehicle.workbench_planning import COMPLETION_TOKENS, cloud_proposal, local_proposal
-from rail_vehicle.workbench_queue import (LEASE, create, dispatch, job, listing, note_cloud_call, record_round, recover,
-                                          results, update, validate)
+from rail_vehicle.workbench_queue import (LEASE, archived_round, create, dispatch, duplicate_for_replay, job, listing,
+                                          note_cloud_call, record_round, recover, results, update, validate)
 from rail_vehicle.workbench_tools import TOOLS, serialize
 
 STATUS = {"draft":"待规划","queued":"排队","running":"执行中","paused":"暂停","review":"待复核",
           "error":"中断","cancelled":"已取消","complete":"已完成"}
 BOUND = {"observation_analysis":"观测分析","schematic":"结构示意","published_numerical_reference":"公开数值资料",
          "simulation":"数值仿真","simulation_comparison":"数值方案对照","synthetic":"合成记录",
-         "knowledge":"工程资料","evidence_summary":"证据汇总"}
+         "knowledge":"工程资料","evidence_summary":"证据汇总","engineering_context":"已冻结工程上下文"}
 
 
 def _pdf(record, proof):
@@ -133,6 +133,9 @@ def _result(record, proof):
     if proof:
         a,b = st.columns(2)
         public_record = {k:record[k] for k in ("id","title","rounds","limits","status","spent","cloud_calls")}
+        if context := record["context"].get("engineering"):
+            public_record["engineering_context"] = context
+            public_record["input_sha256"] = record["context"]["sha256"]
         a.download_button("导出研究证据 JSON",serialize({"task":public_record,"tools":proof}),
                           "workbench-evidence.json","application/json",on_click="ignore")
         b.download_button("导出工程任务 PDF",_pdf(record,proof),"workbench-report.pdf","application/pdf",on_click="ignore")
@@ -176,6 +179,12 @@ def _draft(record, proof, config):
             state.pop("ix_proposed",None)
             st.rerun()
         return
+    if (replay := archived_round(record)) is not None:
+        st.caption("复算使用归档的批次、资料与参数。每轮可核对原始步骤后批准。")
+        if st.button("查看归档复算计划", type="primary"):
+            state["ix_proposed"] = (identifier, "replay", replay)
+            st.rerun()
+        return
     st.subheader("追加研究目标" if record["status"]=="review" else "规划本轮研究")
     question = st.text_area("本轮目标",value="" if record["status"]=="review" else record["title"],
                             max_chars=1200,key=f"ix_goal_{identifier}_{len(record['rounds'])}")
@@ -202,7 +211,8 @@ def _draft(record, proof, config):
                     client.close()
             origin = "cloud"
         else:
-            steps = validate(local_proposal(question,record["steps"],proof),record["steps"],record["limits"])
+            steps = validate(local_proposal(question, record["steps"], proof, record["context"].get("engineering")),
+                             record["steps"], record["limits"])
             origin = "local"
         state["ix_proposed"] = (identifier,origin,steps)
         st.rerun()
@@ -220,7 +230,8 @@ def render(work, config):
         st.caption("当前未绑定观测批次，可进行公开基准校准或教学求解。")
     sidebar, body = st.columns([1,3],gap="large")
     try:
-        entries = listing()
+        project = (work.engineering or {}).get("project")
+        entries = listing(project=project)
         index = {row["id"]:row for row in entries}
         state=st.session_state
         with sidebar:
@@ -233,16 +244,35 @@ def render(work, config):
                 priority = st.checkbox("优先执行")
                 submit = st.form_submit_button("新建研究任务",type="primary")
             if submit:
-                state["ix_select_task"] = create(title,work,cost=budget,priority=int(priority))
+                from dataclasses import replace
+                from rail_vehicle.knowledge_library import passages
+
+                source = replace(work, notes=tuple(passages(project, title))) if project else work
+                state["ix_select_task"] = create(title, source, cost=budget, priority=int(priority))
                 st.rerun()
             if not index:
                 body.info("创建研究任务后可预览计划、批准运行并查看实际证据。")
                 return
+            if replay := state.pop("x_select_replay", None):
+                state["ix_select_task"] = replay
             identifier = st.selectbox("选择任务",list(index),key="ix_select_task",
                                       format_func=lambda key:f"{STATUS[index[key]['status']]} · {index[key]['title'][:44]}")
         with body:
             record = job(identifier)
+            state["x_current_task"] = identifier
             st.subheader(record["title"][:140])
+            context = record["context"].get("engineering")
+            state["x_task_project"] = (context or {}).get("project")
+            if context:
+                with st.expander("绑定的工程上下文"):
+                    st.json(context, expanded=False)
+                    if "simulation" in context:
+                        from rail_vehicle.nonlinear_vehicle import read_case
+                        from rail_vehicle.ui import SIMULATION, navigate
+
+                        st.button("在动力学中打开已绑定工况", on_click=navigate, args=(SIMULATION,),
+                                  kwargs={"sim_case": "wheelrail", "wr_case": read_case(serialize(context["simulation"])),
+                                          "wr_mode": "整车与线路"})
             if selected:=record["context"]["data"]:
                 st.caption(f"任务快照 · {selected['batch']['file_name']} · {len(selected['rows']):,} 点 · "
                            f"数据摘要 {selected['identity'][:12]}")
@@ -263,6 +293,9 @@ def render(work, config):
             if record["status"] in ("draft","review"):
                 _draft(record,proof,config)
         _comparison(record,proof)
+        if record["status"] in ("review", "complete") and proof and st.button("从归档新建复算"):
+            state["x_select_replay"] = duplicate_for_replay(identifier)
+            st.rerun()
     except (ValueError,AIProviderUnavailable,TimeoutError) as exc:
         st.warning(str(exc))
     except (sqlite3.Error,OSError,zlib.error):

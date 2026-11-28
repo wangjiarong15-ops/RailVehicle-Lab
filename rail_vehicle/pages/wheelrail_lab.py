@@ -325,4 +325,7 @@ def render_wheelrail(main):
             _viewer(result,"wr_vehicle_view")
             st.caption("三维轨道使用参与求解的线路和左右不平顺。姿态及矢量来自同一输出帧。")
             _performance(result)
-            st.button("将轮轨工况交给 Copilot",on_click=navigate,args=(COPILOT,),kwargs={"cp_wr_case":case})
+            st.button("将轮轨工况交给 Copilot", on_click=navigate, args=(COPILOT,),
+                      kwargs={"cp_wr_case": case, "cp_mode_ix": "对话"})
+            st.button("在工程研究中复算当前工况", on_click=navigate, args=(COPILOT,),
+                      kwargs={"cp_wr_case": case, "cp_mode_ix": "工程研究"})

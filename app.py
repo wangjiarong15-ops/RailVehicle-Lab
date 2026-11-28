@@ -17,6 +17,7 @@ from rail_vehicle.pages import copilot
 from rail_vehicle.pages import bogie
 from rail_vehicle.pages import twin
 from rail_vehicle.pages import validation_lab
+from rail_vehicle.pages import engineering_platform
 from rail_vehicle.pages.suspension_lab import render_lab
 from rail_vehicle.pages.data_workflow import clear_workbench_navigation, render_workbench_return, select_workspace_page
 from rail_vehicle.workspace_resume import finish_workspace, render_resume_notice, restore_workspace
@@ -40,6 +41,8 @@ def main() -> None:
     resume_slot = st.empty()
     restore_workspace(resume_slot, public=public_demo)
     page = render_navigation(public_demo, on_select=select_workspace_page)
+    if not public_demo:
+        engineering_platform.project_bar(page)
     if page != COPILOT:
         copilot.interrupt()
     render_resume_notice(page)
@@ -96,6 +99,8 @@ def main() -> None:
         run_analysis.render_statistics_demo()
     elif page == "演示中心":
         demo_center.render()
+    if not public_demo:
+        engineering_platform.remember_page(page)
     finish_workspace(resume_slot, page, public=public_demo)
     initialize_theme()
 

@@ -11,12 +11,13 @@ from rail_vehicle.workbench_tools import TOOLS, definitions, serialize
 COMPLETION_TOKENS = 1200
 
 
-def local_proposal(question, previous=(), last=None):
+def local_proposal(question, previous=(), last=None, engineering=None):
     """Compose independent engineering capabilities using the requested scope."""
     last = last or {}
     prefix = f"r{len(previous)}_"
     plan = []
     text = question.lower()
+    engineering = engineering or {}
 
     def add(key, tool, depends=(), **args):
         step = prefix+key
@@ -32,6 +33,27 @@ def local_proposal(question, previous=(), last=None):
             add("report","evidence_report",(chosen["id"],independent))
         else:
             raise ValueError("当前结果已复算，请指定另一项研究任务。")
+    elif any(word in text for word in ("不确定性", "蒙特卡洛", "随机扰动")):
+        constraints = engineering.get("constraints") or {}
+        result = add("robust", "robust31", draws=4, seed=901, spread=.06,
+                     unloading_ratio=constraints.get("unloading_ratio", .4), travel_mm=constraints.get("travel_mm", 35.))
+        add("report", "evidence_report", (result,))
+    elif "当前工况" in text and "simulation" in engineering:
+        source = add("context", "project_context")
+        primary = add("solve", "active_solve", (source,), accuracy="standard")
+        if "复算" in text or "核验" in text:
+            independent = add("independent", "active_solve", (source,), accuracy="independent")
+            result = add("verify", "verify_solve", (primary, independent), rms_tolerance_m_s2=.0001,
+                         travel_tolerance_mm=.02, unloading_tolerance=.001)
+            add("report", "evidence_report", (source, primary, independent, result))
+        else:
+            add("report", "evidence_report", (source, primary))
+    elif any(word in text for word in ("资料", "知识库", "公式")):
+        found = add("reference", "knowledge", query=question[:160])
+        add("report", "evidence_report", (found,))
+    elif "检查状态" in text or "选中部件" in text:
+        inspect = add("inspection", "current_inspection")
+        add("report", "evidence_report", (inspect,))
     elif "校准" in text or ("接触" in text and "误差" in text):
         fit = add("contact","contact_fit",tangent_weight=1.)
         add("report","evidence_report",(fit,))
@@ -54,7 +76,9 @@ def local_proposal(question, previous=(), last=None):
         common = {"radius_m":450.,"speed_m_s":20.,"duration_s":1.25,"accuracy":"standard"}
         a = add("baseline","solve31",upstream,track=first,secondary_k=1.,secondary_c=1.,**common)
         b = add("candidate","solve31",upstream,track=second,secondary_k=k,secondary_c=c,**common)
-        result = add("pareto","pareto31",(a,b),unloading_ratio=.4,travel_mm=35.)
+        constraints = engineering.get("constraints") or {}
+        result = add("pareto","pareto31",(a,b),unloading_ratio=constraints.get("unloading_ratio",.4),
+                     travel_mm=constraints.get("travel_mm",35.))
         add("report","evidence_report",(a,b,result))
     elif any(word in text for word in ("频谱","振动","异常")):
         quality = add("quality","quality")

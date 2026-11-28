@@ -66,6 +66,35 @@ def init_db(db_path: Path | str = DB_PATH) -> None:
                 job_id TEXT REFERENCES workbench_jobs(id), step_id TEXT NOT NULL,
                 result BLOB NOT NULL, digest TEXT NOT NULL, PRIMARY KEY (job_id, step_id)
             );
+            CREATE TABLE IF NOT EXISTS engineering_projects (
+                id TEXT PRIMARY KEY, name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS engineering_job_replays (
+                job_id TEXT PRIMARY KEY REFERENCES workbench_jobs(id),
+                original_id TEXT NOT NULL REFERENCES workbench_jobs(id)
+            );
+            CREATE TABLE IF NOT EXISTS engineering_project_revisions (
+                project_id TEXT NOT NULL REFERENCES engineering_projects(id), revision INTEGER NOT NULL,
+                payload TEXT NOT NULL, sha256 TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(project_id, revision)
+            );
+            CREATE TABLE IF NOT EXISTS engineering_library (
+                project_id TEXT NOT NULL REFERENCES engineering_projects(id), document_id TEXT NOT NULL,
+                revision INTEGER NOT NULL, title TEXT NOT NULL, source TEXT NOT NULL,
+                sha256 TEXT NOT NULL, passages TEXT NOT NULL, original BLOB NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY(project_id, document_id, revision)
+            );
+            CREATE TABLE IF NOT EXISTS acquisition_sessions (
+                id TEXT PRIMARY KEY, label TEXT NOT NULL, declaration TEXT NOT NULL,
+                packet_count INTEGER NOT NULL DEFAULT 0, digest TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS acquisition_packets (
+                session_id TEXT NOT NULL REFERENCES acquisition_sessions(id), offset INTEGER NOT NULL,
+                packet TEXT NOT NULL, PRIMARY KEY(session_id, offset)
+            );
         """)
         connection.execute("""CREATE TABLE IF NOT EXISTS engineering_agent_tasks (
             task_id TEXT PRIMARY KEY, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,

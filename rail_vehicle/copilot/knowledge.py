@@ -71,12 +71,13 @@ def _terms(text):
     }
 
 
-def search(query, extra=()):
+def search(query, extra=(), *, builtin=True, limit=3):
     terms = _terms(query)
     scored = [
-        (3 * len(terms & _terms(p.title)) + len(terms & _terms(p.text)), p) for p in (*CATALOG, *extra)
+        (3 * len(terms & _terms(p.title)) + len(terms & _terms(p.text)), p)
+        for p in (*(CATALOG if builtin else ()), *extra)
     ]
-    return [p for score, p in sorted(scored, key=lambda pair: -pair[0]) if score][:3]
+    return [p for score, p in sorted(scored, key=lambda pair: -pair[0]) if score][:limit]
 
 
 def markdown_passages(content, title):
