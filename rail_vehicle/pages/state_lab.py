@@ -4,12 +4,14 @@ from dataclasses import asdict
 import csv
 import io
 import json
+import sqlite3
 
 import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
 
 from rail_vehicle.measurement_stream import Device, Replay, read_packet_csv, read_recording
+from rail_vehicle.acquisition_store import append_packets, load_recording, open_recording, recordings
 from rail_vehicle.state_monitoring import ObserverCase, diagnosis, estimate, simulated_stream
 from rail_vehicle.ui import COPILOT, navigate, plot_chart
 from rail_vehicle.virtual_trials import json_text
@@ -111,6 +113,11 @@ def _monitor(record,replay,truth,settings):
     for col,key,name in zip(stats,("accepted","missing_sequence","unsynchronized","invalid_range"),
                            ("有效记录","序号缺口","时钟拒绝","量程或标定拒绝"),strict=True):
         col.metric(name,record.counters[key])
+    ticks = sorted(record.samples)
+    frequency = (len(ticks) - 1) * 50 / (ticks[-1] - ticks[0]) if len(ticks) >= 2 else None
+    rate = f" · 有效帧率 {frequency:.2f} Hz" if frequency is not None else ""
+    st.caption(f"原始包 {len(record.packets):,} · 重复 {record.counters['repeated']:,} · "
+               f"迟到 {record.counters['late']:,}{rate}")
     try:
         stamp=(len(record.packets),settings)
         saved=st.session_state.get("vi_estimates")
@@ -182,6 +189,100 @@ def _live(record,replay,truth,settings):
     _monitor(record,replay,truth,settings)
 
 
+@st.fragment(run_every=.9)
+def _bridge():
+    state = st.session_state
+    capture = state["x_capture"]
+    if st.button("暂停本机接收"):
+        state["x_capture_active"] = False
+        st.rerun()
+    try:
+        status = capture.receive(state["x_bridge_url"], budget=120)
+        if capture.record is not None:
+            if not state.get("x_recording_id"):
+                state["x_recording_id"] = open_recording("本机采集桥", capture.record)
+                state["x_recording_offset"] = 0
+            offset = state["x_recording_offset"]
+            if len(capture.record.packets) > offset:
+                state["x_recording_offset"] = append_packets(state["x_recording_id"], offset, capture.record)
+            state["vi_recording"] = capture.record
+        state["x_capture_interrupts"] = state.get("x_capture_interrupts", 0) + 1 if status == "disconnected" else 0
+        st.caption(f"已持久化 {state.get('x_recording_offset', 0):,} 个包 · "
+                   f"连续断线 {state['x_capture_interrupts']} 次")
+        if capture.record is not None:
+            recent = sorted(capture.record.samples.items())[-200:]
+            acceleration = [(tick / 50, values["acceleration"]) for tick, values in recent
+                            if "acceleration" in values]
+            st.caption(SOURCES[capture.record.source])
+            if acceleration:
+                time_s, values = zip(*acceleration, strict=True)
+                st.metric("最新垂向加速度（m/s²）", f"{values[-1]:.4f}")
+                figure = go.Figure(go.Scatter(x=time_s, y=values, mode="lines"))
+                figure.update_layout(height=230, xaxis_title="共同触发时间（s）", yaxis_title="垂向加速度（m/s²）")
+                plot_chart(figure, key="x_live_raw")
+        if status == "complete" or state["x_capture_interrupts"] >= 3:
+            state["x_capture_active"] = False
+            state["x_capture_notice"] = "采集已结束。" if status == "complete" else "采集桥断线，已保留最近的保存位置。"
+            st.rerun()
+    except (ImportError, ValueError, OSError, sqlite3.Error, TimeoutError):
+        state["x_capture_active"] = False
+        state["x_capture_notice"] = "采集已停止。请核对本机采集桥、声明和保存位置后再试。"
+        st.rerun()
+
+
+def _capture_controls():
+    from rail_vehicle.stream_loopback import LoopbackCapture
+
+    state = st.session_state
+    with st.expander("持久化采集与恢复"):
+        st.caption("本机采集桥使用登记后的 50 Hz 垂向通道。原始包与接收位置保存到本机 SQLite。")
+        endpoint = st.text_input("本机 WebSocket 采集桥", placeholder="ws://127.0.0.1:8765", max_chars=180)
+        active = state.get("x_capture_active", False)
+        if st.button("连接或续传本机采集", disabled=active or not endpoint):
+            identifier = state.get("x_recording_id")
+            try:
+                if identifier and endpoint == state.get("x_bridge_url"):
+                    record = load_recording(identifier)
+                    state["x_recording_offset"] = len(record.packets)
+                else:
+                    record = None
+                    state.pop("x_recording_id", None)
+                    state.pop("x_recording_offset", None)
+                    state.pop("vi_recording", None)
+                state.update(x_capture=LoopbackCapture(record), x_bridge_url=endpoint, x_capture_active=True,
+                             x_capture_interrupts=0)
+                for key in ("vi_replay", "vi_truth", "vi_diagnosis", "x_capture_notice"):
+                    state.pop(key, None)
+                st.rerun()
+            except (ValueError, sqlite3.Error, OSError):
+                st.warning("无法读取已保存的采集位置。")
+        if notice := state.get("x_capture_notice"):
+            st.caption(notice)
+        if active:
+            _bridge()
+            return
+        # These controls run only when the recorder is stopped; open archives are immutable until explicit continuation.
+        try:
+            archive = {item["id"]: item for item in recordings()}
+            if archive:
+                selected = st.selectbox("历史采集记录", list(archive),
+                                        format_func=lambda key: f"{archive[key]['label']} · {archive[key]['packet_count']} 包 · "
+                                                                f"{archive[key]['created_at']} UTC")
+                if st.button("恢复历史采集"):
+                    record = load_recording(selected)
+                    state.update(vi_recording=record, x_recording_id=selected,
+                                 x_recording_offset=len(record.packets), x_bridge_url=endpoint)
+                    for key in ("vi_replay", "vi_truth", "vi_diagnosis"):
+                        state.pop(key, None)
+            record = state.get("vi_recording")
+            if record is not None and record.packets and st.button("将当前原始记录保存为新档案"):
+                identifier = open_recording("当前采集记录", record)
+                append_packets(identifier, 0, record)
+                st.success("原始包已写入独立采集档案。")
+        except (ValueError, sqlite3.Error, OSError):
+            st.warning("本机采集档案暂时无法读取或写入。")
+
+
 def render():
     st.subheader("在线采集与状态估计")
     s=st.session_state
@@ -191,6 +292,7 @@ def render():
         s["vi_recording"],s["vi_replay"],s["vi_truth"]=record,Replay(record,packets),truth
         s.pop("vi_diagnosis",None)
     _raw_device_controls()
+    _capture_controls()
     if (record:=s.get("vi_recording")) is None:
         st.info("建立模拟采集，或读取带设备登记的离线文件。")
         return
