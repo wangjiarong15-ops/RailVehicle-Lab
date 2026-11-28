@@ -24,8 +24,14 @@ BLOCKED_NAMES = {".venv", "__pycache__", ".git", ".ssh", ".aws", ".git-credentia
 def add_release_documents(bundle: Path, commit: str, version: str = VERSION) -> None:
     templates = Path(__file__).resolve().parent
     for source, target in (("PORTABLE_README.txt", "使用说明.txt"), ("PORTABLE_FEEDBACK.txt", "公测反馈模板.txt")):
+        body = (templates / source).read_text(encoding="utf-8")
+        if version == RC_VERSION:
+            body = body.replace("RailVehicle-Lab V0.5", "RailVehicle-Lab V1.0 RC1", 1)
+            if source == "PORTABLE_README.txt":
+                body += ("\n工程项目提供资料版本与引用定位。高级轮轨动力学可打开工程研究并独立复算。"
+                         "数字孪生工作台可恢复已保存的本机采集记录。\n")
         with (bundle / target).open("x", encoding="utf-8-sig", newline="\r\n") as stream:
-            stream.write((templates / source).read_text(encoding="utf-8"))
+            stream.write(body)
     with (bundle / "VERSION.txt").open("x", encoding="utf-8-sig", newline="\r\n") as stream:
         stream.write(f"RailVehicle-Lab {version}\n源码提交：{commit}\n"
                      "类型：免安装目录式用户公测；未签名，非正式发布。\n"

@@ -48,6 +48,21 @@ class PortableArchiveTests(unittest.TestCase):
             for name in (archive_tool.EXE_NAME, "使用说明.txt", "公测反馈模板.txt"):
                 self.assertIn(prefix + name, zipped.namelist())
 
+    def test_rc_guide_feedback_and_manifest_agree(self):
+        rc = self.root / "rc"
+        rc.mkdir()
+        (rc / archive_tool.EXE_NAME).write_bytes(b"fictional executable")
+        archive_tool.add_release_documents(rc, "a" * 40, archive_tool.RC_VERSION)
+        archive_tool.write_build_metadata(rc, "a" * 40, True, archive_tool.RC_VERSION)
+        archive, _ = archive_tool.create_archive(rc, self.output)
+        self.assertEqual(archive.name, archive_tool.RC_ZIP_NAME)
+        with zipfile.ZipFile(archive) as zipped:
+            prefix = archive_tool.BUNDLE_NAME + "/"
+            for name in ("VERSION.txt", "使用说明.txt", "公测反馈模板.txt"):
+                first_line = zipped.read(prefix + name).decode("utf-8-sig").splitlines()[0]
+                self.assertIn("V1.0 RC1", first_line)
+                self.assertNotIn("V0.5", first_line)
+
     def test_rejects_unrecorded_dirty_or_changed_build(self):
         for change in ("missing", "dirty", "tampered", "invalid_commit"):
             with self.subTest(change=change):

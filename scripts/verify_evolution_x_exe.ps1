@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$Bundle,[Parameter(Mandatory=$true)][string]$Output)
+param([Parameter(Mandatory=$true)][string]$Bundle,[Parameter(Mandatory=$true)][string]$Output,[switch]$VerifySolver)
 $ErrorActionPreference='Stop'
 $root=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $exe=(Resolve-Path -LiteralPath (Join-Path $Bundle 'RailVehicle-Lab.exe')).Path
@@ -35,5 +35,9 @@ function Test-PackagedSession([string]$Stage,[string[]]$Extra) {
     }
 }
 
-Test-PackagedSession 'fresh' @()
-Test-PackagedSession 'restart' @('--verify-restart')
+if($VerifySolver) {
+    Test-PackagedSession 'solver' @('--verify-solver')
+} else {
+    Test-PackagedSession 'fresh' @()
+    Test-PackagedSession 'restart' @('--verify-restart')
+}

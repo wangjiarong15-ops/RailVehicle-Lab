@@ -56,6 +56,29 @@ async function approve(page) {
     url.searchParams.set("embed_options","dark_theme");
     await page.goto(url.href);
     await heading(page, "工程工作台").waitFor();
+    if (process.argv.includes("--verify-solver")) {
+      await nav(page, "动力学仿真").click();
+      await page.getByRole("combobox", {name:"计算工况"}).click();
+      await page.getByText("高级轮轨动力学（31 自由度）", {exact:true}).click();
+      await button(page, "在工程研究中复算当前工况").click({timeout:60000});
+      await heading(page, "工程研究工作台").waitFor();
+      await page.getByRole("textbox", {name:"研究目标",exact:true}).fill("当前工况独立复算");
+      await button(page, "新建研究任务").click();
+      await heading(page, "当前工况独立复算").waitFor();
+      await button(page, "生成本轮计划").click();
+      const evidence = await approve(page);
+      assert(evidence.task.engineering_context.simulation.case);
+      assert.equal(evidence.tools.r0_solve.output.response.solver.method, "DOP853");
+      assert.equal(evidence.tools.r0_independent.output.response.solver.method, "RK45");
+      assert.equal(evidence.tools.r0_verify.output.metrics.passed, true);
+      const pdf = await download(page, "导出工程任务 PDF");
+      assert.equal(pdf.subarray(0, 5).toString(), "%PDF-");
+      await writeFile(resolve(output, "exe-solver-evidence.json"), JSON.stringify(evidence, null, 2));
+      await writeFile(resolve(output, "exe-solver-report.pdf"), pdf);
+      await page.screenshot({path:resolve(output, "1366-exe-solver.png")});
+      console.log("Packaged active case passed real DOP853 and independent RK45, and exported engineering evidence.");
+      return;
+    }
     if (process.argv.includes("--verify-restart")) {
       await button(page, "工程研究").click();
       await heading(page, "历史复算 · 检索二系悬挂公式资料").waitFor();
